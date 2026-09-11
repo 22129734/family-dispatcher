@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Семейный диспетчер — ИИ, который занимается домашними делами</title>
+<meta name="description" content="Автономный ИИ-диспетчер домашних дел: слушает семью, извлекает задачи, справедливо распределяет и контролирует выполнение. Проект Sber500 x Disrupt.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --green:#21A038;
+  --green-bright:#36D65E;
+  --green-dark:#0F7A28;
+  --bg:#0A0E0C;
+  --bg-elev:#141A16;
+  --surface:rgba(255,255,255,.04);
+  --border:rgba(255,255,255,.08);
+  --border-hover:rgba(54,214,94,.4);
+  --text:#F5F7F6;
+  --muted:#9AA3A0;
+  --radius-card:24px;
+  --radius-pill:999px;
+  --shadow-glow:0 0 0 1px rgba(54,214,94,.18), 0 24px 60px -20px rgba(33,160,56,.45);
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:'SB Sans Interface','Sber Sans',Inter,system-ui,-apple-system,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  line-height:1.5;
+  overflow-x:hidden;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(900px 600px at 15% -5%, rgba(33,160,56,.16), transparent 60%),
+    radial-gradient(700px 500px at 95% 100%, rgba(54,214,94,.10), transparent 60%);
+}
+:focus-visible{outline:2px solid var(--green-bright);outline-offset:2px;border-radius:8px}
+
+/* ---------- layout ---------- */
+.deck{position:relative;z-index:1;scroll-snap-type:y proximity}
+.slide{
+  min-height:100vh;scroll-snap-align:start;
+  display:flex;flex-direction:column;justify-content:center;
+  padding:96px 7vw;max-width:1280px;margin:0 auto;
+}
+@media(max-width:760px){.slide{padding:72px 24px;min-height:auto;padding-block:64px}}
+
+/* ---------- typography ---------- */
+h1{font-size:clamp(40px,7vw,84px);font-weight:800;letter-spacing:-.035em;line-height:1.02}
+h2{font-size:clamp(28px,4.2vw,52px);font-weight:700;letter-spacing:-.03em;line-height:1.08;margin-bottom:14px}
+h3{font-size:19px;font-weight:600;letter-spacing:-.01em;margin-bottom:8px}
+p{color:var(--muted);font-size:clamp(15px,1.5vw,18px)}
+.lead{font-size:clamp(17px,2vw,22px);color:var(--muted);max-width:62ch;margin-top:20px}
+.section-sub{color:var(--muted);font-size:clamp(15px,1.6vw,19px);max-width:64ch;margin-bottom:44px}
+.grad{background:linear-gradient(135deg,var(--green) 0%,var(--green-bright) 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* ---------- primitives ---------- */
+.badge{
+  display:inline-flex;align-items:center;gap:9px;
+  padding:8px 16px;border-radius:var(--radius-pill);
+  background:var(--surface);border:1px solid var(--border);
+  backdrop-filter:blur(16px);
+  font-size:13px;font-weight:600;letter-spacing:.02em;color:var(--text);
+}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--green-bright);box-shadow:0 0 12px var(--green-bright)}
+.card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius-card);padding:28px;
+  backdrop-filter:blur(16px);
+  transition:border-color .35s var(--ease),transform .35s var(--ease),box-shadow .35s var(--ease);
+}
+.card:hover{border-color:var(--border-hover);transform:translateY(-3px);box-shadow:var(--shadow-glow)}
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.g2,.g3,.g4{grid-template-columns:1fr}}
+.stat{font-size:clamp(34px,4.6vw,54px);font-weight:800;letter-spacing:-.04em;line-height:1;margin-bottom:12px}
+.num{
+  width:34px;height:34px;flex:0 0 34px;border-radius:var(--radius-pill);
+  display:grid;place-items:center;margin-bottom:16px;
+  background:linear-gradient(135deg,var(--green),var(--green-bright));
+  color:#04140A;font-weight:800;font-size:14px;
+}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--green-bright);margin-bottom:18px}
+.chip{display:inline-block;padding:6px 13px;border-radius:var(--radius-pill);background:rgba(33,160,56,.12);border:1px solid rgba(54,214,94,.24);font-size:13px;font-weight:500;margin:0 6px 8px 0}
+.accent{color:var(--text);font-weight:600}
+
+/* ---------- hero ---------- */
+.hero .badge{align-self:flex-start;margin-bottom:32px}
+.hero-cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:44px}
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:14px 26px;border-radius:var(--radius-pill);
+  font-size:15px;font-weight:600;text-decoration:none;border:1px solid transparent;
+  transition:transform .3s var(--ease),box-shadow .3s var(--ease),border-color .3s var(--ease);
+}
+.btn-primary{background:linear-gradient(135deg,var(--green),var(--green-bright));color:#04140A}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:var(--shadow-glow)}
+.btn-ghost{background:var(--surface);border-color:var(--border);color:var(--text)}
+.btn-ghost:hover{border-color:var(--border-hover);transform:translateY(-2px)}
+
+/* ---------- flow ---------- */
+.flow{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.flow span{
+  padding:11px 18px;border-radius:var(--radius-pill);
+  background:var(--surface);border:1px solid var(--border);
+  font-size:14px;font-weight:600;white-space:nowrap;
+}
+.flow span:nth-child(odd){border-color:rgba(54,214,94,.28)}
+.arrow{color:var(--green-bright);align-self:center;font-weight:700}
+
+/* ---------- table ---------- */
+.tbl{width:100%;border-collapse:collapse;font-size:15px}
+.tbl th{
+  text-align:left;padding:14px 16px;font-weight:600;font-size:12px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
+  border-bottom:1px solid var(--border);
+}
+.tbl td{padding:16px;border-bottom:1px solid var(--border);color:var(--muted);vertical-align:top}
+.tbl tr:last-child td{border-bottom:none}
+.tbl td:first-child{color:var(--text);font-weight:600;white-space:nowrap}
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-card);background:var(--surface);backdrop-filter:blur(16px)}
+
+/* ---------- timeline ---------- */
+.weeks{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+@media(max-width:1000px){.weeks{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:620px){.weeks{grid-template-columns:1fr}}
+.week{
+  background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px 18px;
+  position:relative;transition:border-color .35s var(--ease),transform .35s var(--ease);
+}
+.week:hover{border-color:var(--border-hover);transform:translateY(-3px)}
+.week .w{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--green-bright);margin-bottom:10px}
+.week h3{font-size:16px;margin-bottom:8px}
+.week p{font-size:14px;line-height:1.45}
+.metric{margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12.5px;color:var(--green-bright);font-weight:600}
+
+/* ---------- nav ---------- */
+.rail{position:fixed;right:26px;top:50%;transform:translateY(-50%);z-index:20;display:flex;flex-direction:column;gap:11px}
+@media(max-width:860px){.rail{display:none}}
+.rail button{
+  width:9px;height:9px;padding:0;border-radius:50%;cursor:pointer;
+  border:1px solid rgba(255,255,255,.28);background:transparent;
+  transition:all .3s var(--ease);
+}
+.rail button:hover{border-color:var(--green-bright);transform:scale(1.35)}
+.rail button[aria-current="true"]{background:var(--green-bright);border-color:var(--green-bright);box-shadow:0 0 14px var(--green-bright)}
+.progress{position:fixed;top:0;left:0;height:2px;background:linear-gradient(90deg,var(--green),var(--green-bright));z-index:30;width:0}
+
+/* ---------- reveal ---------- */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
+.reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  .reveal{opacity:1;transform:none;transition:none}
+  .card:hover,.week:hover,.btn:hover{transform:none}
+}
+footer{padding:56px 7vw 72px;border-top:1px solid var(--border);color:var(--muted);font-size:14px;text-align:center;position:relative;z-index:1}
+footer a{color:var(--green-bright);text-decoration:none}
+footer a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<nav class="rail" id="rail" aria-label="Навигация по слайдам"></nav>
+
+<main class="deck" id="deck">
+
+  <!-- 1 -->
+  <section class="slide hero" data-title="Титул">
+    <span class="badge reveal"><span class="dot"></span>Sber500 x Disrupt</span>
+    <h1 class="reveal">Семейный<br><span class="grad">диспетчер</span></h1>
+    <p class="lead reveal">ИИ, который занимается домашними делами. Не список задач, а автономный диспетчер: слушает семью, распределяет дела справедливо и следит, чтобы они были сделаны.</p>
+    <div class="hero-cta reveal">
+      <a class="btn btn-primary" href="#problem">Смотреть презентацию</a>
+      <a class="btn btn-ghost" href="https://github.com/22129734/family-dispatcher" target="_blank" rel="noopener">Репозиторий проекта</a>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="slide" id="problem" data-title="Проблема">
+    <div class="eyebrow reveal">Проблема</div>
+    <h2 class="reveal">Невидимый труд, который<br>съедает вечера</h2>
+    <p class="section-sub reveal">Координация быта не выглядит работой — поэтому её никто не считает. Но она отнимает время, которое семья могла бы провести вместе.</p>
+    <div class="grid g3">
+      <div class="card reveal"><div class="stat grad">2–3 часа</div><h3>в неделю на координацию</h3><p>До 60% семей тратят это время только на то, чтобы договориться, кто что делает.</p></div>
+      <div class="card reveal"><div class="stat grad">1 человек</div><h3>несёт всё планирование</h3><p>Нагрузка почти всегда лежит на одном — незаметно для остальных и изматывающе для него.</p></div>
+      <div class="card reveal"><div class="stat grad">Каждый дом</div><h3>живёт в фоновом стрессе</h3><p>Съедаются вечера и выходные, и постепенно это становится постоянным источником напряжения.</p></div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="slide" data-title="Аудитория">
+    <div class="eyebrow reveal">Целевая аудитория</div>
+    <h2 class="reveal">Миллионы российских семей</h2>
+    <p class="section-sub reveal">Огромный и до сих пор неохваченный рынок — там, где бытовая логистика сложнее всего.</p>
+    <div class="grid g3">
+      <div class="card reveal"><div class="num">1</div><h3>Семьи с двумя и более детьми</h3><p>Оба родителя работают, и взять бытовую логистику на себя физически некому.</p></div>
+      <div class="card reveal"><div class="num">2</div><h3>Семьи с пожилыми родственниками</h3><p>Забота о близких добавляет ещё один уровень координации — врачи, лекарства, визиты.</p></div>
+      <div class="card reveal"><div class="num">3</div><h3>Семьи с плотным расписанием</h3><p>Секции, репетиторы, кружки — расписание ребёнка сложнее рабочего календаря родителя.</p></div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="slide" data-title="Решение">
+    <div class="eyebrow reveal">Наше решение</div>
+    <h2 class="reveal">ИИ-диспетчер,<br>а не ещё один трекер</h2>
+    <p class="section-sub reveal">Замкнутый цикл, в котором человек участвует только там, где это действительно нужно.</p>
+    <div class="flow reveal" style="margin-bottom:34px">
+      <span>Услышать</span><span class="arrow">→</span>
+      <span>Понять</span><span class="arrow">→</span>
+      <span>Распределить</span><span class="arrow">→</span>
+      <span>Напомнить</span><span class="arrow">→</span>
+      <span>Проконтролировать</span><span class="arrow">→</span>
+      <span>Перераспределить</span>
+    </div>
+    <div class="grid g3">
+      <div class="card reveal"><h3>Сбор без ручного ввода</h3><p>Голосовое сообщение, пересланный текст из чата, фото записки из школы, событие из календаря. Никаких форм на десять полей.</p></div>
+      <div class="card reveal"><h3>Умное распределение</h3><p>Учитывается реальная занятость, ёмкость, предпочтения и история выполнения каждого члена семьи.</p></div>
+      <div class="card reveal"><h3>Контроль и подхват</h3><p>Просроченная задача не превращается в упрёк — она уходит тому, кто сейчас свободен.</p></div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="slide" data-title="Индекс труда">
+    <div class="eyebrow reveal">Ключевая механика</div>
+    <h2 class="reveal">Индекс <span class="grad">невидимого труда</span></h2>
+    <p class="section-sub reveal">Система считает и показывает семье, сколько задач и часов фактически несёт каждый. Невидимый труд становится измеримым — этого нет ни у одного конкурента.</p>
+    <div class="grid g3">
+      <div class="card reveal"><h3>Эмоциональный крючок</h3><p>Впервые видно то, о чём в семье не принято говорить вслух. Это разговор, который продукт начинает за вас.</p></div>
+      <div class="card reveal"><h3>Вовлечение второго родителя</h3><p>Цифры работают лучше упрёков: партнёр включается сам, потому что видит перекос.</p></div>
+      <div class="card reveal"><h3>Естественная виральность</h3><p>Еженедельным отчётом делятся — он попадает в чаты и соцсети без нашего участия.</p></div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="slide" data-title="Преимущество">
+    <div class="eyebrow reveal">Конкурентное преимущество</div>
+    <h2 class="reveal">На рынке СНГ нет аналогов</h2>
+    <p class="section-sub reveal">Cozi, OurHome, FamCal автоматизируют хранение задач. Ввод и распределение остаются ручными — поэтому нагрузка на «главного координатора» не снижается, а растёт.</p>
+    <div class="tbl-wrap reveal">
+      <table class="tbl">
+        <thead><tr><th></th><th>Списки и календари</th><th>Семейный диспетчер</th></tr></thead>
+        <tbody>
+          <tr><td>Ввод задач</td><td>Вручную, форма</td><td>Голос, чат, фото, календарь</td></tr>
+          <tr><td>Распределение</td><td>Вручную, человеком</td><td>Автоматически, с учётом справедливости</td></tr>
+          <tr><td>Просроченные дела</td><td>Остаются висеть</td><td>Перераспределяются сами</td></tr>
+          <tr><td>Баланс нагрузки</td><td>Не измеряется</td><td>Индекс невидимого труда</td></tr>
+          <tr><td>Русская бытовая речь</td><td>Плохо или никак</td><td>GigaChat, родной язык</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="lead reveal">Мы первые на рынке СНГ с полной автоматизацией домашней логистики.</p>
+  </section>
+
+  <!-- 7 -->
+  <section class="slide" data-title="Технологии">
+    <div class="eyebrow reveal">Отечественное решение</div>
+    <h2 class="reveal">GigaChat в ядре продукта</h2>
+    <p class="section-sub reveal">Принципиальное решение архитектуры: <span class="accent">LLM не планирует расписание</span>. GigaChat отвечает за понимание речи и формулировки, справедливость распределения считает детерминированный алгоритм. Поэтому решение воспроизводимо, объяснимо и его можно оспорить.</p>
+    <div class="grid g3" style="margin-bottom:26px">
+      <div class="card reveal"><h3>GigaChat</h3><p>Извлечение задач из свободной речи через function calling, генерация напоминаний и объяснений назначений на русском языке.</p></div>
+      <div class="card reveal"><h3>Cloud.ru</h3><p>Инфраструктура и хранение персональных данных на территории РФ в соответствии с 152-ФЗ.</p></div>
+      <div class="card reveal"><h3>Алиса</h3><p>Голосовой вход прямо на кухне — без телефона в руках и без установки приложения.</p></div>
+    </div>
+    <div class="reveal">
+      <span class="chip">Python 3.12</span><span class="chip">FastAPI</span><span class="chip">PostgreSQL + pgvector</span><span class="chip">Celery + Redis</span><span class="chip">GigaChat function calling</span><span class="chip">SaluteSpeech / GigaAM</span><span class="chip">OR-Tools</span><span class="chip">Flutter</span><span class="chip">React + TypeScript</span><span class="chip">Docker</span><span class="chip">Cloud.ru</span><span class="chip">GitHub Actions</span>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section class="slide" data-title="План">
+    <div class="eyebrow reveal">План работ</div>
+    <h2 class="reveal">Шесть недель до продукта<br>в руках реальных семей</h2>
+    <p class="section-sub reveal">Недельные спринты, демо каждую пятницу, измеримая метрика на каждом этапе.</p>
+    <div class="weeks">
+      <div class="week reveal"><div class="w">Неделя 1</div><h3>Исследование</h3><p>10–12 интервью с семьями, архитектура, прототип в Figma.</p><div class="metric">≥8 интервью подтверждают проблему</div></div>
+      <div class="week reveal"><div class="w">Неделя 2</div><h3>Ядро</h3><p>Backend, мобильное приложение, веб-дашборд, деплой.</p><div class="metric">Задача видна всей семье</div></div>
+      <div class="week reveal"><div class="w">Неделя 3</div><h3>Интеллект</h3><p>GigaChat: извлечение задач, движок распределения, напоминания.</p><div class="metric">Точность извлечения ≥85%</div></div>
+      <div class="week reveal"><div class="w">Неделя 4</div><h3>Цикл</h3><p>Трекинг, push, перераспределение, календари и Алиса.</p><div class="metric">≥70% задач — автоматически</div></div>
+      <div class="week reveal"><div class="w">Неделя 5</div><h3>Бета</h3><p>Закрытый тест с 5–7 семьями, замер гипотез, обратная связь.</p><div class="metric">≥60% назначений без правки</div></div>
+      <div class="week reveal"><div class="w">Неделя 6</div><h3>Запуск</h3><p>Доработка, лендинг, публикация в RuStore, финальные метрики.</p><div class="metric">≥100 семей в вейтлисте</div></div>
+    </div>
+  </section>
+
+  <!-- 9 -->
+  <section class="slide" data-title="Команда">
+    <div class="eyebrow reveal">Команда</div>
+    <h2 class="reveal">Четверо, закрывающие<br>полный цикл</h2>
+    <p class="section-sub reveal">Уже работали вместе на хакатоне AI Wellness Quest и в продуктовых задачах банка. Есть практический опыт интеграции GigaChat в работающие решения.</p>
+    <div class="grid g4">
+      <div class="card reveal"><div class="num">М</div><h3>Михаил</h3><p><span class="accent">Руководитель проекта.</span> Продуктовое видение, гипотезы и метрики, питч. RAG-агенты, ML на CatBoost, промпт-инжиниринг.</p></div>
+      <div class="card reveal"><div class="num">Я</div><h3>Ярослав</h3><p><span class="accent">Менеджер проекта.</span> Спринты, сроки, CustDev, организация бета-теста. Защита MVP перед руководством банка.</p></div>
+      <div class="card reveal"><div class="num">В</div><h3>Владислав</h3><p><span class="accent">AI/ML-инженер.</span> GigaChat, извлечение задач, качество моделей и golden-set. RAG, CatBoost, DL.</p></div>
+      <div class="card reveal"><div class="num">И</div><h3>Илья</h3><p><span class="accent">Технический лидер.</span> Архитектура, backend, мобильное приложение, инфраструктура. GigaChat в продакшене, Docker, Kubernetes.</p></div>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section class="slide" data-title="Запрос">
+    <div class="eyebrow reveal">Честно о пробелах</div>
+    <h2 class="reveal">У нас нет опыта запуска<br>B2C с высоким трафиком</h2>
+    <p class="section-sub reveal">Мы это признаём — и именно поэтому идём в программу. Рассчитываем на менторскую поддержку и ресурсы Сбера, чтобы пройти этот путь правильно.</p>
+    <div class="grid g3">
+      <div class="card reveal"><div class="num">1</div><h3>Ментор по росту</h3><p>Опыт масштабирования B2C-продуктов в России — метрики, каналы, удержание.</p></div>
+      <div class="card reveal"><div class="num">2</div><h3>Доступ к API</h3><p>GigaChat и Cloud.ru для разработки и нагрузочного тестирования MVP.</p></div>
+      <div class="card reveal"><div class="num">3</div><h3>Сеть контактов</h3><p>Выход на первых пользователей и партнёров в семейной и образовательной нише.</p></div>
+    </div>
+    <div class="hero-cta reveal">
+      <a class="btn btn-primary" href="https://github.com/22129734/family-dispatcher" target="_blank" rel="noopener">Код проекта на GitHub</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Семейный диспетчер — проект команды в акселераторе Sber500 x Disrupt ·
+  <a href="https://github.com/22129734/family-dispatcher" target="_blank" rel="noopener">github.com/22129734/family-dispatcher</a>
+</footer>
+
+<script>
+(function(){
+  const slides=[...document.querySelectorAll('.slide')];
+  const rail=document.getElementById('rail');
+  const progress=document.getElementById('progress');
+
+  slides.forEach((s,i)=>{
+    const b=document.createElement('button');
+    b.type='button';
+    b.setAttribute('aria-label',`Слайд ${i+1}: ${s.dataset.title}`);
+    b.addEventListener('click',()=>s.scrollIntoView({behavior:'smooth',block:'start'}));
+    rail.appendChild(b);
+  });
+  const dots=[...rail.children];
+
+  const setActive=i=>dots.forEach((d,j)=>d.setAttribute('aria-current',String(j===i)));
+
+  const spy=new IntersectionObserver(entries=>{
+    entries.forEach(e=>{ if(e.isIntersecting) setActive(slides.indexOf(e.target)); });
+  },{threshold:.5});
+  slides.forEach(s=>spy.observe(s));
+
+  const reveal=new IntersectionObserver((entries,obs)=>{
+    entries.forEach(e=>{
+      if(!e.isIntersecting) return;
+      const group=[...e.target.parentElement.querySelectorAll('.reveal')];
+      e.target.style.transitionDelay=`${Math.min(group.indexOf(e.target),8)*60}ms`;
+      e.target.classList.add('in');
+      obs.unobserve(e.target);
+    });
+  },{threshold:.15,rootMargin:'0px 0px -8% 0px'});
+  document.querySelectorAll('.reveal').forEach(el=>reveal.observe(el));
+
+  addEventListener('scroll',()=>{
+    const max=document.body.scrollHeight-innerHeight;
+    progress.style.width=(max>0?scrollY/max*100:0)+'%';
+  },{passive:true});
+
+  addEventListener('keydown',e=>{
+    const step={ArrowDown:1,PageDown:1,ArrowUp:-1,PageUp:-1}[e.key];
+    if(step===undefined) return;
+    const current=dots.findIndex(d=>d.getAttribute('aria-current')==='true');
+    const next=slides[Math.max(0,Math.min(slides.length-1,current+step))];
+    if(next){e.preventDefault();next.scrollIntoView({behavior:'smooth',block:'start'});}
+  });
+})();
+</script>
+</body>
+</html>
