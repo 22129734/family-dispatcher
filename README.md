@@ -76,39 +76,64 @@ TaskExtractor  Allocator  Reminder service
 ## Структура репозитория
 
 ```
-backend/          FastAPI-сервис: извлечение задач, распределение, напоминания
+backend/          FastAPI-сервис: семьи, задачи, распределение, аналитика
   app/
-    api/          HTTP-роуты
-    schemas/      Pydantic-модели домена
+    api/          HTTP-роуты (app_routes — приложение, routes — песочница ядра)
+    schemas/      Pydantic-модели домена и API
     services/     GigaChat-клиент, извлечение задач, движок распределения
+    models.py     ORM: семья, участник, задача, событие
   tests/
-mobile/           Flutter-приложение (iOS + Android)
-web/              React-дашборд для родителей
-docs/             Архитектура, дорожная карта, презентация
+web/              Мобильное веб-приложение (PWA): React + TypeScript + Vite + Tailwind
+research/         Инструменты исследования: локальная расшифровка интервью
+docs/             Статус, архитектура, описание MVP, исследование, дорожная карта, презентация
 ```
+
+**Текущее состояние проекта — [docs/STATUS.md](docs/STATUS.md).** Техническое описание MVP — [docs/web-mvp.md](docs/web-mvp.md), исследование — [docs/research/README.md](docs/research/README.md).
 
 ---
 
 ## Быстрый старт
 
-```bash
-git clone https://github.com/<owner>/family-dispatcher.git
-cd family-dispatcher/backend
+Нужны Python 3.12+ и Node.js 20+. Без ключа GigaChat работает резервный разбор правилами.
 
+```bash
+git clone https://github.com/22129734/family-dispatcher.git
+cd family-dispatcher
+
+# Backend
+cd backend
 python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+cp ../.env.example .env        # GIGACHAT_CREDENTIALS — по желанию
+uvicorn app.main:app --reload  # http://localhost:8000/docs
 
-cp ../.env.example .env        # укажите GIGACHAT_CREDENTIALS
-uvicorn app.main:app --reload
+# Web (в другом терминале)
+cd web
+npm install
+npm run dev                    # http://localhost:5173, /api проксируется на :8000
 ```
 
-Документация API: http://localhost:8000/docs
+Открывайте с телефона в той же сети: `npm run dev` печатает адрес вида `http://192.168.x.x:5173`.
+Голосовой ввод в браузере требует HTTPS (или localhost).
 
-Тесты:
+**Один процесс для деплоя:** `npm run build` в `web/`, затем `uvicorn app.main:app` —
+backend сам отдаёт собранный клиент из `web/dist`.
+
+Тесты и линтер:
 
 ```bash
-pytest
+cd backend && pytest && ruff check .
 ```
+
+### Что умеет MVP
+
+- Создать семью и пригласить близких по ссылке (`/join/<код>`), без паролей
+- Надиктовать или написать дело → задача извлекается и сразу распределяется
+- Лента «Просрочено / Сегодня / Завтра / Позже / Без срока / Сделано», фильтр «Мои»
+- Отметить сделанным, передать в один тап (вето), назначить вручную, поставить срок
+- Повторяющиеся дела: после выполнения ставится следующее
+- Индекс невидимого труда за неделю
+- Продуктовые события и `GET /api/v1/analytics/daily` — DAU и действия на DAU (метрики Sber500)
 
 ---
 

@@ -1,0 +1,4 @@
+faster-whisper>=1.2
+av>=14
+numpy>=1.26
+openpyxl>=3.1
