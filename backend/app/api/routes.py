@@ -1,3 +1,5 @@
+"""Stateless-песочница ядра: извлечение и распределение без базы данных."""
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -6,7 +8,7 @@ from app.schemas.task import Assignment, TaskDraft
 from app.services.allocator import Allocator, NoEligibleMemberError, invisible_labour_index
 from app.services.task_extractor import TaskExtractor
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/api/v1/playground", tags=["playground"])
 
 extractor = TaskExtractor()
 allocator = Allocator()

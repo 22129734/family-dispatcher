@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     gigachat_model: str = "GigaChat"
     gigachat_verify_ssl: bool = False
 
+    database_url: str = "sqlite:///./family_dispatcher.db"
+    cors_origins: str = "http://localhost:5173"
+    admin_token: str = ""
+    web_dist_dir: str = "../web/dist"
+
     app_env: str = "local"
     timezone: str = "Europe/Moscow"
 
