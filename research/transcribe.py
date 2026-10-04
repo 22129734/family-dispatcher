@@ -1,8 +1,8 @@
 """Расшифровка интервью: аудио/видео из папки → текст с таймкодами.
 
 Работает локально (faster-whisper), записи никуда не отправляются.
-Уже расшифрованные файлы пропускаются, поэтому скрипт можно запускать
-после каждого нового интервью.
+Записи ищутся и в подпапках (например, по интервьюерам). Уже расшифрованные
+файлы пропускаются, поэтому скрипт можно запускать после каждого нового интервью.
 
     .venv/Scripts/python transcribe.py "D:/Projects/Sber500/Интервью"
 """
@@ -38,7 +38,7 @@ def load_audio(src: Path) -> np.ndarray:
     return np.concatenate(chunks).astype(np.float32) / 32768.0
 
 
-def transcribe(model: WhisperModel, src: Path, dst: Path) -> None:
+def transcribe(model: WhisperModel, src: Path, dst: Path, source: str) -> None:
     started = time.time()
     segments, info = model.transcribe(
         load_audio(src),
@@ -49,7 +49,7 @@ def transcribe(model: WhisperModel, src: Path, dst: Path) -> None:
     )
     lines = [f"[{stamp(seg.start)}] {seg.text.strip()}" for seg in segments]
     dst.write_text(
-        f"# {src.name}\n\nДлительность: {stamp(info.duration)} · модель {MODEL}\n\n"
+        f"# {source}\n\nДлительность: {stamp(info.duration)} · модель {MODEL}\n\n"
         + "\n".join(lines)
         + "\n",
         encoding="utf-8",
@@ -58,14 +58,23 @@ def transcribe(model: WhisperModel, src: Path, dst: Path) -> None:
 
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding="utf-8")  # консоль Windows в cp1251 не печатает «→»
     folder = Path(sys.argv[1] if len(sys.argv) > 1 else ".")
     out = folder / "Транскрипты"
     out.mkdir(exist_ok=True)
 
+    # Записи могут лежать в подпапках по интервьюерам; расшифровки — в общей папке.
+    # Что уже расшифровано, видно по первой строке расшифровки: «# <путь записи>».
+    done = {
+        md.read_text(encoding="utf-8").split("\n", 1)[0].removeprefix("# ")
+        for md in out.glob("*.md")
+    }
     todo = [
         f
-        for f in sorted(folder.iterdir())
-        if f.suffix.lower() in MEDIA and not (out / f"{f.stem}.md").exists()
+        for f in sorted(folder.rglob("*"))
+        if f.suffix.lower() in MEDIA
+        and out not in f.parents
+        and f.relative_to(folder).as_posix() not in done
     ]
     if not todo:
         print("Новых записей нет")
@@ -73,8 +82,12 @@ def main() -> None:
 
     model = WhisperModel(MODEL, device="cpu", compute_type="int8")
     for f in todo:
-        print(f"Расшифровываю {f.name}…", flush=True)
-        transcribe(model, f, out / f"{f.stem}.md")
+        source = f.relative_to(folder).as_posix()
+        dst = out / f"{f.stem}.md"
+        if dst.exists():  # одинаковые имена файлов у разных интервьюеров
+            dst = out / f"{f.stem} ({f.parent.name}).md"
+        print(f"Расшифровываю {source}…", flush=True)
+        transcribe(model, f, dst, source)
 
 
 if __name__ == "__main__":
