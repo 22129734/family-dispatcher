@@ -138,6 +138,22 @@ class ComponentCallRow(Base):
     family_id: Mapped[str | None] = mapped_column(ForeignKey("families.id"), nullable=True)
 
 
+class PushSubscriptionRow(Base):
+    """Подписка устройства на push-уведомления (Web Push)."""
+
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id"), index=True)
+    endpoint: Mapped[str] = mapped_column(Text, unique=True)
+    p256dh: Mapped[str] = mapped_column(String(200))
+    auth: Mapped[str] = mapped_column(String(100))
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class EventRow(Base):
     """Продуктовое событие — основа для DAU и «обращений на пользователя»."""
 

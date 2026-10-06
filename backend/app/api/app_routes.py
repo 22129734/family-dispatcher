@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.auth import CurrentAccount, CurrentMember, DbSession, member_of
@@ -24,13 +24,13 @@ from app.schemas.api import (
     UpdateTaskRequest,
 )
 from app.services import family_service as fs
+from app.services import notifications
+from app.services.family_service import TaskActionError
 from app.services.task_extractor import TaskExtractor
 
 router = APIRouter(prefix="/api/v1")
 
 extractor = TaskExtractor()
-
-_RECURRENCE_STEP = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
 
 
 def _require_no_family(db: DbSession, account: CurrentAccount) -> None:
@@ -54,6 +54,23 @@ def _family_task(db: DbSession, member: MemberRow, task_id: str) -> TaskRow:
 def _check_member(member: MemberRow, member_id: str | None) -> None:
     if member_id is not None and member_id not in {m.id for m in member.family.members}:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Такого участника нет в семье")
+
+
+def _notify_assignee(background: BackgroundTasks, task: TaskRow, author: MemberRow) -> None:
+    """Новое поручение другому человеку — push исполнителю."""
+    if task.assignee_id and task.assignee_id != author.id and task.status == "new":
+        background.add_task(
+            notifications.deliver, task.assignee_id, notifications.new_task_message(task, author)
+        )
+
+
+def _notify_author(background: BackgroundTasks, task: TaskRow, who: MemberRow, kind: str) -> None:
+    if task.created_by_id != who.id:
+        background.add_task(
+            notifications.deliver,
+            task.created_by_id,
+            notifications.answer_message(task, who, kind),
+        )
 
 
 # ---------- Семья и участники ----------
@@ -153,7 +170,9 @@ def list_tasks(
 
 
 @router.post("/tasks/dispatch", response_model=TaskOut, status_code=201, tags=["tasks"])
-def dispatch(payload: DispatchRequest, member: CurrentMember, db: DbSession) -> TaskRow:
+def dispatch(
+    payload: DispatchRequest, member: CurrentMember, db: DbSession, background: BackgroundTasks
+) -> TaskRow:
     """Главный сценарий: сообщение → задача с исполнителем и сроком → ждёт ответа."""
     draft = extractor.extract(payload.message, datetime.now())
     task = fs.task_from_draft(draft, member.family, member)
@@ -164,11 +183,14 @@ def dispatch(payload: DispatchRequest, member: CurrentMember, db: DbSession) -> 
     db.flush()
     fs.track(db, member, "task_dispatched", source=payload.source, assigned=bool(task.assignee_id))
     db.commit()
+    _notify_assignee(background, task, member)
     return task
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201, tags=["tasks"])
-def create_task(payload: CreateTaskRequest, member: CurrentMember, db: DbSession) -> TaskRow:
+def create_task(
+    payload: CreateTaskRequest, member: CurrentMember, db: DbSession, background: BackgroundTasks
+) -> TaskRow:
     _check_member(member, payload.assignee_id)
     task = TaskRow(
         family_id=member.family_id,
@@ -189,12 +211,17 @@ def create_task(payload: CreateTaskRequest, member: CurrentMember, db: DbSession
     db.flush()
     fs.track(db, member, "task_created", source="manual")
     db.commit()
+    _notify_assignee(background, task, member)
     return task
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut, tags=["tasks"])
 def update_task(
-    task_id: str, payload: UpdateTaskRequest, member: CurrentMember, db: DbSession
+    task_id: str,
+    payload: UpdateTaskRequest,
+    member: CurrentMember,
+    db: DbSession,
+    background: BackgroundTasks,
 ) -> TaskRow:
     task = _family_task(db, member, task_id)
     changes = payload.model_dump(exclude_unset=True)
@@ -213,88 +240,61 @@ def update_task(
         task.clarifying_question = None
     fs.track(db, member, "task_edited", fields=fields)
     db.commit()
+    if "assignee_id" in payload.model_dump(exclude_unset=True):
+        _notify_assignee(background, task, member)
     return task
 
 
-def _require_assignee(task: TaskRow, member: MemberRow) -> None:
-    if task.assignee_id != member.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Это поручение другому человеку")
-
-
 @router.post("/tasks/{task_id}/accept", response_model=TaskOut, tags=["tasks"])
-def accept_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
-    """Исполнитель отвечает «Взял» — автор видит, что задача принята."""
+def accept_task(
+    task_id: str, member: CurrentMember, db: DbSession, background: BackgroundTasks
+) -> TaskRow:
+    """Исполнитель отвечает «Беру» — автор видит, что задача принята."""
     task = _family_task(db, member, task_id)
-    _require_assignee(task, member)
-    if task.status == "new":
-        task.status = "accepted"
-        task.accepted_at = datetime.now()
+    try:
+        changed = fs.accept(task, member)
+    except TaskActionError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    if changed:
         fs.track(db, member, "task_accepted")
         db.commit()
+        _notify_author(background, task, member, "accepted")
     return task
 
 
 @router.post("/tasks/{task_id}/decline", response_model=TaskOut, tags=["tasks"])
 def decline_task(
-    task_id: str, payload: DeclineRequest, member: CurrentMember, db: DbSession
+    task_id: str,
+    payload: DeclineRequest,
+    member: CurrentMember,
+    db: DbSession,
+    background: BackgroundTasks,
 ) -> TaskRow:
     """«Не могу»: задача возвращается автору без исполнителя, с причиной."""
     task = _family_task(db, member, task_id)
-    _require_assignee(task, member)
-    if task.status == "done":
-        raise HTTPException(status.HTTP_409_CONFLICT, "Задача уже сделана")
-    reason = (payload.reason or "").strip()
-    task.assignee_id = None
-    task.status = "new"
-    task.accepted_at = None
-    task.rationale = None
-    task.decline_reason = f"{member.name} не может" + (f": {reason}" if reason else "")
-    fs.track(db, member, "task_declined", with_reason=bool(reason))
+    try:
+        fs.decline(task, member, payload.reason)
+    except TaskActionError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    fs.track(db, member, "task_declined", with_reason=bool((payload.reason or "").strip()))
     db.commit()
+    _notify_author(background, task, member, "declined")
     return task
 
 
 @router.post("/tasks/{task_id}/done", response_model=TaskOut, tags=["tasks"])
-def complete_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
+def complete_task(
+    task_id: str, member: CurrentMember, db: DbSession, background: BackgroundTasks
+) -> TaskRow:
     task = _family_task(db, member, task_id)
-    if task.status == "done":
-        return task
-    if task.assignee_id not in (None, member.id) and task.created_by_id != member.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Отметить может исполнитель или автор")
-    now = datetime.now()
-    if task.assignee_id is None:
-        task.assignee_id = member.id
-    task.status = "done"
-    task.completed_at = now
-    task.accepted_at = task.accepted_at or now
-
-    step = _RECURRENCE_STEP.get(task.recurrence)
-    if step and task.due_at:
-        # Повторяющаяся задача: следующая — тому же исполнителю, снова ждёт ответа
-        members = {m.id: m for m in member.family.members}
-        next_task = TaskRow(
-            family_id=task.family_id,
-            created_by_id=task.created_by_id,
-            title=task.title,
-            source=task.source,
-            beneficiary=task.beneficiary,
-            due_at=task.due_at + step,
-            duration_minutes=task.duration_minutes,
-            priority=task.priority,
-            recurrence=task.recurrence,
-            requires_car=task.requires_car,
-            location=task.location,
-        )
-        fs.assign(
-            next_task,
-            members.get(task.assignee_id),
-            members[task.created_by_id],
-            task.rationale,
-        )
-        db.add(next_task)
-
-    fs.track(db, member, "task_done", own=task.assignee_id == member.id)
-    db.commit()
+    try:
+        changed = fs.complete(db, task, member)
+    except TaskActionError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    if changed:
+        fs.track(db, member, "task_done", own=task.assignee_id == member.id)
+        db.commit()
+        _notify_author(background, task, member, "done")
     return task
 
 

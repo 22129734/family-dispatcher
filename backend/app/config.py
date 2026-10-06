@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     smsru_api_id: str = ""
     smsru_base_url: str = "https://sms.ru"
 
+    # Web Push (VAPID). Без ключей push не отправляется — остальное работает.
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:push@semeinidispetcher.ru"
+    # Подпись ссылок действий из уведомлений (HMAC). В продакшне — случайная строка.
+    secret_key: str = "local-secret-key"
+
     database_url: str = "sqlite:///./family_dispatcher.db"
     cors_origins: str = "http://localhost:5173"
     admin_token: str = ""

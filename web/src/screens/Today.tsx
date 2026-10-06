@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Member, Task } from "../api";
+import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
 import { BUCKET_TITLES, bucketOf, type Bucket } from "../format";
 
@@ -76,6 +77,8 @@ export function Today({
           ))}
         </div>
       </header>
+
+      <NotifyBanner />
 
       {!loading && groups.length === 0 && <EmptyState hasMembers={members.length > 1} scope={scope} />}
 

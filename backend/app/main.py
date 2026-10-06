@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import analytics, app_routes, auth_routes
+from app.api import analytics, app_routes, auth_routes, push_routes
 from app.config import get_settings
 from app.db import init_db
 
@@ -33,6 +33,7 @@ app.add_middleware(
 )
 app.include_router(auth_routes.router)
 app.include_router(app_routes.router)
+app.include_router(push_routes.router)
 app.include_router(analytics.router)
 
 

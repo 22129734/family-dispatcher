@@ -4,11 +4,18 @@ import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { Join, Welcome } from "./screens/Onboarding";
 import { PhoneLogin } from "./screens/PhoneLogin";
+import { ActPage } from "./screens/ActPage";
+import { platform, syncPush } from "./push";
 import { Today, type TaskActions } from "./screens/Today";
 
 type Tab = "today" | "family";
 
 const REFRESH_MS = 20_000;
+
+function actTokenFromPath(): string | null {
+  const match = window.location.pathname.match(/^\/t\/([\w.-]+)/);
+  return match ? match[1] : null;
+}
 
 function inviteCodeFromPath(): string | null {
   const match = window.location.pathname.match(/^\/join\/([\w-]+)/);
@@ -18,6 +25,13 @@ function inviteCodeFromPath(): string | null {
 type Stage = "booting" | "login" | "onboarding" | "home";
 
 export default function App() {
+  const actToken = actTokenFromPath();
+  // Ссылка из уведомления работает без входа
+  if (actToken) return <ActPage token={actToken} />;
+  return <Main />;
+}
+
+function Main() {
   const [stage, setStage] = useState<Stage>("booting");
   const [session, setSession] = useState<Session | null>(null);
   const [invitedTo, setInvitedTo] = useState<string | null>(null);
@@ -104,7 +118,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   }, [onLogout]);
 
   useEffect(() => {
-    api.track("app_open");
+    api.track(platform().standalone ? "pwa_opened" : "app_open");
+    void syncPush();
     void refresh();
     const timer = window.setInterval(() => document.visibilityState === "visible" && void refresh(), REFRESH_MS);
     const onVisible = () => document.visibilityState === "visible" && void refresh();

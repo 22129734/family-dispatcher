@@ -24,7 +24,15 @@ from app.services.telemetry import anonymize
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 
 # События, которые не считаются действием пользователя: это просмотры, а не действия.
-PASSIVE_EVENTS = {"app_open", "screen_view"}
+# и шаги воронки уведомлений/установки, которые фиксируют показ, а не действие
+PASSIVE_EVENTS = {
+    "app_open",
+    "screen_view",
+    "pwa_opened",
+    "push_opened",
+    "install_prompt_shown",
+    "push_prompt_shown",
+}
 
 
 def _require_admin(token: str | None) -> None:

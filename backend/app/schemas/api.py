@@ -127,8 +127,56 @@ class DeclineRequest(BaseModel):
     reason: str | None = Field(default=None, max_length=200)
 
 
+class PushKeys(BaseModel):
+    p256dh: str = Field(max_length=200)
+    auth: str = Field(max_length=100)
+
+
+class PushSubscribeRequest(BaseModel):
+    endpoint: str = Field(max_length=2000)
+    keys: PushKeys
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str = Field(max_length=2000)
+
+
+class PushStatusOut(BaseModel):
+    enabled: bool
+    public_key: str | None
+    devices: int
+
+
+class ActRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class ActInfoOut(BaseModel):
+    task: "TaskOut"
+    member_name: str
+    author_name: str
+    assignee_name: str | None
+    can_accept: bool
+    can_decline: bool
+    can_done: bool
+
+
+# События клиента: открытия, просмотры и воронка подключения уведомлений
+ClientEvent = Literal[
+    "app_open",
+    "screen_view",
+    "invite_shared",
+    "pwa_opened",  # открыто как установленное приложение
+    "install_prompt_shown",
+    "install_accepted",
+    "push_prompt_shown",
+    "push_permission_granted",
+    "push_permission_denied",
+]
+
+
 class TrackRequest(BaseModel):
-    name: Literal["app_open", "screen_view", "invite_shared"]
+    name: ClientEvent
     props: dict[str, str | int | float | bool] = Field(default_factory=dict)
 
 

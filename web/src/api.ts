@@ -34,6 +34,16 @@ export interface Account {
   family_id: string | null;
 }
 
+export interface ActInfo {
+  task: Task;
+  member_name: string;
+  author_name: string;
+  assignee_name: string | null;
+  can_accept: boolean;
+  can_decline: boolean;
+  can_done: boolean;
+}
+
 export interface Family {
   id: string;
   name: string;
@@ -62,6 +72,17 @@ export interface Task {
   accepted_at: string | null;
   completed_at: string | null;
 }
+
+export type ClientEvent =
+  | "app_open"
+  | "screen_view"
+  | "invite_shared"
+  | "pwa_opened"
+  | "install_prompt_shown"
+  | "install_accepted"
+  | "push_prompt_shown"
+  | "push_permission_granted"
+  | "push_permission_denied";
 
 const TOKEN_KEY = "fd.token";
 
@@ -145,6 +166,13 @@ export const api = {
   reopen: (id: string) => post<Task>(`/tasks/${id}/reopen`),
   remove: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
 
-  track: (name: "app_open" | "screen_view" | "invite_shared", props: Record<string, string> = {}) =>
+  pushStatus: () => request<{ enabled: boolean; public_key: string | null; devices: number }>("/push/status"),
+  pushSubscribe: (endpoint: string, p256dh: string, auth: string) =>
+    post<void>("/push/subscribe", { endpoint, keys: { p256dh, auth } }),
+  actInfo: (token: string) => request<ActInfo>(`/act/${token}`),
+  act: (token: string, action: "accept" | "decline" | "done", reason: string | null = null) =>
+    post<ActInfo>(`/act/${token}/${action}`, action === "decline" ? { reason } : undefined),
+
+  track: (name: ClientEvent, props: Record<string, string> = {}) =>
     post<void>("/events", { name, props }).catch(() => undefined),
 };
