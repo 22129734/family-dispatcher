@@ -1,0 +1,4 @@
+# Единые окончания строк LF (сервер — Linux)
+* text=auto eol=lf
+*.png binary
+*.ico binary
