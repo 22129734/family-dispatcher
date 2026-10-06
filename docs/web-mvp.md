@@ -1,13 +1,35 @@
-# Веб-MVP: техническое описание
+# MVP: техническое описание
 
-Мобильное веб-приложение (PWA) + FastAPI-бэкенд. Ветка `feature/web-mvp`.
-Общий статус проекта — [STATUS.md](STATUS.md). Принципы ядра (почему LLM не распределяет задачи) — [architecture.md](architecture.md).
+Мобильное веб-приложение (PWA) и бэкенд на FastAPI. Работает на **https://семейныйдиспетчер.рф**.
+Общий статус проекта — [STATUS.md](STATUS.md). Архитектура и схема — [architecture.md](architecture.md).
+
+Сценарий продукта — **«Поручила — сделано»** (из [JTBD и RICE](research/jtbd-scenarios-rice.md)): организатор передаёт дело второму взрослому, исполнитель отвечает «Беру» / «Не могу» прямо из уведомления, организатор видит статус и не перепроверяет.
 
 ---
 
-## Запуск
+## Что умеет
 
-Нужны Python 3.12+ и Node.js 20+. Без ключа GigaChat работает резервный разбор правилами.
+| Функция | Как работает | Статус |
+|---|---|---|
+| Вход по телефону | Звонок на бесплатный номер (SMS.RU callcheck), без паролей и SMS-кодов | работает |
+| Семья и приглашение | Создать семью, позвать близких ссылкой `/join/<код>` | работает |
+| Поручение текстом | LLM разбирает фразу в задачу (название, срок, повтор, нужна ли машина); без LLM — правила | работает |
+| Исполнитель по умолчанию | Второй взрослый; если задача «отвезти/забрать» — тот, у кого есть машина | работает |
+| «Беру» / «Не могу» / «Сделано» | Статусы `new → accepted → done`; при отказе — причина, задача возвращается автору | работает |
+| Статус для автора | Вкладки «Мне / Я поручил(а) / Вся семья», счётчик «ждут ответа» | работает |
+| Повторяющиеся дела | После «Сделано» ставится следующее (ежедневно, еженедельно) | работает |
+| Push-уведомления | Поручение с кнопками «Беру» / «Не могу»; автору — ответ исполнителя | работает, проверка на телефонах |
+| Ответ без входа | Ссылка из уведомления `/t/<токен>` (подписана, 7 дней) | работает |
+| Установка на телефон | PWA: Android — кнопка «Установить», iPhone — подсказка «На экран „Домой“» | работает |
+| Голосовой ввод | Web Speech API браузера | временно; перевод на серверное распознавание |
+| Напоминания и эскалация | Если исполнитель не ответил или срок прошёл | в работе |
+| ВКонтакте, Telegram, почта | Дополнительные каналы с выбором, чтобы не заспамить | в работе |
+
+---
+
+## Запуск локально
+
+Нужны Python 3.12+ и Node.js 20+. Без ключей LLM, SMS.RU и VAPID приложение работает: задачи разбирают правила, вход подтверждается сразу (только не в продакшне), push выключены.
 
 ```bash
 # Backend — http://localhost:8000/docs
@@ -23,16 +45,16 @@ npm install
 npm run dev
 ```
 
-**Один процесс (как на деплое):** `npm run build` в `web/`, затем `uvicorn app.main:app` — бэкенд отдаёт собранный клиент из `web/dist` (настройка `WEB_DIST_DIR`), SPA-маршруты (`/join/<код>`) отдают `index.html`.
+**Как на сервере, одним процессом:** `npm run build` в `web/`, затем `uvicorn app.main:app` — бэкенд отдаёт собранный клиент из `web/dist` (`WEB_DIST_DIR`), SPA-маршруты (`/join/<код>`, `/t/<токен>`) отдают `index.html`.
 
 **Проверки:**
 
 ```bash
-cd backend && pytest && ruff check . && ruff format --check .
-cd web && npm run build          # tsc + vite build
+cd backend && pytest && ruff check . && ruff format --check .   # 50 тестов, сеть в тестах запрещена
+cd web && npm run build                                         # tsc + vite build
 ```
 
-**С телефона:** `npm run dev` слушает все интерфейсы — откройте адрес `http://192.168.x.x:5173`. Голосовой ввод в браузере работает только по HTTPS или на localhost.
+Деплой — [architecture.md → Развёртывание](architecture.md#развёртывание).
 
 ---
 
@@ -40,36 +62,40 @@ cd web && npm run build          # tsc + vite build
 
 ```
 backend/app/
-  main.py                 приложение, CORS, lifespan (create_all), раздача web/dist
-  config.py               настройки из .env (pydantic-settings)
-  db.py                   engine, SessionLocal, Base, get_db
-  models.py               ORM: FamilyRow, MemberRow, TaskRow, EventRow
-  auth.py                 Bearer-токен → MemberRow (CurrentMember, DbSession)
-  api/app_routes.py       API приложения: /api/v1/...
-  api/routes.py           stateless-песочница ядра: /api/v1/playground/...
-  schemas/api.py          схемы запросов/ответов приложения
-  schemas/family.py, task.py   доменные схемы ядра
+  main.py                   приложение, CORS, раздача web/dist
+  config.py                 настройки из .env (pydantic-settings)
+  db.py                     engine, сессии; SQLite — create_all, PostgreSQL — Alembic
+  models.py                 ORM-таблицы (см. «Модель данных»)
+  auth.py                   Bearer-токен → аккаунт → участник семьи
+  api/
+    auth_routes.py          вход по телефону, аккаунт, выход
+    app_routes.py           семья, приглашения, задачи, клиентские события
+    push_routes.py          подписка на push, действия по ссылке из уведомления
+    analytics.py            DAU, обращения, CSV-выгрузки для организаторов
+  schemas/api.py            схемы запросов и ответов
   services/
-    task_extractor.py     текст → TaskDraft (GigaChat function calling / правила)
-    allocator.py          TaskDraft + Family → Assignment (детерминированно)
-    gigachat_client.py    обёртка GigaChat SDK
-    family_service.py     связка БД ↔ ядро: недельная нагрузка, назначение, события
-backend/tests/
-  test_task_extractor.py, test_allocator.py   ядро
-  test_app_api.py         сквозные сценарии API (SQLite в памяти)
+    phone_auth.py           SMS.RU callcheck, нормализация номера, FakeVerifier для разработки
+    task_extractor.py       текст → TaskDraft: LLM + подстраховка правилами
+    llm_client.py           OpenAI-совместимый API программы (function calling)
+    family_service.py       исполнитель по умолчанию, «Беру» / «Не могу» / «Сделано», повторы, события
+    notifications.py        Web Push (VAPID), подписанные ссылки действий, тексты уведомлений
+    telemetry.py            журнал обращений к компонентам
+backend/migrations/         Alembic
+backend/tests/              pytest: API, вход, push, LLM-клиент, разбор задач
 
 web/
-  index.html, vite.config.ts, tsconfig.json
-  public/manifest.webmanifest, sw.js, icon.svg     PWA
+  public/                   manifest, sw.js (оболочка офлайн + push), иконки, privacy.html
   src/
-    main.tsx              вход, регистрация service worker (только prod)
-    App.tsx               сессия, маршрут /join/<код>, вкладки, загрузка данных, тосты
-    api.ts                типы и клиент API, хранение токена
-    format.ts             даты, группировка задач по срокам, цвета аватаров
-    useSpeech.ts          голосовой ввод (Web Speech API, ru-RU)
-    index.css             Tailwind 4 + токены цветов (светлая/тёмная тема)
-    components/           ui.tsx (Button, Field, Toggle, Avatar), Composer, TaskCard
-    screens/              Onboarding (Welcome, Join), Today, FamilyScreen
+    main.tsx                вход, регистрация service worker (только prod)
+    App.tsx                 этапы: вход → онбординг → дела; маршруты /join/<код> и /t/<токен>
+    api.ts                  клиент API и типы, хранение токена
+    push.ts                 платформа (iOS / Android / установлено ли), подписка на push
+    format.ts, useSpeech.ts даты и группировка; голосовой ввод
+    components/             ui, Composer (ввод), TaskCard (карточка с ответами), NotifyBanner
+    screens/                PhoneLogin, Onboarding, Today, FamilyScreen, ActPage
+
+deploy/                     Caddyfile, gen_keys.py (ключи VAPID и SECRET_KEY)
+Dockerfile, docker-compose.yml
 ```
 
 ---
@@ -78,81 +104,83 @@ web/
 
 | Таблица | Ключевые поля |
 |---|---|
-| `families` | `id`, `name`, `invite_code` (уникальный, для ссылки `/join/<код>`) |
-| `members` | `family_id`, `name`, `role` (adult/teen/child), `has_car`, `capacity_minutes` (600, у ребёнка 300), `dislikes[]`, `token` |
-| `tasks` | `family_id`, `created_by_id`, `assignee_id?`, `title`, `source` (text/voice/manual), `due_at?`, `duration_minutes`, `priority`, `recurrence`, `requires_car`, `clarifying_question?`, `status` (open/done), `rationale`, `fairness_score`, `vetoed_by[]`, `completed_at?` |
-| `events` | `member_id`, `family_id`, `name`, `props` (JSON), `created_at` |
+| `accounts` | `phone` (уникальный), `token` сессии, `last_login_at` |
+| `phone_checks` | `phone`, `provider_check_id`, `status` (pending / confirmed / expired), `ip`, `consumed_at` — сессия выдаётся один раз |
+| `families` | `name`, `invite_code` |
+| `members` | `family_id`, `account_id` (уникальный), `name`, `role` (adult / teen / child), `has_car` |
+| `tasks` | `created_by_id`, `assignee_id?`, `title`, `source` (text / voice / manual), `due_at?`, `recurrence`, `requires_car`, `status` (**new / accepted / done**), `accepted_at`, `decline_reason`, `rationale`, `completed_at` |
+| `push_subscriptions` | `member_id`, `endpoint` (уникальный), ключи `p256dh` и `auth`, `last_success_at`, `failures` |
+| `events` | действия пользователей: `member_id`, `family_id`, `name`, `props` |
+| `component_calls` | обращения к компонентам: `kind`, `operation`, `status`, `latency_ms`, токены, `model` |
 
-- Схема создаётся `Base.metadata.create_all` при старте. **Миграций (Alembic) пока нет** — при изменении моделей локальную `*.db` проще удалить.
-- Время хранится **без часового пояса** (локальное время семьи, Europe/Moscow). Клиент парсит ISO-строку без смещения как локальное время.
-- **Недельная нагрузка** участника не хранится, а считается из задач текущей недели (по `due_at`, иначе `completed_at`, иначе `created_at`) — `family_service.weekly_load`. На ней работают и движок распределения, и индекс невидимого труда.
+- Время хранится без часового пояса — местное время семьи (`TIMEZONE`, по умолчанию Europe/Moscow).
+- Схема в PostgreSQL ведётся миграциями Alembic, они применяются при старте контейнера.
 
 ---
 
 ## API (`/api/v1`)
 
-Авторизация — заголовок `Authorization: Bearer <token>`; токен выдаётся при создании семьи или входе по приглашению.
+Авторизация — `Authorization: Bearer <token>`, токен выдаётся после подтверждения телефона. Интерактивная документация — `/docs`.
 
 | Метод | Путь | Что делает |
 |---|---|---|
-| POST | `/families` | Создать семью и первого участника → сессия |
-| GET | `/invites/{code}` | Публично: название семьи и имена участников |
-| POST | `/invites/{code}/join` | Войти в семью по приглашению → сессия |
-| GET / PATCH | `/me` | Текущий участник / изменить имя, машину, «избегаю» |
-| GET | `/family` | Участники, код приглашения, индекс невидимого труда за неделю |
-| GET | `/tasks?include_done_days=1` | Открытые задачи семьи + выполненные за N дней |
-| POST | `/tasks/dispatch` | **Главный сценарий:** `{message, source}` → извлечь → распределить → сохранить |
-| POST | `/tasks` | Ручное создание (с исполнителем или с автоназначением) |
-| PATCH | `/tasks/{id}` | Название, срок, исполнитель (ручное назначение) |
-| POST | `/tasks/{id}/done` | Выполнено; повторяющаяся (daily/weekly) порождает следующую и распределяет её |
-| POST | `/tasks/{id}/reopen` | Вернуть в работу |
-| POST | `/tasks/{id}/reassign` | Вето в один тап: исключить текущего и всех отказавшихся, выбрать следующего; если некому — `assignee_id = null` |
-| DELETE | `/tasks/{id}` | Удалить |
-| POST | `/events` | Клиентское событие: `app_open`, `screen_view`, `invite_shared` |
-| GET | `/analytics/daily?days=14` | DAU и действия на DAU по дням; заголовок `X-Admin-Token` = `ADMIN_TOKEN` |
-
-Песочница ядра без БД: `POST /api/v1/playground/tasks/extract`, `/playground/tasks/dispatch`, `/playground/family/labour-index`.
-
-### Аналитика (метрики номинаций)
-
-Каждое действие пишет событие в `events` (`family_created`, `family_joined`, `task_dispatched`, `task_created`, `task_done`, `task_reassigned`, `task_edited`, `task_deleted`, `profile_updated`, …).
-- **DAU** — уникальные участники с любым событием за день.
-- **Действия (обращения)** — все события, кроме пассивных `app_open` и `screen_view`.
-
-Определение «обращения» в программе ещё не подтверждено организаторами — при необходимости поменять `PASSIVE_EVENTS` в `app_routes.py`.
+| POST | `/auth/phone/start` | Начать вход: номер → куда позвонить (лимиты: 3 на номер за 10 мин, 10 с IP за час) |
+| GET | `/auth/phone/status/{id}` | Опрос: подтверждён ли звонок → токен |
+| GET | `/account` · POST `/auth/logout` | Аккаунт и его семья · выход |
+| POST | `/families` | Создать семью |
+| GET · POST | `/invites/{code}` · `/invites/{code}/join` | Кто в семье · войти по приглашению |
+| GET · PATCH | `/me` | Текущий участник · имя, «есть машина» |
+| GET | `/family` | Участники и код приглашения |
+| GET | `/tasks` | Задачи семьи |
+| POST | `/tasks/dispatch` | **Главный сценарий:** фраза → задача → исполнитель → уведомление |
+| POST · PATCH · DELETE | `/tasks`, `/tasks/{id}` | Создать вручную · изменить (срок, исполнитель) · удалить (только автор) |
+| POST | `/tasks/{id}/accept` · `/decline` · `/done` · `/reopen` | Беру · Не могу (с причиной) · Сделано · Вернуть в работу |
+| GET | `/push/status` | Включены ли push, публичный ключ, число устройств |
+| POST | `/push/subscribe` · `/push/unsubscribe` | Подписка устройства |
+| GET · POST | `/act/{token}` · `/act/{token}/{accept\|decline\|done}` | Ответ по ссылке из уведомления без входа |
+| POST | `/events` | Клиентские события (открытия, шаги подключения уведомлений) |
+| GET | `/analytics/daily` · `/analytics/events.csv` · `/analytics/component-calls.csv` | Для организаторов, заголовок `X-Admin-Token` |
 
 ---
 
-## Клиент
+## Push-уведомления
 
-- **Онбординг:** создать семью (название, имя, «за рулём») или войти по `/join/<код>` (имя, роль, «за рулём»). Токен — в `localStorage` (`fd.token`), чтение/запись обёрнуты в try/catch.
-- **«Дела»:** приветствие и число своих дел; переключатель «Вся семья / Мои»; группы «Просрочено / Сегодня / Завтра / Позже / Без срока / Сделано». Карточка: чекбокс, срок, повтор, 🚗, «срочно», аватар исполнителя; по тапу — объяснение назначения, выбор даты, выбор исполнителя, «Не могу — передать», «Удалить». Если срок не распознан — уточняющий вопрос на карточке.
-- **Поле ввода:** текст или микрофон (кнопка меняется на «отправить», когда введён текст). После отправки — тост «Поручено …».
-- **«Семья»:** индекс невидимого труда (полоса долей + минуты, сделано/в работе), подсказка при перекосе ≥60%, участники, «Пригласить» (Web Share API → копирование ссылки), личные настройки.
-- **Обновление данных:** опрос каждые 20 с, пока вкладка видима, и при возврате в приложение. Push и WebSocket нет.
-- **PWA:** manifest + service worker кэширует оболочку, `/api/*` не кэшируется.
-- **Тема:** токены цветов на `:root`, тёмная — по `prefers-color-scheme`.
+- **Стандарт:** Web Push с ключами VAPID (`pywebpush`). Содержимое шифруется на сервере (RFC 8291) — сервис доставки (Google, Apple, Mozilla) его не видит.
+- **Кому и что:** исполнитель получает «{Автор}: новое поручение» с названием задачи и кнопками «Беру» / «Не могу»; автор — «{Исполнитель} берёт / не может / сделал(а)». Себе уведомления не отправляются.
+- **«Беру» из уведомления** отправляется service worker'ом без открытия приложения; «Не могу» открывает `/t/<токен>?decline=1`, где пишут причину.
+- **Ссылки действий** подписаны HMAC (`SECRET_KEY`) и действуют 7 дней. В продакшне без своего `SECRET_KEY` push и ссылки выключены.
+- **Отправка** — в фоне после ответа API; при ответе 404/410 подписка удаляется.
+- **iPhone:** push работают только в установленном PWA (iOS 16.4+), поэтому в Safari приложение показывает инструкцию «Поделиться → На экран „Домой“».
+- **Ключи:** `python deploy/gen_keys.py >> .env` (выполняется на сервере, значения не выводятся на экран).
+
+---
+
+## Аналитика и обращения
+
+- **События** (`events`): `family_created`, `family_joined`, `task_dispatched`, `task_created`, `task_accepted`, `task_declined`, `task_done`, `task_reopened`, `task_edited`, `task_deleted`, `profile_updated`, `push_subscribed`, `push_opened` и клиентские (`app_open`, `pwa_opened`, `push_prompt_shown`, `push_permission_granted` / `denied`, `install_prompt_shown`, `install_accepted`).
+- **DAU** — уникальные участники с любым событием за сутки.
+- **Обращения** (Положение, прил. 2, п. 2.2) — вызовы компонентов из `component_calls`: `llm`, `skill`, `stt`, `push`, `vk`, `telegram`, `email`, `phone_auth`, `reminder`, `escalation`. Каждый вызов пишется через `telemetry.track_call` / `telemetry.record` с длительностью, статусом, токенами и моделью.
+- `GET /analytics/daily?days=14` — по дням: DAU, действия и действия на DAU, обращения и обращения на DAU, ошибки, разбивка по типам.
+- В CSV-выгрузках идентификаторы обезличены (хэш с солью `ANALYTICS_SALT`).
 
 ---
 
 ## Решения и их причины
 
-| Решение | Почему | Что сделать потом |
-|---|---|---|
-| SQLite по умолчанию, синхронный SQLAlchemy | Запуск без Docker; простые синхронные эндпоинты как в исходном ядре | PostgreSQL через `DATABASE_URL`, Alembic |
-| Беспарольный вход по токену | Минимальный путь к первой задаче | СберID или вход по телефону |
-| Web Speech API для голоса | Работает без бэкенда | Распознавание идёт через серверы браузера — **не подходит под 152-ФЗ**; заменить на запись аудио + SaluteSpeech/GigaAM на бэкенде |
-| Опрос вместо WebSocket | Достаточно для семьи из 2–5 человек | SSE/WebSocket при необходимости |
-| Старые stateless-роуты перенесены в `/playground` | Конфликт путей с API приложения | — |
+| Решение | Почему |
+|---|---|
+| Сценарий «Поручила — сделано» вместо «справедливого распределения» | Распределение не прозвучало ни в одном из 21 интервью; контроль выполнения поручений — у большинства |
+| Вход по телефону через звонок | Сбер ID не подключают физлицам; звонок дешевле SMS и не требует ввода кода |
+| PWA с push вместо нативного приложения | Одна кодовая база, без магазинов приложений; push работают на Android и на iPhone (iOS 16.4+) |
+| LLM только разбирает текст | Исполнителя выбирают простые правила — предсказуемо и объяснимо; модель не трогает назначения |
+| Правила как подстраховка LLM | Продукт работает при недоступности модели; явные маркеры («срочно», «каждый день») не теряются |
+| Опрос раз в 20 с вместо WebSocket | Достаточно для семьи из 2–5 человек; новое поручение приходит push-уведомлением |
 
 ---
 
 ## Известные ограничения
 
-- Без `GIGACHAT_CREDENTIALS` название задачи = исходная фраза целиком («Сегодня срочно записать бабушку к врачу в 21»); правила понимают только «сегодня/завтра/послезавтра», «в N» (час), маркеры срочности, повторов и поездок.
-- `busy_windows` (занятость по расписанию) есть в ядре, но в UI и БД не заведены — участники считаются свободными всегда.
-- Объяснение назначения без GigaChat — шаблонная фраза ядра; при переназначении подставляется своя («Передано: … свободнее тех, кто не смог взять задачу»).
-- Нет push-напоминаний, утреннего дайджеста, эскалации просроченного.
-- Нет ролевых ограничений (ребёнок может удалить любую задачу семьи).
-- `monthly`-повтор не порождает следующую задачу (только daily и weekly).
-- Нет frontend-тестов; линтер для TS не настроен (проверка — `tsc` в `npm run build`).
+- Голосовой ввод идёт через распознавание браузера — данные уходят на серверы браузера. Перевод на серверное распознавание (whisper в инфраструктуре программы) — в плане.
+- Нет напоминаний и эскалации, если исполнитель не ответил или срок прошёл.
+- Ежемесячный повтор не создаёт следующую задачу (только ежедневный и еженедельный).
+- Нет frontend-тестов; проверка типов — `tsc` в `npm run build`.
