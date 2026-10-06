@@ -33,13 +33,3 @@ class TaskDraft(BaseModel):
         default=None,
         description="Единственный уточняющий вопрос, если задача разобрана неоднозначно",
     )
-
-
-class Assignment(BaseModel):
-    """Результат работы движка распределения."""
-
-    task: TaskDraft
-    assignee_id: str
-    fairness_score: float = Field(description="Насколько назначение выравнивает нагрузку, 0..1")
-    rationale: str = Field(description="Объяснение, почему задача ушла этому человеку")
-    alternatives: list[str] = Field(default_factory=list)

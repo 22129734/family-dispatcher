@@ -6,9 +6,10 @@ import { BUCKET_TITLES, bucketOf, type Bucket } from "../format";
 const ORDER: Bucket[] = ["overdue", "today", "tomorrow", "later", "undated", "done"];
 
 export interface TaskActions {
+  accept: (id: string) => void;
+  decline: (id: string, reason: string | null) => void;
   done: (id: string) => void;
   reopen: (id: string) => void;
-  reassign: (id: string) => void;
   assign: (id: string, memberId: string) => void;
   due: (id: string, iso: string | null) => void;
   remove: (id: string) => void;
@@ -29,11 +30,11 @@ export function Today({
   actions: TaskActions;
   loading: boolean;
 }) {
-  const [scope, setScope] = useState<"mine" | "all">("all");
+  const [scope, setScope] = useState<Scope>("mine");
   const now = new Date();
 
   const groups = useMemo(() => {
-    const visible = scope === "mine" ? tasks.filter((t) => t.assignee_id === meId) : tasks;
+    const visible = tasks.filter((t) => inScope(t, scope, meId));
     const map = new Map<Bucket, Task[]>();
     for (const task of visible) {
       const bucket = bucketOf(task);
@@ -42,7 +43,10 @@ export function Today({
     return ORDER.filter((b) => map.has(b)).map((b) => [b, map.get(b)!] as const);
   }, [tasks, scope, meId]);
 
-  const myOpen = tasks.filter((t) => t.assignee_id === meId && t.status === "open").length;
+  const myOpen = tasks.filter((t) => t.assignee_id === meId && t.status !== "done").length;
+  const waiting = tasks.filter(
+    (t) => t.created_by_id === meId && t.status === "new" && t.assignee_id !== meId,
+  ).length;
   const greeting = now.getHours() < 12 ? "Доброе утро" : now.getHours() < 18 ? "Добрый день" : "Добрый вечер";
 
   return (
@@ -53,22 +57,27 @@ export function Today({
           {greeting}
           {myOpen > 0 ? `, на вас ${myOpen} ${plural(myOpen, "дело", "дела", "дел")}` : ""}
         </h1>
+        {waiting > 0 && (
+          <p className="mt-1 text-sm text-ink-2">
+            Ждут ответа {waiting} {plural(waiting, "поручение", "поручения", "поручений")}
+          </p>
+        )}
         <div className="mt-4 inline-flex rounded-xl bg-surface-2 p-1">
-          {(["all", "mine"] as const).map((value) => (
+          {SCOPES.map(([value, label]) => (
             <button
               key={value}
               onClick={() => setScope(value)}
-              className={`h-8 rounded-lg px-4 text-sm font-medium transition ${
+              className={`h-8 rounded-lg px-3 text-sm font-medium transition ${
                 scope === value ? "bg-surface text-ink shadow-sm" : "text-ink-2"
               }`}
             >
-              {value === "all" ? "Вся семья" : "Мои"}
+              {label}
             </button>
           ))}
         </div>
       </header>
 
-      {!loading && groups.length === 0 && <EmptyState hasMembers={members.length > 1} />}
+      {!loading && groups.length === 0 && <EmptyState hasMembers={members.length > 1} scope={scope} />}
 
       <div className="space-y-6">
         {groups.map(([bucket, items]) => (
@@ -88,9 +97,10 @@ export function Today({
                   members={members}
                   meId={meId}
                   overdue={bucket === "overdue"}
+                  onAccept={() => actions.accept(task.id)}
+                  onDecline={(reason) => actions.decline(task.id, reason)}
                   onDone={() => actions.done(task.id)}
                   onReopen={() => actions.reopen(task.id)}
-                  onReassign={() => actions.reassign(task.id)}
                   onAssign={(memberId) => actions.assign(task.id, memberId)}
                   onDue={(iso) => actions.due(task.id, iso)}
                   onDelete={() => actions.remove(task.id)}
@@ -104,17 +114,36 @@ export function Today({
   );
 }
 
-function EmptyState({ hasMembers }: { hasMembers: boolean }) {
+type Scope = "mine" | "assigned" | "all";
+
+const SCOPES: [Scope, string][] = [
+  ["mine", "Мне"],
+  ["assigned", "Я поручил(а)"],
+  ["all", "Вся семья"],
+];
+
+function inScope(task: Task, scope: Scope, meId: string) {
+  if (scope === "mine") return task.assignee_id === meId;
+  if (scope === "assigned") return task.created_by_id === meId && task.assignee_id !== meId;
+  return true;
+}
+
+function EmptyState({ hasMembers, scope }: { hasMembers: boolean; scope: Scope }) {
+  const text = {
+    mine: "Вам пока ничего не поручили.",
+    assigned: "Вы пока никому ничего не поручали.",
+    all: "В семье пока нет дел.",
+  }[scope];
   return (
     <div className="mt-6 rounded-3xl border border-dashed border-line px-6 py-10 text-center">
       <p className="text-4xl">🏡</p>
       <p className="mt-3 text-lg font-semibold">Пока тихо</p>
       <p className="mt-1 text-sm text-ink-2">
-        Нажмите на микрофон и скажите, что нужно сделать. Например: «в субботу отвезти маму на дачу».
+        {text} Нажмите на микрофон и скажите, что нужно сделать. Например: «завтра в 7 забрать Соню с танцев».
       </p>
       {!hasMembers && (
         <p className="mt-4 text-sm text-ink-2">
-          Диспетчер раскладывает дела между людьми — пригласите близких во вкладке «Семья».
+          Поручения уходят близким — пригласите мужа или жену во вкладке «Семья».
         </p>
       )}
     </div>

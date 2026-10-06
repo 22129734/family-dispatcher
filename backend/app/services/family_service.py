@@ -1,91 +1,33 @@
-"""Связка хранилища с доменным ядром.
+"""Задачи семьи: кому поручить по умолчанию, перевод разбора в задачу, события.
 
-Движок распределения работает со схемой `Family`, в которой у каждого участника
-есть `weekly_load_minutes`. Здесь эта нагрузка считается из реальных задач недели,
-поэтому индекс невидимого труда и справедливость назначений опираются на факты.
+Исходная гипотеза о несправедливом распределении дел интервью не подтвердили
+(0 из 20), поэтому движка «справедливого» распределения больше нет. Поручение
+по умолчанию уходит второму взрослому — так задачи передают организаторы из
+интервью; исполнителя можно сменить одним нажатием.
 """
 
-from datetime import datetime, time, timedelta
-
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.models import EventRow, FamilyRow, MemberRow, TaskRow
-from app.schemas.family import Family, Member
-from app.schemas.task import Assignment, TaskDraft
-from app.services.allocator import Allocator, NoEligibleMemberError
+from app.schemas.task import TaskDraft
+
+# Кто может брать поручения: взрослые и подростки
+_DOERS = {"adult", "teen"}
 
 
-def week_bounds(now: datetime) -> tuple[datetime, datetime]:
-    start = datetime.combine((now - timedelta(days=now.weekday())).date(), time.min)
-    return start, start + timedelta(days=7)
-
-
-def _task_moment(task: TaskRow) -> datetime:
-    return task.due_at or task.completed_at or task.created_at
-
-
-def weekly_tasks(db: Session, family_id: str, now: datetime) -> list[TaskRow]:
-    start, end = week_bounds(now)
-    tasks = db.scalars(select(TaskRow).where(TaskRow.family_id == family_id)).all()
-    return [t for t in tasks if start <= _task_moment(t) < end]
-
-
-def weekly_load(db: Session, family: FamilyRow, now: datetime) -> dict[str, int]:
-    load = {m.id: 0 for m in family.members}
-    for task in weekly_tasks(db, family.id, now):
-        if task.assignee_id in load:
-            load[task.assignee_id] += task.duration_minutes
-    return load
-
-
-def to_domain(db: Session, family: FamilyRow, now: datetime) -> Family:
-    load = weekly_load(db, family, now)
-    return Family(
-        id=family.id,
-        members=[
-            Member(
-                id=m.id,
-                name=m.name,
-                weekly_load_minutes=load[m.id],
-                capacity_minutes=m.capacity_minutes,
-                has_car=m.has_car,
-                dislikes=m.dislikes or [],
-            )
-            for m in family.members
-        ],
-    )
-
-
-def allocate(
-    db: Session,
-    allocator: Allocator,
-    family: FamilyRow,
-    draft: TaskDraft,
-    now: datetime,
-    exclude: set[str] | None = None,
-) -> Assignment | None:
-    """Назначить исполнителя; None — если свободных нет и задача остаётся без исполнителя."""
-    domain = to_domain(db, family, now)
-    if exclude:
-        domain.members = [m for m in domain.members if m.id not in exclude]
-    if not domain.members:
-        return None
-    try:
-        return allocator.allocate(domain, draft)
-    except NoEligibleMemberError:
-        return None
-
-
-def apply_assignment(task: TaskRow, assignment: Assignment | None) -> None:
-    if assignment is None:
-        task.assignee_id = None
-        task.fairness_score = None
-        task.rationale = "Сейчас никто не свободен — выберите исполнителя вручную или перенесите"
-        return
-    task.assignee_id = assignment.assignee_id
-    task.fairness_score = assignment.fairness_score
-    task.rationale = assignment.rationale
+def default_assignee(
+    family: FamilyRow, author: MemberRow, requires_car: bool = False
+) -> tuple[MemberRow | None, str | None]:
+    """Исполнитель по умолчанию и короткое пояснение; (None, None) — пусть выберет автор."""
+    others = [m for m in family.members if m.id != author.id and m.role in _DOERS]
+    if not others:
+        return author, "Пока в семье только вы — пригласите близких во вкладке «Семья»"
+    if requires_car:
+        drivers = [m for m in others if m.has_car]
+        if len(drivers) == 1:
+            return drivers[0], "Есть машина"
+    adults = [m for m in others if m.role == "adult"]
+    if len(adults) == 1:
+        return adults[0], None
+    return None, None
 
 
 def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> TaskRow:
@@ -101,22 +43,20 @@ def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> T
         requires_car=draft.requires_car,
         location=draft.location,
         clarifying_question=draft.clarifying_question,
-        vetoed_by=[],
     )
 
 
-def draft_from_task(task: TaskRow) -> TaskDraft:
-    return TaskDraft(
-        title=task.title,
-        beneficiary=task.beneficiary,
-        due_at=task.due_at,
-        duration_minutes=task.duration_minutes or 30,
-        priority=task.priority or "normal",
-        recurrence=task.recurrence or "none",
-        requires_car=bool(task.requires_car),
-        location=task.location,
-    )
+def assign(task: TaskRow, assignee: MemberRow | None, author: MemberRow, why: str | None) -> None:
+    """Назначить исполнителя: поручение себе сразу «взято», остальным — ждёт ответа."""
+    task.assignee_id = assignee.id if assignee else None
+    task.rationale = why
+    task.decline_reason = None
+    if assignee is not None and assignee.id == author.id:
+        task.status = "accepted"
+    else:
+        task.status = "new"
+        task.accepted_at = None
 
 
-def track(db: Session, member: MemberRow, name: str, **props: object) -> None:
+def track(db, member: MemberRow, name: str, **props: object) -> None:
     db.add(EventRow(member_id=member.id, family_id=member.family_id, name=name, props=props))

@@ -34,21 +34,11 @@ export interface Account {
   family_id: string | null;
 }
 
-export interface LabourShare {
-  member_id: string;
-  name: string;
-  minutes: number;
-  share: number;
-  open_tasks: number;
-  done_tasks: number;
-}
-
 export interface Family {
   id: string;
   name: string;
   invite_code: string;
   members: Member[];
-  labour: LabourShare[];
 }
 
 export interface Task {
@@ -63,11 +53,13 @@ export interface Task {
   requires_car: boolean;
   location: string | null;
   clarifying_question: string | null;
-  status: "open" | "done";
+  status: "new" | "accepted" | "done";
   assignee_id: string | null;
   created_by_id: string;
   rationale: string | null;
+  decline_reason: string | null;
   created_at: string;
+  accepted_at: string | null;
   completed_at: string | null;
 }
 
@@ -147,9 +139,10 @@ export const api = {
     post<Task>("/tasks/dispatch", { message, source }),
   updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "assignee_id">>) =>
     patch<Task>(`/tasks/${id}`, changes),
+  accept: (id: string) => post<Task>(`/tasks/${id}/accept`),
+  decline: (id: string, reason: string | null) => post<Task>(`/tasks/${id}/decline`, { reason }),
   done: (id: string) => post<Task>(`/tasks/${id}/done`),
   reopen: (id: string) => post<Task>(`/tasks/${id}/reopen`),
-  reassign: (id: string) => post<Task>(`/tasks/${id}/reassign`),
   remove: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
 
   track: (name: "app_open" | "screen_view" | "invite_shared", props: Record<string, string> = {}) =>

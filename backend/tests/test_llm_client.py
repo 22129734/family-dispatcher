@@ -95,19 +95,7 @@ def test_disabled_client_makes_no_calls() -> None:
     client._settings = Settings(llm_api_key="", llm_model="")
 
     assert client.extract_task("купи хлеб", "2026-10-06T10:00") is None
-    assert client.explain_assignment("Купить хлеб", "Папа", "свободен") == "Папа: свободен"
     assert calls() == []
-
-
-def test_explain_assignment_returns_model_text() -> None:
-    client = make_client(
-        lambda request: httpx.Response(
-            200, json={"choices": [{"message": {"content": " Папа сегодня свободнее. "}}]}
-        )
-    )
-    assert (
-        client.explain_assignment("Купить хлеб", "Папа", "меньше дел") == "Папа сегодня свободнее."
-    )
 
 
 def test_anonymize_is_stable_and_hides_id() -> None:

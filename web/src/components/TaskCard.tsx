@@ -8,33 +8,52 @@ interface Props {
   members: Member[];
   meId: string;
   overdue: boolean;
+  onAccept: () => void;
+  onDecline: (reason: string | null) => void;
   onDone: () => void;
   onReopen: () => void;
-  onReassign: () => void;
   onAssign: (memberId: string) => void;
   onDue: (iso: string | null) => void;
   onDelete: () => void;
 }
 
+/** Статус поручения так, как его видит автор. */
+function statusLabel(task: Task, assignee: Member | undefined, meId: string) {
+  if (task.status === "done") return { text: "Сделано", tone: "text-ok" };
+  if (!task.assignee_id) {
+    return { text: task.decline_reason ?? "Не назначено — выберите, кто сделает", tone: "text-warn" };
+  }
+  if (task.assignee_id === meId) return null;
+  if (task.status === "accepted") return { text: `${assignee?.name ?? "Исполнитель"} взял(а)`, tone: "text-ok" };
+  return { text: `Ждёт ответа: ${assignee?.name ?? "исполнитель"}`, tone: "text-ink-3" };
+}
+
 export function TaskCard(props: Props) {
   const { task, members, meId, overdue } = props;
   const [open, setOpen] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [reason, setReason] = useState("");
   const assignee = members.find((m) => m.id === task.assignee_id);
   const done = task.status === "done";
   const mine = task.assignee_id === meId;
+  const author = task.created_by_id === meId;
+  const canFinish = mine || author || !task.assignee_id;
   const recurrence = RECURRENCE_LABEL[task.recurrence];
+  const status = statusLabel(task, assignee, meId);
+  const needsMyAnswer = mine && task.status === "new";
 
   return (
     <li
       className={`appear rounded-2xl border bg-surface transition ${
-        mine && !done ? "border-accent/40" : "border-line"
+        needsMyAnswer ? "border-accent" : mine && !done ? "border-accent/40" : "border-line"
       } ${done ? "opacity-60" : ""}`}
     >
       <div className="flex items-start gap-3 p-3.5">
         <button
           onClick={done ? props.onReopen : props.onDone}
+          disabled={!canFinish}
           aria-label={done ? "Вернуть в работу" : "Отметить сделанным"}
-          className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition ${
+          className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition disabled:opacity-30 ${
             done ? "border-ok bg-ok text-white" : "border-ink-3 active:bg-ok-soft"
           }`}
         >
@@ -53,6 +72,7 @@ export function TaskCard(props: Props) {
             {task.requires_car && <span>· 🚗</span>}
             {task.priority === "high" && !done && <span className="font-medium text-warn">· срочно</span>}
           </p>
+          {status && <p className={`mt-1 text-sm font-medium ${status.tone}`}>{status.text}</p>}
         </button>
 
         <div className="flex shrink-0 flex-col items-center gap-0.5 pt-0.5">
@@ -61,7 +81,53 @@ export function TaskCard(props: Props) {
         </div>
       </div>
 
-      {!done && task.clarifying_question && !task.due_at && !open && (
+      {/* Ответ исполнителя — прямо в карточке, без раскрытия */}
+      {needsMyAnswer && !declining && (
+        <div className="flex gap-2 px-3.5 pb-3.5">
+          <button onClick={props.onAccept} className="h-11 flex-1 rounded-xl bg-accent font-semibold text-accent-ink active:opacity-80">
+            Беру
+          </button>
+          <button onClick={() => setDeclining(true)} className="h-11 rounded-xl bg-surface-2 px-4 font-medium active:opacity-70">
+            Не могу
+          </button>
+        </div>
+      )}
+      {mine && task.status === "accepted" && (
+        <div className="px-3.5 pb-3.5">
+          <button onClick={props.onDone} className="h-11 w-full rounded-xl bg-ok-soft font-semibold text-ok active:opacity-80">
+            Сделано
+          </button>
+        </div>
+      )}
+      {declining && (
+        <form
+          className="space-y-2 px-3.5 pb-3.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            props.onDecline(reason.trim() || null);
+            setDeclining(false);
+          }}
+        >
+          <input
+            autoFocus
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={200}
+            placeholder="Почему? Например: до 21 на работе"
+            className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base outline-none focus:border-accent"
+          />
+          <div className="flex gap-2">
+            <button type="submit" className="h-10 flex-1 rounded-xl bg-surface-2 text-sm font-medium active:opacity-70">
+              Вернуть автору
+            </button>
+            <button type="button" onClick={() => setDeclining(false)} className="h-10 rounded-xl px-4 text-sm text-ink-2">
+              Отмена
+            </button>
+          </div>
+        </form>
+      )}
+
+      {!done && task.clarifying_question && !task.due_at && !open && author && (
         <button
           onClick={() => setOpen(true)}
           className="mx-3.5 mb-3.5 block w-[calc(100%-1.75rem)] rounded-xl bg-accent-soft px-3 py-2 text-left text-sm"
@@ -107,20 +173,19 @@ export function TaskCard(props: Props) {
           )}
 
           <div className="flex gap-2 pt-1">
-            {!done && (
+            {mine && !done && task.status === "accepted" && (
               <button
-                onClick={props.onReassign}
+                onClick={() => setDeclining(true)}
                 className="h-10 flex-1 rounded-xl bg-surface-2 text-sm font-medium active:opacity-70"
               >
-                ↻ Не могу — передать
+                Не получится — вернуть
               </button>
             )}
-            <button
-              onClick={props.onDelete}
-              className="h-10 rounded-xl px-4 text-sm font-medium text-warn active:opacity-70"
-            >
-              Удалить
-            </button>
+            {author && (
+              <button onClick={props.onDelete} className="h-10 rounded-xl px-4 text-sm font-medium text-warn active:opacity-70">
+                Удалить
+              </button>
+            )}
           </div>
         </div>
       )}

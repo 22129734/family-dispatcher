@@ -104,10 +104,13 @@ class TaskRow(Base):
     location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     clarifying_question: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
-    status: Mapped[str] = mapped_column(String(12), default="open")  # open / done
+    # new — поручено, ждёт ответа; accepted — исполнитель взял; done — сделано
+    status: Mapped[str] = mapped_column(String(12), default="new", index=True)
+    # Почему этот исполнитель (коротко) — например, «Есть машина»
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
-    fairness_score: Mapped[float | None] = mapped_column(nullable=True)
-    vetoed_by: Mapped[list[str]] = mapped_column(JSON, default=list)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Если исполнитель ответил «Не могу» — кто и почему; задача возвращается автору
+    decline_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

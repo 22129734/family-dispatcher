@@ -130,17 +130,17 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   }
 
   const actions: TaskActions = {
+    accept: (id) => run(async () => replace(await api.accept(id))),
+    decline: (id, reason) =>
+      run(async () => {
+        replace(await api.decline(id, reason));
+        notify("Вернули автору");
+      }),
     done: (id) =>
       run(async () => {
         replace(await api.done(id));
       }),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
-    reassign: (id) =>
-      run(async () => {
-        const task = await api.reassign(id);
-        replace(task);
-        notify(task.assignee_id ? `Передано: ${memberName(task.assignee_id)}` : "Свободных нет — выберите вручную");
-      }),
     assign: (id, memberId) => run(async () => replace(await api.updateTask(id, { assignee_id: memberId }))),
     due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
     remove: (id) =>
@@ -156,7 +156,13 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       const task = await api.dispatch(text, source);
       setTasks((list) => [task, ...list]);
       setTab("today");
-      notify(task.assignee_id ? `Поручено ${memberName(task.assignee_id)}` : "Добавлено — назначьте исполнителя");
+      notify(
+        !task.assignee_id
+          ? "Добавлено — выберите, кто сделает"
+          : task.assignee_id === me.id
+            ? "Записано — это ваше дело"
+            : `Поручено: ${memberName(task.assignee_id)}. Ждём ответа`,
+      );
     } catch (err) {
       notify((err as Error).message);
     } finally {

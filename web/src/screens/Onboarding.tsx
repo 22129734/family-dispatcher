@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Role, type Session } from "../api";
 import { Button, ErrorNote, Field, Toggle } from "../components/ui";
+import { CAR_LABEL } from "./FamilyScreen";
 
 export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
   const [familyName, setFamilyName] = useState("");
@@ -50,7 +51,7 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
           autoComplete="given-name"
         />
         <Toggle checked={hasCar} onChange={setHasCar}>
-          Я за рулём и могу возить
+          {CAR_LABEL}
         </Toggle>
         <ErrorNote>{error}</ErrorNote>
         <div className="mt-auto pt-4">
@@ -150,7 +151,7 @@ export function Join({ code, onSession }: { code: string; onSession: (s: Session
         </div>
         {role !== "child" && (
           <Toggle checked={hasCar} onChange={setHasCar}>
-            Я за рулём и могу возить
+            {CAR_LABEL}
           </Toggle>
         )}
         <ErrorNote>{error}</ErrorNote>

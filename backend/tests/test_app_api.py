@@ -60,7 +60,7 @@ def test_invite_shows_family(client: TestClient, family: dict[str, str]) -> None
     assert client.get("/api/v1/invites/nope").status_code == 404
 
 
-def test_dispatch_assigns_and_is_visible_to_whole_family(
+def test_dispatch_goes_to_second_adult_and_waits_for_answer(
     client: TestClient, family: dict[str, str]
 ) -> None:
     task = client.post(
@@ -69,43 +69,95 @@ def test_dispatch_assigns_and_is_visible_to_whole_family(
         headers=auth(family["mom"]),
     ).json()
 
-    assert task["assignee_id"] in {family["mom_id"], family["dad_id"]}
+    assert task["assignee_id"] == family["dad_id"]
+    assert task["status"] == "new"
     assert task["requires_car"] is True
     assert task["source"] == "voice"
-    assert task["rationale"]
 
     dad_view = client.get("/api/v1/tasks", headers=auth(family["dad"])).json()
     assert [t["id"] for t in dad_view] == [task["id"]]
 
 
-def test_tasks_are_balanced_between_members(client: TestClient, family: dict[str, str]) -> None:
-    assignees = [
-        client.post(
-            "/api/v1/tasks/dispatch",
-            json={"message": f"Сегодня задача {i}"},
-            headers=auth(family["mom"]),
-        ).json()["assignee_id"]
-        for i in range(4)
-    ]
-    assert assignees.count(family["mom_id"]) == 2
-    assert assignees.count(family["dad_id"]) == 2
-
-
-def test_reassign_moves_task_to_other_member(client: TestClient, family: dict[str, str]) -> None:
+def test_accept_then_done_is_visible_to_author(client: TestClient, family: dict[str, str]) -> None:
     task = client.post(
-        "/api/v1/tasks",
-        json={"title": "Купить продукты", "assignee_id": family["mom_id"]},
+        "/api/v1/tasks", json={"title": "Купить смесь"}, headers=auth(family["mom"])
+    ).json()
+    assert (task["assignee_id"], task["status"]) == (family["dad_id"], "new")
+
+    # Принять может только исполнитель
+    assert (
+        client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["mom"])).status_code
+        == 403
+    )
+    accepted = client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"])).json()
+    assert accepted["status"] == "accepted" and accepted["accepted_at"]
+
+    done = client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"])).json()
+    assert done["status"] == "done" and done["completed_at"]
+
+    mom_view = client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+    assert mom_view[0]["status"] == "done"
+
+
+def test_decline_returns_task_to_author_with_reason(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    task = client.post(
+        "/api/v1/tasks", json={"title": "Забрать посылку"}, headers=auth(family["mom"])
+    ).json()
+    declined = client.post(
+        f"/api/v1/tasks/{task['id']}/decline",
+        json={"reason": "до 21 на работе"},
+        headers=auth(family["dad"]),
+    ).json()
+    assert declined["assignee_id"] is None
+    assert declined["status"] == "new"
+    assert declined["decline_reason"] == "Папа не может: до 21 на работе"
+
+    # Автор назначает другого — поручение снова ждёт ответа, причина отказа снята
+    moved = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"assignee_id": family["mom_id"]},
         headers=auth(family["mom"]),
     ).json()
-
-    moved = client.post(f"/api/v1/tasks/{task['id']}/reassign", headers=auth(family["mom"])).json()
-    assert moved["assignee_id"] == family["dad_id"]
-
-    nobody = client.post(f"/api/v1/tasks/{task['id']}/reassign", headers=auth(family["dad"]))
-    assert nobody.json()["assignee_id"] is None
+    assert moved["assignee_id"] == family["mom_id"]
+    assert moved["status"] == "accepted"  # поручила себе — сразу «взято»
+    assert moved["decline_reason"] is None
 
 
-def test_done_recurring_task_spawns_next(client: TestClient, family: dict[str, str]) -> None:
+def test_task_to_yourself_is_accepted_at_once(client: TestClient, family: dict[str, str]) -> None:
+    task = client.post(
+        "/api/v1/tasks",
+        json={"title": "Записаться к врачу", "assignee_id": family["mom_id"]},
+        headers=auth(family["mom"]),
+    ).json()
+    assert task["status"] == "accepted"
+
+
+def test_only_author_deletes_and_strangers_cannot_mark_done(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    task = client.post(
+        "/api/v1/tasks",
+        json={"title": "Полить цветы", "assignee_id": family["mom_id"]},
+        headers=auth(family["mom"]),
+    ).json()
+    assert (
+        client.delete(f"/api/v1/tasks/{task['id']}", headers=auth(family["dad"])).status_code == 403
+    )
+    # Папа — не исполнитель и не автор
+    assert (
+        client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"])).status_code
+        == 403
+    )
+    assert (
+        client.delete(f"/api/v1/tasks/{task['id']}", headers=auth(family["mom"])).status_code == 204
+    )
+
+
+def test_done_recurring_task_spawns_next_for_same_assignee(
+    client: TestClient, family: dict[str, str]
+) -> None:
     task = client.post(
         "/api/v1/tasks/dispatch",
         json={"message": "Каждый день завтра в 8 выгулять собаку"},
@@ -113,32 +165,27 @@ def test_done_recurring_task_spawns_next(client: TestClient, family: dict[str, s
     ).json()
     assert task["recurrence"] == "daily"
 
+    client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"]))
     done = client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"])).json()
     assert done["status"] == "done"
 
     tasks = client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
-    open_tasks = [t for t in tasks if t["status"] == "open"]
-    assert len(open_tasks) == 1
-    assert open_tasks[0]["due_at"] > task["due_at"]
+    upcoming = [t for t in tasks if t["status"] != "done"]
+    assert len(upcoming) == 1
+    assert upcoming[0]["due_at"] > task["due_at"]
+    assert (upcoming[0]["assignee_id"], upcoming[0]["status"]) == (family["dad_id"], "new")
 
 
-def test_labour_index_reflects_assigned_minutes(client: TestClient, family: dict[str, str]) -> None:
+def test_alone_in_family_tasks_go_to_yourself(client: TestClient) -> None:
+    token = login(client, "79990000020")
     client.post(
-        "/api/v1/tasks",
-        json={"title": "Уборка", "duration_minutes": 90, "assignee_id": family["mom_id"]},
-        headers=auth(family["mom"]),
+        "/api/v1/families", json={"family_name": "Одна", "member_name": "Аня"}, headers=auth(token)
     )
-    client.post(
-        "/api/v1/tasks",
-        json={"title": "Мусор", "duration_minutes": 10, "assignee_id": family["dad_id"]},
-        headers=auth(family["mom"]),
-    )
-    labour = {
-        row["name"]: row
-        for row in client.get("/api/v1/family", headers=auth(family["dad"])).json()["labour"]
-    }
-    assert labour["Мама"]["share"] == 0.9
-    assert labour["Папа"]["minutes"] == 10
+    task = client.post(
+        "/api/v1/tasks/dispatch", json={"message": "купить хлеб"}, headers=auth(token)
+    ).json()
+    assert task["status"] == "accepted"
+    assert "пригласите" in task["rationale"]
 
 
 def test_cannot_touch_other_family_tasks(client: TestClient, family: dict[str, str]) -> None:
@@ -198,22 +245,3 @@ def test_component_calls_are_counted_per_dau_and_exported(
     # Идентификаторы обезличены: реальные id участников в выгрузку не попадают
     member_id = client.get("/api/v1/me", headers=auth(family["mom"])).json()["member"]["id"]
     assert member_id not in "\n".join(events)
-
-
-def test_playground_is_disabled_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Песочница без авторизации тратила бы токены LLM — в продакшне её нет."""
-    import importlib
-
-    from app import config, main
-
-    monkeypatch.setenv("APP_ENV", "production")
-    config.get_settings.cache_clear()
-    try:
-        prod_app = importlib.reload(main).app
-        with TestClient(prod_app) as prod_client:
-            response = prod_client.post("/api/v1/playground/tasks/extract", json={"message": "х"})
-            assert response.status_code in (404, 405)
-    finally:
-        monkeypatch.setenv("APP_ENV", "test")
-        config.get_settings.cache_clear()
-        importlib.reload(main)

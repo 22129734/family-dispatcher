@@ -55,11 +55,6 @@ EXTRACT_SYSTEM_PROMPT = (
     "короткий уточняющий вопрос, не выдумывай детали."
 )
 
-EXPLAIN_SYSTEM_PROMPT = (
-    "Объясни члену семьи в одном доброжелательном предложении, "
-    "почему задача назначена именно ему. Без канцелярита и упрёков."
-)
-
 
 class LLMError(Exception):
     """Ответ модели не удалось получить или разобрать."""
@@ -128,34 +123,6 @@ class LLMClient:
         except LLMError:
             logger.exception("Не удалось разобрать задачу моделью")
             return None
-
-    def explain_assignment(self, task_title: str, assignee_name: str, reason: str) -> str:
-        """Переформулировать техническое обоснование назначения в человеческую фразу."""
-        fallback = f"{assignee_name}: {reason}"
-        if not self.enabled:
-            return fallback
-        try:
-            data = self._chat(
-                "explain_assignment",
-                {
-                    "messages": [
-                        {"role": "system", "content": EXPLAIN_SYSTEM_PROMPT},
-                        {
-                            "role": "user",
-                            "content": (
-                                f"Задача: {task_title}. Исполнитель: {assignee_name}. "
-                                f"Причина: {reason}."
-                            ),
-                        },
-                    ],
-                    "temperature": 0.4,
-                },
-            )
-            text = (data["choices"][0]["message"].get("content") or "").strip()
-            return text or fallback
-        except (LLMError, KeyError, IndexError):
-            logger.exception("Не удалось получить объяснение назначения")
-            return fallback
 
 
 def _tool_arguments(data: dict, name: str) -> dict | None:

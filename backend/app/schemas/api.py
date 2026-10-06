@@ -72,21 +72,11 @@ class InviteInfo(BaseModel):
     members: list[str]
 
 
-class LabourShare(BaseModel):
-    member_id: str
-    name: str
-    minutes: int
-    share: float
-    open_tasks: int
-    done_tasks: int
-
-
 class FamilyOut(BaseModel):
     id: str
     name: str
     invite_code: str
     members: list[MemberOut]
-    labour: list[LabourShare]
 
 
 class TaskOut(BaseModel):
@@ -103,11 +93,13 @@ class TaskOut(BaseModel):
     requires_car: bool
     location: str | None
     clarifying_question: str | None
-    status: str
+    status: Literal["new", "accepted", "done"]
     assignee_id: str | None
     created_by_id: str
     rationale: str | None
+    decline_reason: str | None
     created_at: datetime
+    accepted_at: datetime | None
     completed_at: datetime | None
 
 
@@ -129,6 +121,10 @@ class UpdateTaskRequest(BaseModel):
     due_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=5, le=600)
     assignee_id: str | None = None
+
+
+class DeclineRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=200)
 
 
 class TrackRequest(BaseModel):

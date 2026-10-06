@@ -1,6 +1,5 @@
 """API мобильного веб-приложения: семья, участники, задачи, события."""
 
-from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Annotated
 
@@ -12,11 +11,11 @@ from app.models import FamilyRow, MemberRow, TaskRow
 from app.schemas.api import (
     CreateFamilyRequest,
     CreateTaskRequest,
+    DeclineRequest,
     DispatchRequest,
     FamilyOut,
     InviteInfo,
     JoinFamilyRequest,
-    LabourShare,
     MemberOut,
     SessionOut,
     TaskOut,
@@ -25,13 +24,11 @@ from app.schemas.api import (
     UpdateTaskRequest,
 )
 from app.services import family_service as fs
-from app.services.allocator import Allocator
 from app.services.task_extractor import TaskExtractor
 
 router = APIRouter(prefix="/api/v1")
 
 extractor = TaskExtractor()
-allocator = Allocator()
 
 _RECURRENCE_STEP = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
 
@@ -129,42 +126,17 @@ def update_me(payload: UpdateMemberRequest, member: CurrentMember, db: DbSession
 
 
 @router.get("/family", response_model=FamilyOut, tags=["family"])
-def get_family(member: CurrentMember, db: DbSession) -> FamilyOut:
+def get_family(member: CurrentMember) -> FamilyOut:
     family = member.family
-    now = datetime.now()
-    tasks = fs.weekly_tasks(db, family.id, now)
-    minutes: dict[str, int] = defaultdict(int)
-    open_count: dict[str, int] = defaultdict(int)
-    done_count: dict[str, int] = defaultdict(int)
-    for task in tasks:
-        if task.assignee_id is None:
-            continue
-        minutes[task.assignee_id] += task.duration_minutes
-        if task.status == "done":
-            done_count[task.assignee_id] += 1
-        else:
-            open_count[task.assignee_id] += 1
-    total = sum(minutes.values())
     return FamilyOut(
         id=family.id,
         name=family.name,
         invite_code=family.invite_code,
         members=[MemberOut.model_validate(m) for m in family.members],
-        labour=[
-            LabourShare(
-                member_id=m.id,
-                name=m.name,
-                minutes=minutes[m.id],
-                share=round(minutes[m.id] / total, 3) if total else 0.0,
-                open_tasks=open_count[m.id],
-                done_tasks=done_count[m.id],
-            )
-            for m in family.members
-        ],
     )
 
 
-# ---------- Задачи ----------
+# ---------- Задачи: «поручила — сделано» ----------
 
 
 @router.get("/tasks", response_model=list[TaskOut], tags=["tasks"])
@@ -173,21 +145,21 @@ def list_tasks(
     db: DbSession,
     include_done_days: Annotated[int, Query(ge=0, le=31)] = 1,
 ) -> list[TaskRow]:
-    """Открытые задачи семьи плюс выполненные за последние N дней."""
+    """Незакрытые задачи семьи плюс выполненные за последние N дней."""
     since = datetime.now() - timedelta(days=include_done_days)
     tasks = db.scalars(select(TaskRow).where(TaskRow.family_id == member.family_id)).all()
-    visible = [t for t in tasks if t.status == "open" or (t.completed_at or since) >= since]
+    visible = [t for t in tasks if t.status != "done" or (t.completed_at or since) >= since]
     return sorted(visible, key=lambda t: (t.status == "done", t.due_at or datetime.max))
 
 
 @router.post("/tasks/dispatch", response_model=TaskOut, status_code=201, tags=["tasks"])
 def dispatch(payload: DispatchRequest, member: CurrentMember, db: DbSession) -> TaskRow:
-    """Главный сценарий: сообщение → задача → исполнитель."""
-    now = datetime.now()
-    draft = extractor.extract(payload.message, now)
+    """Главный сценарий: сообщение → задача с исполнителем и сроком → ждёт ответа."""
+    draft = extractor.extract(payload.message, datetime.now())
     task = fs.task_from_draft(draft, member.family, member)
     task.source = payload.source
-    fs.apply_assignment(task, fs.allocate(db, allocator, member.family, draft, now))
+    assignee, why = fs.default_assignee(member.family, member, draft.requires_car)
+    fs.assign(task, assignee, member, why)
     db.add(task)
     db.flush()
     fs.track(db, member, "task_dispatched", source=payload.source, assigned=bool(task.assignee_id))
@@ -206,14 +178,13 @@ def create_task(payload: CreateTaskRequest, member: CurrentMember, db: DbSession
         due_at=payload.due_at,
         duration_minutes=payload.duration_minutes,
         requires_car=payload.requires_car,
-        vetoed_by=[],
     )
     if payload.assignee_id:
-        task.assignee_id = payload.assignee_id
-        task.rationale = "Назначено вручную"
+        assignee = next(m for m in member.family.members if m.id == payload.assignee_id)
+        fs.assign(task, assignee, member, None)
     else:
-        draft = fs.draft_from_task(task)
-        fs.apply_assignment(task, fs.allocate(db, allocator, member.family, draft, datetime.now()))
+        assignee, why = fs.default_assignee(member.family, member, payload.requires_car)
+        fs.assign(task, assignee, member, why)
     db.add(task)
     db.flush()
     fs.track(db, member, "task_created", source="manual")
@@ -227,16 +198,58 @@ def update_task(
 ) -> TaskRow:
     task = _family_task(db, member, task_id)
     changes = payload.model_dump(exclude_unset=True)
+    fields = ",".join(sorted(changes))
     if "assignee_id" in changes:
         _check_member(member, changes["assignee_id"])
-        task.rationale = "Назначено вручную"
+        new_id = changes.pop("assignee_id")
+        assignee = next((m for m in member.family.members if m.id == new_id), None)
+        # Новый исполнитель — поручение снова ждёт его ответа
+        fs.assign(task, assignee, member, None)
     for field, value in changes.items():
         if field == "title" and value is None:
             continue
         setattr(task, field, value)
     if "due_at" in changes and task.due_at is not None:
         task.clarifying_question = None
-    fs.track(db, member, "task_edited", fields=",".join(sorted(changes)))
+    fs.track(db, member, "task_edited", fields=fields)
+    db.commit()
+    return task
+
+
+def _require_assignee(task: TaskRow, member: MemberRow) -> None:
+    if task.assignee_id != member.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Это поручение другому человеку")
+
+
+@router.post("/tasks/{task_id}/accept", response_model=TaskOut, tags=["tasks"])
+def accept_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
+    """Исполнитель отвечает «Взял» — автор видит, что задача принята."""
+    task = _family_task(db, member, task_id)
+    _require_assignee(task, member)
+    if task.status == "new":
+        task.status = "accepted"
+        task.accepted_at = datetime.now()
+        fs.track(db, member, "task_accepted")
+        db.commit()
+    return task
+
+
+@router.post("/tasks/{task_id}/decline", response_model=TaskOut, tags=["tasks"])
+def decline_task(
+    task_id: str, payload: DeclineRequest, member: CurrentMember, db: DbSession
+) -> TaskRow:
+    """«Не могу»: задача возвращается автору без исполнителя, с причиной."""
+    task = _family_task(db, member, task_id)
+    _require_assignee(task, member)
+    if task.status == "done":
+        raise HTTPException(status.HTTP_409_CONFLICT, "Задача уже сделана")
+    reason = (payload.reason or "").strip()
+    task.assignee_id = None
+    task.status = "new"
+    task.accepted_at = None
+    task.rationale = None
+    task.decline_reason = f"{member.name} не может" + (f": {reason}" if reason else "")
+    fs.track(db, member, "task_declined", with_reason=bool(reason))
     db.commit()
     return task
 
@@ -246,21 +259,38 @@ def complete_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow
     task = _family_task(db, member, task_id)
     if task.status == "done":
         return task
+    if task.assignee_id not in (None, member.id) and task.created_by_id != member.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Отметить может исполнитель или автор")
     now = datetime.now()
-    task.status = "done"
-    task.completed_at = now
     if task.assignee_id is None:
         task.assignee_id = member.id
+    task.status = "done"
+    task.completed_at = now
+    task.accepted_at = task.accepted_at or now
 
     step = _RECURRENCE_STEP.get(task.recurrence)
     if step and task.due_at:
-        # Повторяющаяся задача: сразу ставим следующую и распределяем заново.
-        draft = fs.draft_from_task(task)
-        draft.due_at = task.due_at + step
-        next_task = fs.task_from_draft(draft, member.family, member)
-        next_task.source = task.source
-        db.flush()
-        fs.apply_assignment(next_task, fs.allocate(db, allocator, member.family, draft, now))
+        # Повторяющаяся задача: следующая — тому же исполнителю, снова ждёт ответа
+        members = {m.id: m for m in member.family.members}
+        next_task = TaskRow(
+            family_id=task.family_id,
+            created_by_id=task.created_by_id,
+            title=task.title,
+            source=task.source,
+            beneficiary=task.beneficiary,
+            due_at=task.due_at + step,
+            duration_minutes=task.duration_minutes,
+            priority=task.priority,
+            recurrence=task.recurrence,
+            requires_car=task.requires_car,
+            location=task.location,
+        )
+        fs.assign(
+            next_task,
+            members.get(task.assignee_id),
+            members[task.created_by_id],
+            task.rationale,
+        )
         db.add(next_task)
 
     fs.track(db, member, "task_done", own=task.assignee_id == member.id)
@@ -271,30 +301,9 @@ def complete_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow
 @router.post("/tasks/{task_id}/reopen", response_model=TaskOut, tags=["tasks"])
 def reopen_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
     task = _family_task(db, member, task_id)
-    task.status = "open"
+    task.status = "accepted" if task.accepted_at else "new"
     task.completed_at = None
     fs.track(db, member, "task_reopened")
-    db.commit()
-    return task
-
-
-@router.post("/tasks/{task_id}/reassign", response_model=TaskOut, tags=["tasks"])
-def reassign_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
-    """Вето в один тап: система сама ищет следующего подходящего исполнителя."""
-    task = _family_task(db, member, task_id)
-    vetoed = set(task.vetoed_by or [])
-    if task.assignee_id:
-        vetoed.add(task.assignee_id)
-    task.vetoed_by = sorted(vetoed)
-    assignment = fs.allocate(
-        db, allocator, member.family, fs.draft_from_task(task), datetime.now(), exclude=vetoed
-    )
-    fs.apply_assignment(task, assignment)
-    if assignment is not None:
-        # Причину решения движка здесь не показываем: реальная причина — отказ предыдущего.
-        new_assignee = next(m for m in member.family.members if m.id == assignment.assignee_id)
-        task.rationale = f"Передано: {new_assignee.name} свободнее тех, кто не смог взять задачу"
-    fs.track(db, member, "task_reassigned", found=assignment is not None)
     db.commit()
     return task
 
@@ -302,6 +311,8 @@ def reassign_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow
 @router.delete("/tasks/{task_id}", status_code=204, tags=["tasks"])
 def delete_task(task_id: str, member: CurrentMember, db: DbSession) -> None:
     task = _family_task(db, member, task_id)
+    if task.created_by_id != member.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Удалить может только автор поручения")
     db.delete(task)
     fs.track(db, member, "task_deleted")
     db.commit()
