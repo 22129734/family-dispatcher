@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 
 from app.schemas.family import Family, Member
 from app.schemas.task import Assignment, TaskDraft
-from app.services.gigachat_client import GigaChatClient
+from app.services.llm_client import LLMClient
 
 W_LOAD_BALANCE = 0.55
 W_CAPACITY = 0.30
@@ -25,8 +25,8 @@ class NoEligibleMemberError(RuntimeError):
 
 
 class Allocator:
-    def __init__(self, client: GigaChatClient | None = None) -> None:
-        self._client = client or GigaChatClient()
+    def __init__(self, client: LLMClient | None = None) -> None:
+        self._client = client or LLMClient()
 
     def allocate(self, family: Family, task: TaskDraft) -> Assignment:
         eligible = [m for m in family.members if self._is_eligible(m, task)]

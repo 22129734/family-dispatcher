@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import MemberRow
+from app.services import telemetry
 
 
 def current_member(
@@ -25,6 +26,7 @@ def current_member(
     member = db.scalar(select(MemberRow).where(MemberRow.token == token))
     if member is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Сессия недействительна")
+    telemetry.set_actor(member.id, member.family_id)
     return member
 
 

@@ -80,6 +80,28 @@ class TaskRow(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class ComponentCallRow(Base):
+    """Обращение решения к компоненту (LLM, навык, голос, push, боты…) — см. services/telemetry."""
+
+    __tablename__ = "component_calls"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    kind: Mapped[str] = mapped_column(String(24), index=True)
+    operation: Mapped[str] = mapped_column(String(60))
+    status: Mapped[str] = mapped_column(String(12), default="ok")  # ok / error
+    error_code: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Кто инициировал (для DAU и антифрода); фоновые вызовы могут быть без участника
+    member_id: Mapped[str | None] = mapped_column(
+        ForeignKey("members.id"), nullable=True, index=True
+    )
+    family_id: Mapped[str | None] = mapped_column(ForeignKey("families.id"), nullable=True)
+
+
 class EventRow(Base):
     """Продуктовое событие — основа для DAU и «обращений на пользователя»."""
 

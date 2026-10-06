@@ -1,16 +1,10 @@
-"""Сквозные сценарии API на SQLite в памяти, без GigaChat."""
+"""Сквозные сценарии API на SQLite в памяти, без LLM."""
 
-import os
+import pytest
+from fastapi.testclient import TestClient
 
-os.environ["DATABASE_URL"] = "sqlite://"
-os.environ["GIGACHAT_CREDENTIALS"] = ""
-os.environ["ADMIN_TOKEN"] = "admin"
-
-import pytest  # noqa: E402
-from fastapi.testclient import TestClient  # noqa: E402
-
-from app.db import Base, engine  # noqa: E402
-from app.main import app  # noqa: E402
+from app.db import Base, engine
+from app.main import app
 
 
 @pytest.fixture
@@ -158,5 +152,55 @@ def test_daily_analytics_counts_actions_not_views(
         "/api/v1/analytics/daily", headers={"X-Admin-Token": "admin"}, params={"days": 1}
     ).json()["days"][0]
     assert today["dau"] == 2
-    # family_created + family_joined + task_created; app_open не считается обращением
+    # family_created + family_joined + task_created; app_open не считается действием
     assert today["actions"] == 3
+
+
+def test_component_calls_are_counted_per_dau_and_exported(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    from app.services import telemetry
+
+    telemetry.record("llm", "chat.completions", tokens_in=10, tokens_out=5)
+    telemetry.record("skill", "extract_task")
+    telemetry.record("push", "send", status="error", error_code="http_410")
+
+    admin = {"X-Admin-Token": "admin"}
+    today = client.get("/api/v1/analytics/daily", headers=admin, params={"days": 1}).json()
+    stat = today["days"][0]
+    assert stat["component_calls"] == 3
+    assert stat["component_calls_per_dau"] == 1.5  # 3 обращения на 2 DAU
+    assert stat["component_errors"] == 1
+    assert stat["calls_by_kind"] == {"llm": 1, "skill": 1, "push": 1}
+
+    assert client.get("/api/v1/analytics/component-calls.csv").status_code == 403
+    csv_text = client.get("/api/v1/analytics/component-calls.csv", headers=admin).text
+    lines = csv_text.strip().splitlines()
+    assert lines[0].startswith("created_at,kind,operation,status")
+    assert len(lines) == 4
+
+    events = client.get("/api/v1/analytics/events.csv", headers=admin).text.strip().splitlines()
+    assert events[0] == "created_at,event,user_id,family_id"
+    assert len(events) == 3  # family_created + family_joined
+    # Идентификаторы обезличены: реальные id участников в выгрузку не попадают
+    member_id = client.get("/api/v1/me", headers=auth(family["mom"])).json()["member"]["id"]
+    assert member_id not in "\n".join(events)
+
+
+def test_playground_is_disabled_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Песочница без авторизации тратила бы токены LLM — в продакшне её нет."""
+    import importlib
+
+    from app import config, main
+
+    monkeypatch.setenv("APP_ENV", "production")
+    config.get_settings.cache_clear()
+    try:
+        prod_app = importlib.reload(main).app
+        with TestClient(prod_app) as prod_client:
+            response = prod_client.post("/api/v1/playground/tasks/extract", json={"message": "х"})
+            assert response.status_code in (404, 405)
+    finally:
+        monkeypatch.setenv("APP_ENV", "test")
+        config.get_settings.cache_clear()
+        importlib.reload(main)

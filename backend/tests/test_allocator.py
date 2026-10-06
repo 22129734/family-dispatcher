@@ -8,7 +8,7 @@ from app.services.allocator import Allocator, NoEligibleMemberError, invisible_l
 
 
 class StubClient:
-    """Заглушка GigaChat: тесты движка распределения не должны ходить в сеть."""
+    """Заглушка LLM: тесты движка распределения не должны ходить в сеть."""
 
     enabled = False
 

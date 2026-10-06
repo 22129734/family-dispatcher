@@ -4,17 +4,14 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.auth import CurrentMember, DbSession
-from app.config import get_settings
-from app.models import EventRow, FamilyRow, MemberRow, TaskRow
+from app.models import FamilyRow, MemberRow, TaskRow
 from app.schemas.api import (
-    AnalyticsOut,
     CreateFamilyRequest,
     CreateTaskRequest,
-    DailyStat,
     DispatchRequest,
     FamilyOut,
     InviteInfo,
@@ -35,9 +32,6 @@ router = APIRouter(prefix="/api/v1")
 
 extractor = TaskExtractor()
 allocator = Allocator()
-
-# События, которые не считаются «обращением» к продукту: это просмотры, а не действия.
-PASSIVE_EVENTS = {"app_open", "screen_view"}
 
 _RECURRENCE_STEP = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
 
@@ -303,40 +297,3 @@ def delete_task(task_id: str, member: CurrentMember, db: DbSession) -> None:
 def track_event(payload: TrackRequest, member: CurrentMember, db: DbSession) -> None:
     fs.track(db, member, payload.name, **payload.props)
     db.commit()
-
-
-@router.get("/analytics/daily", response_model=AnalyticsOut, tags=["analytics"])
-def daily_analytics(
-    db: DbSession,
-    x_admin_token: Annotated[str | None, Header()] = None,
-    days: Annotated[int, Query(ge=1, le=90)] = 14,
-) -> AnalyticsOut:
-    """DAU и «обращения на пользователя» — метрики номинаций Sber500."""
-    admin_token = get_settings().admin_token
-    if not admin_token or x_admin_token != admin_token:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Нужен токен администратора")
-
-    first_day = (datetime.now() - timedelta(days=days - 1)).date()
-    since = datetime.combine(first_day, datetime.min.time())
-    events = db.scalars(select(EventRow).where(EventRow.created_at >= since)).all()
-    active: dict[str, set[str]] = defaultdict(set)
-    actions: dict[str, int] = defaultdict(int)
-    for event in events:
-        day = event.created_at.date().isoformat()
-        active[day].add(event.member_id)
-        if event.name not in PASSIVE_EVENTS:
-            actions[day] += 1
-
-    stats = []
-    for offset in range(days):
-        day = (since + timedelta(days=offset)).date().isoformat()
-        dau = len(active[day])
-        stats.append(
-            DailyStat(
-                day=day,
-                dau=dau,
-                actions=actions[day],
-                actions_per_dau=round(actions[day] / dau, 2) if dau else 0.0,
-            )
-        )
-    return AnalyticsOut(days=stats)

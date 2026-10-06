@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import app_routes, routes
+from app.api import analytics, app_routes, routes
 from app.config import get_settings
 from app.db import init_db
 
@@ -32,12 +32,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(app_routes.router)
-app.include_router(routes.router)
+app.include_router(analytics.router)
+# Песочница ядра без авторизации — только локально: в продакшне она тратила бы токены LLM.
+if not settings.is_production:
+    app.include_router(routes.router)
 
 
 @app.get("/health", tags=["service"])
 def health() -> dict[str, object]:
-    return {"status": "ok", "env": settings.app_env, "gigachat": settings.gigachat_enabled}
+    return {"status": "ok", "env": settings.app_env, "llm": settings.llm_enabled}
 
 
 # Собранный веб-клиент (web/dist) отдаётся тем же сервером: один процесс на деплой.

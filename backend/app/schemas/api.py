@@ -116,8 +116,14 @@ class TrackRequest(BaseModel):
 class DailyStat(BaseModel):
     day: str
     dau: int
+    # Действия пользователей в интерфейсе (без открытий и просмотров)
     actions: int
     actions_per_dau: float
+    # Обращения решения к компонентам — метрика Положения (прил. 2, п. 2.2)
+    component_calls: int = 0
+    component_calls_per_dau: float = 0.0
+    component_errors: int = 0
+    calls_by_kind: dict[str, int] = {}
 
 
 class AnalyticsOut(BaseModel):

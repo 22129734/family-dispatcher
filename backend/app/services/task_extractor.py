@@ -1,6 +1,6 @@
 """Превращение свободной речи в структурированную задачу.
 
-Основной путь — GigaChat с function calling. Резервный — детерминированные
+Основной путь — LLM с function calling (OpenAI-совместимый API). Резервный — детерминированные
 правила: они же используются в тестах и при недоступности LLM.
 """
 
@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 
 from app.schemas.task import Priority, Recurrence, TaskDraft
-from app.services.gigachat_client import GigaChatClient
+from app.services.llm_client import LLMClient
 
 _URGENT_MARKERS = ("срочно", "сегодня", "как можно скорее", "горит")
 _CAR_MARKERS = ("отвезти", "забрать", "привезти", "заехать", "довезти")
@@ -23,8 +23,8 @@ _RELATIVE_DAYS = {"сегодня": 0, "завтра": 1, "послезавтр�
 
 
 class TaskExtractor:
-    def __init__(self, client: GigaChatClient | None = None) -> None:
-        self._client = client or GigaChatClient()
+    def __init__(self, client: LLMClient | None = None) -> None:
+        self._client = client or LLMClient()
 
     def extract(self, message: str, now: datetime | None = None) -> TaskDraft:
         now = now or datetime.now()

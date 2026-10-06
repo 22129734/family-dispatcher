@@ -7,7 +7,7 @@ from app.services.task_extractor import TaskExtractor
 
 
 class OfflineClient:
-    """GigaChat недоступен — проверяем детерминированный резервный разбор."""
+    """LLM недоступна — проверяем детерминированный резервный разбор."""
 
     enabled = False
 
@@ -15,7 +15,7 @@ class OfflineClient:
         return None
 
 
-class StubGigaChat:
+class StubLLM:
     enabled = True
 
     def __init__(self, payload: dict) -> None:
@@ -59,9 +59,9 @@ def test_missing_date_produces_clarifying_question(offline_extractor: TaskExtrac
     assert task.clarifying_question
 
 
-def test_gigachat_payload_is_mapped_to_draft() -> None:
+def test_llm_payload_is_mapped_to_draft() -> None:
     extractor = TaskExtractor(
-        client=StubGigaChat(
+        client=StubLLM(
             {
                 "title": "Забрать Соню с танцев",
                 "beneficiary": "Соня",
