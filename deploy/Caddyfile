@@ -4,3 +4,10 @@
 	encode zstd gzip
 	reverse_proxy app:8000
 }
+
+# Зеркала (.ru, www) ведут на основной адрес: вход и подписка на уведомления
+# привязаны к адресу сайта, поэтому у пользователя должен быть один адрес.
+# Без REDIRECT_DOMAINS блок слушает внутренний порт и ни на что не влияет.
+{$REDIRECT_DOMAINS::8081} {
+	redir https://{$PRIMARY_DOMAIN:localhost}{uri} 308
+}

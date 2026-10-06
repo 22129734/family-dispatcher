@@ -38,6 +38,9 @@ services:
     environment:
       # Пока домена нет — сайт отдаётся по http на IP; с доменом Caddy сам получит сертификат.
       DOMAIN: ${DOMAIN:-:80}
+      # Адреса-зеркала с редиректом на основной (PRIMARY_DOMAIN)
+      REDIRECT_DOMAINS: ${REDIRECT_DOMAINS:-:8081}
+      PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-localhost}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
