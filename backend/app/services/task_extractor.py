@@ -29,18 +29,39 @@ class TaskExtractor:
     def extract(self, message: str, now: datetime | None = None) -> TaskDraft:
         now = now or datetime.now()
 
+        rules = self._from_rules(message, now)
         payload = self._client.extract_task(message, now.isoformat())
         if payload:
-            return self._from_payload(payload, now)
+            return self._merge(self._from_payload(payload, now), rules)
+        return rules
 
-        return self._from_rules(message, now)
+    @staticmethod
+    def _merge(llm: TaskDraft, rules: TaskDraft) -> TaskDraft:
+        """Подстраховка модели правилами: явные маркеры в тексте не должны теряться.
+
+        Модель лучше понимает формулировку и даты, правила — надёжнее ловят «срочно»,
+        «каждую субботу» и «завтра». Берём от правил только то, что модель пропустила.
+        """
+        updates: dict = {}
+        if llm.priority == Priority.NORMAL and rules.priority == Priority.HIGH:
+            updates["priority"] = Priority.HIGH
+        if llm.recurrence == Recurrence.NONE and rules.recurrence != Recurrence.NONE:
+            updates["recurrence"] = rules.recurrence
+        if llm.due_at is None and rules.due_at is not None:
+            updates["due_at"] = rules.due_at
+            updates["clarifying_question"] = None
+        if rules.requires_car and not llm.requires_car:
+            updates["requires_car"] = True
+        return llm.model_copy(update=updates) if updates else llm
 
     def _from_payload(self, payload: dict, now: datetime) -> TaskDraft:
         due_raw = payload.get("due_at")
         due_at = None
         if due_raw:
             try:
-                due_at = date_parser.isoparse(due_raw)
+                # Модель иногда дописывает «Z» или смещение к местному времени — считаем время
+                # местным временем семьи, как и в подсказке.
+                due_at = date_parser.isoparse(due_raw).replace(tzinfo=None)
             except (ValueError, TypeError):
                 due_at = None
 

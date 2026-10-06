@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 
@@ -80,3 +80,30 @@ def test_llm_payload_is_mapped_to_draft() -> None:
     assert task.duration_minutes == 45
     assert task.priority is Priority.HIGH
     assert task.confidence == pytest.approx(0.95)
+
+
+def test_llm_due_at_with_timezone_is_treated_as_local_time() -> None:
+    extractor = TaskExtractor(
+        client=StubLLM({"title": "Забрать ребёнка с танцев", "due_at": "2026-10-07T19:00:00Z"})
+    )
+    draft = extractor.extract("завтра в 7 забрать с танцев", NOW)
+    assert draft.due_at is not None
+    assert draft.due_at.tzinfo is None
+    assert (draft.due_at.hour, draft.due_at.minute) == (19, 0)
+
+
+def test_rules_fill_what_llm_missed() -> None:
+    extractor = TaskExtractor(client=StubLLM({"title": "Купить подгузники"}))
+    draft = extractor.extract("завтра купи подгузники, срочно", NOW)
+    assert draft.priority == Priority.HIGH
+    assert draft.due_at is not None and draft.due_at.date() == date(2026, 9, 12)
+    assert draft.clarifying_question is None
+
+
+def test_llm_values_win_over_rules() -> None:
+    extractor = TaskExtractor(
+        client=StubLLM({"title": "Полить цветы", "recurrence": "weekly", "priority": "low"})
+    )
+    draft = extractor.extract("каждый день полить цветы", NOW)
+    assert draft.recurrence == Recurrence.WEEKLY
+    assert draft.priority == Priority.LOW

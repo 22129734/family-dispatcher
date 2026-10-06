@@ -27,7 +27,10 @@ EXTRACT_TASK_FUNCTION = {
         "properties": {
             "title": {"type": "string", "description": "Что нужно сделать, в инфинитиве"},
             "beneficiary": {"type": "string", "description": "Для кого делается задача"},
-            "due_at": {"type": "string", "description": "Крайний срок в формате ISO 8601"},
+            "due_at": {
+                "type": "string",
+                "description": "Крайний срок: местное время семьи, ISO 8601 без часового пояса",
+            },
             "duration_minutes": {"type": "integer", "description": "Ожидаемая длительность"},
             "priority": {"type": "string", "enum": ["low", "normal", "high"]},
             "recurrence": {"type": "string", "enum": ["none", "daily", "weekly", "monthly"]},
@@ -47,6 +50,7 @@ EXTRACT_SYSTEM_PROMPT = (
     "Из сообщения выдели ровно одну задачу и вызови функцию create_task. "
     "Понимай разговорную речь, уменьшительные формы и относительные даты "
     "(«завтра», «в пятницу вечером», «до конца недели»). "
+    "Время — местное время семьи, без часового пояса и без «Z». "
     "Если чего-то не хватает для однозначного понимания — задай ровно один "
     "короткий уточняющий вопрос, не выдумывай детали."
 )
