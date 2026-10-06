@@ -3,6 +3,7 @@ import { api, ApiError, tokenStore, type Family, type Member, type Session, type
 import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { Join, Welcome } from "./screens/Onboarding";
+import { PhoneLogin } from "./screens/PhoneLogin";
 import { Today, type TaskActions } from "./screens/Today";
 
 type Tab = "today" | "family";
@@ -14,45 +15,64 @@ function inviteCodeFromPath(): string | null {
   return match ? match[1] : null;
 }
 
+type Stage = "booting" | "login" | "onboarding" | "home";
+
 export default function App() {
+  const [stage, setStage] = useState<Stage>("booting");
   const [session, setSession] = useState<Session | null>(null);
-  const [booting, setBooting] = useState(true);
+  const [invitedTo, setInvitedTo] = useState<string | null>(null);
   const inviteCode = inviteCodeFromPath();
 
-  useEffect(() => {
-    if (!tokenStore.get()) {
-      setBooting(false);
-      return;
+  // Есть сессия → смотрим, состоит ли человек в семье; нет → вход по телефону
+  const resolve = useCallback(async () => {
+    if (!tokenStore.get()) return setStage("login");
+    try {
+      const account = await api.account();
+      if (account.member && account.family_id) {
+        setSession({ token: tokenStore.get() ?? "", member: account.member, family_id: account.family_id });
+        setStage("home");
+      } else {
+        setStage("onboarding");
+      }
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) tokenStore.set(null);
+      setStage("login");
     }
-    api
-      .me()
-      .then(setSession)
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 401) tokenStore.set(null);
-      })
-      .finally(() => setBooting(false));
   }, []);
+
+  useEffect(() => {
+    void resolve();
+    if (inviteCode) api.inviteInfo(inviteCode).then((info) => setInvitedTo(info.family_name), () => undefined);
+  }, [resolve, inviteCode]);
+
+  const onToken = useCallback(
+    (token: string) => {
+      tokenStore.set(token);
+      void resolve();
+    },
+    [resolve],
+  );
 
   const start = (s: Session) => {
     tokenStore.set(s.token);
     window.history.replaceState(null, "", "/");
     setSession(s);
+    setStage("home");
   };
 
-  if (booting) return <div className="min-h-dvh" />;
-  if (!session) {
+  const logout = useCallback(() => {
+    void api.logout();
+    tokenStore.set(null);
+    setSession(null);
+    setStage("login");
+  }, []);
+
+  if (stage === "booting") return <div className="min-h-dvh" />;
+  if (stage === "login") return <PhoneLogin onToken={onToken} invitedTo={invitedTo} />;
+  if (stage === "onboarding" || !session) {
     return inviteCode ? <Join code={inviteCode} onSession={start} /> : <Welcome onSession={start} />;
   }
-
-  return (
-    <Home
-      session={session}
-      onLogout={() => {
-        tokenStore.set(null);
-        setSession(null);
-      }}
-    />
-  );
+  return <Home session={session} onLogout={logout} />;
 }
 
 function Home({ session, onLogout }: { session: Session; onLogout: () => void }) {

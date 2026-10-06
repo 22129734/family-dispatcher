@@ -2,8 +2,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api, type Role, type Session } from "../api";
 import { Button, ErrorNote, Field, Toggle } from "../components/ui";
 
-const LOOP = ["Услышать", "Понять", "Распределить", "Напомнить", "Проконтролировать"];
-
 export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
   const [familyName, setFamilyName] = useState("");
   const [name, setName] = useState("");
@@ -27,19 +25,10 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
     <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
       <div className="pt-12 pb-8">
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
-        <h1 className="text-3xl leading-tight font-bold tracking-tight">
-          Домашние дела распределяются сами
-        </h1>
+        <h1 className="text-3xl leading-tight font-bold tracking-tight">Создайте семью</h1>
         <p className="mt-3 text-base text-ink-2">
-          Скажите, что нужно сделать, — диспетчер поймёт, решит, кому удобнее, и напомнит.
+          Потом пригласите мужа или жену по ссылке — поручения будут приходить им сами.
         </p>
-        <div className="mt-5 flex flex-wrap gap-1.5">
-          {LOOP.map((step) => (
-            <span key={step} className="rounded-full bg-surface-2 px-3 py-1 text-xs font-medium text-ink-2">
-              {step}
-            </span>
-          ))}
-        </div>
       </div>
 
       <form onSubmit={submit} className="flex flex-1 flex-col gap-4">

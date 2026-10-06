@@ -22,6 +22,36 @@ def _invite_code() -> str:
     return secrets.token_urlsafe(6)
 
 
+class AccountRow(Base):
+    """Учётная запись человека: подтверждённый телефон и сессия."""
+
+    __tablename__ = "accounts"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    phone: Mapped[str] = mapped_column(String(16), unique=True, index=True)  # 7XXXXXXXXXX
+    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=_token)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_login_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class PhoneCheckRow(Base):
+    """Проверка номера звонком: человек звонит на выданный номер, провайдер подтверждает."""
+
+    __tablename__ = "phone_checks"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    phone: Mapped[str] = mapped_column(String(16), index=True)
+    provider_check_id: Mapped[str] = mapped_column(String(64))
+    call_phone: Mapped[str] = mapped_column(String(20))
+    call_phone_pretty: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(12), default="pending")  # pending/confirmed/expired
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Когда по этой проверке выдали сессию — повторно токен не выдаётся
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class FamilyRow(Base):
     __tablename__ = "families"
 
@@ -40,12 +70,15 @@ class MemberRow(Base):
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     family_id: Mapped[str] = mapped_column(ForeignKey("families.id"), index=True)
+    # Человек входит по телефону; у одного аккаунта — одна семья
+    account_id: Mapped[str | None] = mapped_column(
+        ForeignKey("accounts.id"), nullable=True, unique=True
+    )
     name: Mapped[str] = mapped_column(String(80))
     role: Mapped[str] = mapped_column(String(16), default="adult")  # adult / teen / child
     has_car: Mapped[bool] = mapped_column(Boolean, default=False)
     capacity_minutes: Mapped[int] = mapped_column(Integer, default=600)
     dislikes: Mapped[list[str]] = mapped_column(JSON, default=list)
-    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=_token)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     family: Mapped[FamilyRow] = relationship(back_populates="members")

@@ -15,6 +15,25 @@ export interface Session {
   family_id: string;
 }
 
+export interface PhoneCheck {
+  check_id: string;
+  call_phone: string;
+  call_phone_pretty: string;
+  phone_masked: string;
+  expires_in_s: number;
+}
+
+export interface PhoneCheckStatus {
+  status: "pending" | "confirmed" | "expired" | "used";
+  token: string | null;
+}
+
+export interface Account {
+  phone_masked: string;
+  member: Member | null;
+  family_id: string | null;
+}
+
 export interface LabourShare {
   member_id: string;
   name: string;
@@ -107,6 +126,11 @@ const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 
 export const api = {
+  startPhoneCheck: (phone: string) => post<PhoneCheck>("/auth/phone/start", { phone }),
+  phoneCheckStatus: (checkId: string) => request<PhoneCheckStatus>(`/auth/phone/status/${checkId}`),
+  account: () => request<Account>("/account"),
+  logout: () => post<void>("/auth/logout").catch(() => undefined),
+
   createFamily: (family_name: string, member_name: string, has_car: boolean) =>
     post<Session>("/families", { family_name, member_name, has_car }),
   inviteInfo: (code: string) =>

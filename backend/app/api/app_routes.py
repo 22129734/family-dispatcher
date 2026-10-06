@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
-from app.auth import CurrentMember, DbSession
+from app.auth import CurrentAccount, CurrentMember, DbSession, member_of
 from app.models import FamilyRow, MemberRow, TaskRow
 from app.schemas.api import (
     CreateFamilyRequest,
@@ -36,9 +36,14 @@ allocator = Allocator()
 _RECURRENCE_STEP = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
 
 
-def _session(member: MemberRow) -> SessionOut:
+def _require_no_family(db: DbSession, account: CurrentAccount) -> None:
+    if member_of(db, account) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Вы уже состоите в семье")
+
+
+def _session(member: MemberRow, token: str) -> SessionOut:
     return SessionOut(
-        token=member.token, member=MemberOut.model_validate(member), family_id=member.family_id
+        token=token, member=MemberOut.model_validate(member), family_id=member.family_id
     )
 
 
@@ -58,15 +63,23 @@ def _check_member(member: MemberRow, member_id: str | None) -> None:
 
 
 @router.post("/families", response_model=SessionOut, status_code=201, tags=["family"])
-def create_family(payload: CreateFamilyRequest, db: DbSession) -> SessionOut:
+def create_family(
+    payload: CreateFamilyRequest, account: CurrentAccount, db: DbSession
+) -> SessionOut:
+    _require_no_family(db, account)
     family = FamilyRow(name=payload.family_name.strip())
-    member = MemberRow(name=payload.member_name.strip(), has_car=payload.has_car, dislikes=[])
+    member = MemberRow(
+        name=payload.member_name.strip(),
+        has_car=payload.has_car,
+        dislikes=[],
+        account_id=account.id,
+    )
     family.members.append(member)
     db.add(family)
     db.flush()
     fs.track(db, member, "family_created")
     db.commit()
-    return _session(member)
+    return _session(member, account.token)
 
 
 @router.get("/invites/{code}", response_model=InviteInfo, tags=["family"])
@@ -78,7 +91,10 @@ def invite_info(code: str, db: DbSession) -> InviteInfo:
 
 
 @router.post("/invites/{code}/join", response_model=SessionOut, status_code=201, tags=["family"])
-def join_family(code: str, payload: JoinFamilyRequest, db: DbSession) -> SessionOut:
+def join_family(
+    code: str, payload: JoinFamilyRequest, account: CurrentAccount, db: DbSession
+) -> SessionOut:
+    _require_no_family(db, account)
     family = db.scalar(select(FamilyRow).where(FamilyRow.invite_code == code))
     if family is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Приглашение не найдено")
@@ -88,17 +104,18 @@ def join_family(code: str, payload: JoinFamilyRequest, db: DbSession) -> Session
         has_car=payload.has_car,
         capacity_minutes=300 if payload.role == "child" else 600,
         dislikes=[],
+        account_id=account.id,
     )
     family.members.append(member)
     db.flush()
     fs.track(db, member, "family_joined")
     db.commit()
-    return _session(member)
+    return _session(member, account.token)
 
 
 @router.get("/me", response_model=SessionOut, tags=["family"])
-def me(member: CurrentMember) -> SessionOut:
-    return _session(member)
+def me(member: CurrentMember, account: CurrentAccount) -> SessionOut:
+    return _session(member, account.token)
 
 
 @router.patch("/me", response_model=MemberOut, tags=["family"])

@@ -38,6 +38,29 @@ class UpdateMemberRequest(BaseModel):
     dislikes: list[str] | None = None
 
 
+class PhoneStartRequest(BaseModel):
+    phone: str = Field(min_length=10, max_length=20)
+
+
+class PhoneCheckOut(BaseModel):
+    check_id: str
+    call_phone: str  # для ссылки tel:
+    call_phone_pretty: str
+    phone_masked: str
+    expires_in_s: int
+
+
+class PhoneCheckStatusOut(BaseModel):
+    status: Literal["pending", "confirmed", "expired", "used"]
+    token: str | None = None
+
+
+class AccountOut(BaseModel):
+    phone_masked: str
+    member: MemberOut | None
+    family_id: str | None
+
+
 class SessionOut(BaseModel):
     token: str
     member: MemberOut

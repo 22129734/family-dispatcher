@@ -18,16 +18,27 @@ def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def login(client: TestClient, phone: str) -> str:
+    """Вход по звонку через имитацию провайдера (без ключа SMS.RU номер подтверждается сразу)."""
+    check = client.post("/api/v1/auth/phone/start", json={"phone": phone}).json()
+    status = client.get(f"/api/v1/auth/phone/status/{check['check_id']}").json()
+    assert status["status"] == "confirmed"
+    return status["token"]
+
+
 @pytest.fixture
 def family(client: TestClient) -> dict[str, str]:
     """Семья из мамы (создатель, с машиной) и папы, вошедшего по приглашению."""
     mom = client.post(
         "/api/v1/families",
         json={"family_name": "Ивановы", "member_name": "Мама", "has_car": True},
+        headers=auth(login(client, "+7 999 000-00-01")),
     ).json()
     code = client.get("/api/v1/family", headers=auth(mom["token"])).json()["invite_code"]
     dad = client.post(
-        f"/api/v1/invites/{code}/join", json={"member_name": "Папа", "has_car": True}
+        f"/api/v1/invites/{code}/join",
+        json={"member_name": "Папа", "has_car": True},
+        headers=auth(login(client, "89990000002")),
     ).json()
     return {
         "mom": mom["token"],
@@ -135,7 +146,9 @@ def test_cannot_touch_other_family_tasks(client: TestClient, family: dict[str, s
         "/api/v1/tasks", json={"title": "Секрет"}, headers=auth(family["mom"])
     ).json()
     stranger = client.post(
-        "/api/v1/families", json={"family_name": "Петровы", "member_name": "Пётр"}
+        "/api/v1/families",
+        json={"family_name": "Петровы", "member_name": "Пётр"},
+        headers=auth(login(client, "79990000003")),
     ).json()
     response = client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(stranger["token"]))
     assert response.status_code == 404

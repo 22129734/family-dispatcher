@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_timeout_s: float = 20.0
 
+    # Вход по телефону: SMS.RU, авторизация звонком (callcheck)
+    smsru_api_id: str = ""
+    smsru_base_url: str = "https://sms.ru"
+
     database_url: str = "sqlite:///./family_dispatcher.db"
     cors_origins: str = "http://localhost:5173"
     admin_token: str = ""

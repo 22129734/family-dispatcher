@@ -1,0 +1,181 @@
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { api, type PhoneCheck } from "../api";
+import { Button, ErrorNote } from "../components/ui";
+
+const POLL_MS = 2500;
+
+/** Маска ввода: «+7 999 123-45-67». Понимает набор с 8 и вставку номера целиком. */
+function formatPhone(raw: string): string {
+  // «+7» в поле — приставка, а не первая цифра номера
+  let digits = (raw.startsWith("+7") ? raw.slice(2) : raw).replace(/\D/g, "");
+  if (!raw.startsWith("+7") && digits.length === 11 && /^[78]/.test(digits)) digits = digits.slice(1);
+  // набрали «8 999…» после «+7» — лишняя ведущая 8 или 7 отбрасывается на 11-й цифре
+  if (digits.length > 10 && /^[78]/.test(digits)) digits = digits.slice(1);
+  digits = digits.slice(0, 10);
+  const parts = [digits.slice(0, 3), digits.slice(3, 6), digits.slice(6, 8), digits.slice(8, 10)];
+  let out = "+7";
+  if (parts[0]) out += ` ${parts[0]}`;
+  if (parts[1]) out += ` ${parts[1]}`;
+  if (parts[2]) out += `-${parts[2]}`;
+  if (parts[3]) out += `-${parts[3]}`;
+  return out;
+}
+
+const digitsCount = (value: string) => value.replace(/\D/g, "").length;
+
+export function PhoneLogin({
+  onToken,
+  invitedTo,
+}: {
+  onToken: (token: string) => void;
+  invitedTo?: string | null;
+}) {
+  const [phone, setPhone] = useState("+7");
+  const [consent, setConsent] = useState(false);
+  const [check, setCheck] = useState<PhoneCheck | null>(null);
+  const [secondsLeft, setSecondsLeft] = useState(0);
+  const [expired, setExpired] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+
+  // Ожидание звонка: опрашиваем сервер и считаем оставшееся время
+  useEffect(() => {
+    if (!check) return;
+    const deadline = Date.now() + check.expires_in_s * 1000;
+    setSecondsLeft(check.expires_in_s);
+    setExpired(false);
+
+    const tick = window.setInterval(() => {
+      setSecondsLeft(Math.max(0, Math.round((deadline - Date.now()) / 1000)));
+    }, 1000);
+
+    const poll = async () => {
+      try {
+        const status = await api.phoneCheckStatus(check.check_id);
+        if (status.status === "confirmed" && status.token) return onToken(status.token);
+        if (status.status === "expired" || status.status === "used") return setExpired(true);
+      } catch {
+        /* сеть моргнула — спросим ещё раз */
+      }
+      timer.current = window.setTimeout(poll, POLL_MS);
+    };
+    timer.current = window.setTimeout(poll, POLL_MS);
+
+    return () => {
+      window.clearInterval(tick);
+      window.clearTimeout(timer.current);
+    };
+  }, [check, onToken]);
+
+  async function start(e?: FormEvent) {
+    e?.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      setCheck(await api.startPhoneCheck(phone));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (check) {
+    const minutes = Math.floor(secondsLeft / 60);
+    const seconds = String(secondsLeft % 60).padStart(2, "0");
+    return (
+      <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
+        <div className="pt-12 pb-6">
+          <h1 className="text-3xl leading-tight font-bold tracking-tight">Позвоните, чтобы войти</h1>
+          <p className="mt-3 text-base text-ink-2">
+            С номера <span className="font-medium text-ink">{check.phone_masked}</span>. Звонок бесплатный
+            и сразу сбросится — так мы убедимся, что номер ваш.
+          </p>
+        </div>
+
+        {expired ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-ink-2">Время вышло. Попробуйте ещё раз — это займёт минуту.</p>
+            <Button className="w-full" onClick={() => start()} disabled={busy}>
+              {busy ? "Готовим…" : "Попробовать снова"}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <a
+              href={`tel:+${check.call_phone}`}
+              className="flex h-16 items-center justify-center gap-3 rounded-2xl bg-accent text-lg font-semibold text-accent-ink active:opacity-80"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />
+              </svg>
+              {check.call_phone_pretty}
+            </a>
+            <p className="flex items-center justify-center gap-2 text-sm text-ink-3">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-accent" />
+              Ждём звонок · {minutes}:{seconds}
+            </p>
+          </div>
+        )}
+
+        <div className="mt-auto pt-6">
+          <Button variant="ghost" className="w-full" onClick={() => setCheck(null)}>
+            Изменить номер
+          </Button>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
+      <div className="pt-12 pb-8">
+        <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
+        {invitedTo && <p className="text-sm font-medium text-accent">Приглашение в семью «{invitedTo}»</p>}
+        <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">
+          Поручения, которые доходят и выполняются
+        </h1>
+        <p className="mt-3 text-base text-ink-2">
+          Скажите, что нужно сделать, — диспетчер передаст дело, напомнит в нужный момент и покажет, что его
+          взяли. Без «я же тебе писала».
+        </p>
+      </div>
+
+      <form onSubmit={start} className="flex flex-1 flex-col gap-4">
+        <label className="block">
+          <span className="mb-1.5 block text-sm font-medium text-ink-2">Номер телефона</span>
+          <input
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-lg tracking-wide text-ink outline-none focus:border-accent"
+            value={phone}
+            onChange={(e) => setPhone(formatPhone(e.target.value))}
+          />
+        </label>
+        <label className="flex items-start gap-3 text-sm text-ink-2">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-accent)]"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+          />
+          <span>
+            Соглашаюсь на обработку персональных данных по{" "}
+            <a href="/privacy.html" target="_blank" className="text-accent underline">
+              политике конфиденциальности
+            </a>
+          </span>
+        </label>
+        <ErrorNote>{error}</ErrorNote>
+        <div className="mt-auto pt-4">
+          <Button type="submit" className="w-full" disabled={busy || digitsCount(phone) !== 11 || !consent}>
+            {busy ? "Готовим…" : "Войти по номеру"}
+          </Button>
+          <p className="mt-3 text-center text-xs text-ink-3">Без паролей и SMS — по бесплатному звонку</p>
+        </div>
+      </form>
+    </main>
+  );
+}
