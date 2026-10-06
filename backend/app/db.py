@@ -1,7 +1,7 @@
 """Подключение к базе данных.
 
 Локально по умолчанию используется SQLite-файл, чтобы проект запускался без Docker.
-В окружениях Cloud.ru DATABASE_URL указывает на PostgreSQL.
+На сервере DATABASE_URL указывает на PostgreSQL (docker-compose), схему ведут миграции Alembic.
 """
 
 from collections.abc import Iterator
@@ -31,9 +31,11 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False
 
 
 def init_db() -> None:
+    """Локально (SQLite) и в тестах создаём таблицы сами; в PostgreSQL схему ведёт Alembic."""
     from app import models  # noqa: F401 — регистрирует таблицы в metadata
 
-    Base.metadata.create_all(engine)
+    if engine.dialect.name == "sqlite":
+        Base.metadata.create_all(engine)
 
 
 def get_db() -> Iterator[Session]:

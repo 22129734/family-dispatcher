@@ -1,0 +1,51 @@
+# Продакшн на одном сервере: PostgreSQL + приложение + Caddy (HTTPS).
+# Запуск: docker compose up -d --build   (переменные — в файле .env рядом)
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: family_dispatcher
+      POSTGRES_USER: family_dispatcher
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_dispatcher -d family_dispatcher"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Порт наружу не публикуем: база доступна только приложению.
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://family_dispatcher:${POSTGRES_PASSWORD}@db:5432/family_dispatcher
+      APP_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Пока домена нет — сайт отдаётся по http на IP; с доменом Caddy сам получит сертификат.
+      DOMAIN: ${DOMAIN:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

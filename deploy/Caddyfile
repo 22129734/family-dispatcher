@@ -1,0 +1,6 @@
+# Обратный прокси перед приложением. При DOMAIN=<домен> Caddy сам получает и
+# продлевает сертификат Let's Encrypt; при DOMAIN=:80 — просто http.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:8000
+}
