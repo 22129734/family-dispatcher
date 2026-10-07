@@ -25,6 +25,8 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://family_dispatcher:${POSTGRES_PASSWORD}@db:5432/family_dispatcher
       APP_ENV: production
+      # Время в базе — местное время семьи (без часового пояса); контейнер живёт по нему же
+      TZ: ${TIMEZONE:-Europe/Moscow}
     depends_on:
       db:
         condition: service_healthy
