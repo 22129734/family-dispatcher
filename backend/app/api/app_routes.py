@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from sqlalchemy import select
 
-from app.auth import CurrentAccount, CurrentMember, DbSession, member_of
+from app.auth import CurrentAccount, CurrentMember, CurrentToken, DbSession, member_of
 from app.models import FamilyRow, MemberRow, TaskRow
 from app.schemas.api import (
     CreateFamilyRequest,
@@ -78,10 +78,11 @@ def _notify_author(background: BackgroundTasks, task: TaskRow, who: MemberRow, k
 
 @router.post("/families", response_model=SessionOut, status_code=201, tags=["family"])
 def create_family(
-    payload: CreateFamilyRequest, account: CurrentAccount, db: DbSession
+    payload: CreateFamilyRequest, account: CurrentAccount, token: CurrentToken, db: DbSession
 ) -> SessionOut:
     _require_no_family(db, account)
-    family = FamilyRow(name=payload.family_name.strip())
+    # Название семьи не спрашиваем — семья у человека одна
+    family = FamilyRow(name=(payload.family_name or "").strip() or "Моя семья")
     member = MemberRow(
         name=payload.member_name.strip(),
         has_car=payload.has_car,
@@ -93,7 +94,7 @@ def create_family(
     db.flush()
     fs.track(db, member, "family_created")
     db.commit()
-    return _session(member, account.token)
+    return _session(member, token)
 
 
 @router.get("/invites/{code}", response_model=InviteInfo, tags=["family"])
@@ -106,7 +107,11 @@ def invite_info(code: str, db: DbSession) -> InviteInfo:
 
 @router.post("/invites/{code}/join", response_model=SessionOut, status_code=201, tags=["family"])
 def join_family(
-    code: str, payload: JoinFamilyRequest, account: CurrentAccount, db: DbSession
+    code: str,
+    payload: JoinFamilyRequest,
+    account: CurrentAccount,
+    token: CurrentToken,
+    db: DbSession,
 ) -> SessionOut:
     _require_no_family(db, account)
     family = db.scalar(select(FamilyRow).where(FamilyRow.invite_code == code))
@@ -124,12 +129,12 @@ def join_family(
     db.flush()
     fs.track(db, member, "family_joined")
     db.commit()
-    return _session(member, account.token)
+    return _session(member, token)
 
 
 @router.get("/me", response_model=SessionOut, tags=["family"])
-def me(member: CurrentMember, account: CurrentAccount) -> SessionOut:
-    return _session(member, account.token)
+def me(member: CurrentMember, token: CurrentToken) -> SessionOut:
+    return _session(member, token)
 
 
 @router.patch("/me", response_model=MemberOut, tags=["family"])
@@ -174,10 +179,11 @@ def dispatch(
     payload: DispatchRequest, member: CurrentMember, db: DbSession, background: BackgroundTasks
 ) -> TaskRow:
     """Главный сценарий: сообщение → задача с исполнителем и сроком → ждёт ответа."""
-    draft = extractor.extract(payload.message, datetime.now())
+    others = [m.name for m in member.family.members if m.id != member.id]
+    draft = extractor.extract(payload.message, datetime.now(), member.name, others)
     task = fs.task_from_draft(draft, member.family, member)
     task.source = payload.source
-    assignee, why = fs.default_assignee(member.family, member, draft.requires_car)
+    assignee, why = fs.assignee_for(member.family, member, draft)
     fs.assign(task, assignee, member, why)
     db.add(task)
     db.flush()
@@ -235,6 +241,8 @@ def update_task(
     for field, value in changes.items():
         if field == "title" and value is None:
             continue
+        if field == "recurrence":
+            value = str(value or "none")
         setattr(task, field, value)
     if "due_at" in changes and task.due_at is not None:
         task.clarifying_question = None

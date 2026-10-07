@@ -13,6 +13,7 @@ class Priority(StrEnum):
 class Recurrence(StrEnum):
     NONE = "none"
     DAILY = "daily"
+    WEEKDAYS = "weekdays"  # по будням
     WEEKLY = "weekly"
     MONTHLY = "monthly"
 
@@ -33,3 +34,5 @@ class TaskDraft(BaseModel):
         default=None,
         description="Единственный уточняющий вопрос, если задача разобрана неоднозначно",
     )
+    # Кому адресовано дело, если это сказано явно: "self" — автору, иначе имя члена семьи
+    assignee: str | None = None

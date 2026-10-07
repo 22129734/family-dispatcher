@@ -5,11 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.task import Recurrence
+
 Role = Literal["adult", "teen", "child"]
 
 
 class CreateFamilyRequest(BaseModel):
-    family_name: str = Field(min_length=1, max_length=120)
+    family_name: str | None = Field(default=None, max_length=120)
     member_name: str = Field(min_length=1, max_length=80)
     has_car: bool = False
 
@@ -40,14 +42,31 @@ class UpdateMemberRequest(BaseModel):
 
 class PhoneStartRequest(BaseModel):
     phone: str = Field(min_length=10, max_length=20)
+    # True — войти звонком, даже если задан PIN-код (забыли PIN)
+    call: bool = False
 
 
 class PhoneCheckOut(BaseModel):
-    check_id: str
-    call_phone: str  # для ссылки tel:
-    call_phone_pretty: str
+    # pin — у номера есть PIN-код, звонок не нужен; call — позвонить на call_phone
+    method: Literal["call", "pin"] = "call"
     phone_masked: str
-    expires_in_s: int
+    check_id: str | None = None
+    call_phone: str | None = None  # для ссылки tel:
+    call_phone_pretty: str | None = None
+    expires_in_s: int | None = None
+
+
+class PinLoginRequest(BaseModel):
+    phone: str = Field(min_length=10, max_length=20)
+    pin: str = Field(min_length=4, max_length=4)
+
+
+class SetPinRequest(BaseModel):
+    pin: str = Field(pattern=r"^\d{4}$")
+
+
+class TokenOut(BaseModel):
+    token: str
 
 
 class PhoneCheckStatusOut(BaseModel):
@@ -57,6 +76,7 @@ class PhoneCheckStatusOut(BaseModel):
 
 class AccountOut(BaseModel):
     phone_masked: str
+    has_pin: bool = False
     member: MemberOut | None
     family_id: str | None
 
@@ -121,6 +141,7 @@ class UpdateTaskRequest(BaseModel):
     due_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=5, le=600)
     assignee_id: str | None = None
+    recurrence: Recurrence | None = None
 
 
 class DeclineRequest(BaseModel):

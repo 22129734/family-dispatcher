@@ -176,6 +176,70 @@ def test_done_recurring_task_spawns_next_for_same_assignee(
     assert (upcoming[0]["assignee_id"], upcoming[0]["status"]) == (family["dad_id"], "new")
 
 
+def test_explicit_self_or_named_assignee_overrides_default(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    mine = client.post(
+        "/api/v1/tasks/dispatch",
+        json={"message": "напомни мне завтра в 9 позвонить врачу"},
+        headers=auth(family["mom"]),
+    ).json()
+    assert (mine["assignee_id"], mine["status"]) == (family["mom_id"], "accepted")
+    named = client.post(
+        "/api/v1/tasks/dispatch",
+        json={"message": "папе завтра забрать посылку"},
+        headers=auth(family["mom"]),
+    ).json()
+    assert (named["assignee_id"], named["status"]) == (family["dad_id"], "new")
+
+
+def test_repeat_can_be_set_later_and_monthly_and_weekdays_roll_forward(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    task = client.post(
+        "/api/v1/tasks/dispatch",
+        json={"message": "оплатить интернет завтра в 10"},
+        headers=auth(family["mom"]),
+    ).json()
+    assert task["recurrence"] == "none"
+    edited = client.patch(
+        f"/api/v1/tasks/{task['id']}", json={"recurrence": "monthly"}, headers=auth(family["mom"])
+    ).json()
+    assert edited["recurrence"] == "monthly"
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["mom"]))
+    upcoming = [
+        t
+        for t in client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+        if t["status"] != "done"
+    ]
+    assert len(upcoming) == 1 and upcoming[0]["recurrence"] == "monthly"
+    assert upcoming[0]["due_at"][:7] > task["due_at"][:7]  # следующий месяц
+    off = client.patch(
+        f"/api/v1/tasks/{upcoming[0]['id']}", json={"recurrence": None}, headers=auth(family["mom"])
+    ).json()
+    assert off["recurrence"] == "none"
+
+
+def test_next_due_skips_weekend_for_weekdays() -> None:
+    from datetime import datetime
+
+    from app.services.family_service import next_due
+
+    friday = datetime(2026, 10, 9, 8, 0)
+    assert next_due(friday, "weekdays", friday).weekday() == 0  # понедельник
+    # Отметили поздно — следующий срок всё равно в будущем
+    late = next_due(datetime(2026, 10, 1, 8, 0), "daily", datetime(2026, 10, 7, 12, 0))
+    assert late == datetime(2026, 10, 8, 8, 0)
+    assert next_due(None, "none", friday) is None
+
+
+def test_family_name_is_optional(client: TestClient) -> None:
+    token = login(client, "79990000041")
+    created = client.post("/api/v1/families", json={"member_name": "Аня"}, headers=auth(token))
+    assert created.status_code == 201
+    assert client.get("/api/v1/family", headers=auth(token)).json()["name"] == "Моя семья"
+
+
 def test_alone_in_family_tasks_go_to_yourself(client: TestClient) -> None:
     token = login(client, "79990000020")
     client.post(

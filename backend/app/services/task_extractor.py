@@ -14,23 +14,56 @@ from app.services.llm_client import LLMClient
 
 _URGENT_MARKERS = ("срочно", "сегодня", "как можно скорее", "горит")
 _CAR_MARKERS = ("отвезти", "забрать", "привезти", "заехать", "довезти")
+# Порядок важен: «по будням» проверяем раньше «каждый день»
 _RECURRENCE_MARKERS = {
-    Recurrence.DAILY: ("каждый день", "ежедневно"),
-    Recurrence.WEEKLY: ("каждую неделю", "еженедельно", "по понедельникам", "по субботам"),
-    Recurrence.MONTHLY: ("каждый месяц", "ежемесячно"),
+    Recurrence.WEEKDAYS: ("по будням", "в будни", "каждый будний", "по рабочим дням"),
+    Recurrence.DAILY: ("каждый день", "ежедневно", "каждое утро", "каждый вечер", "каждую ночь"),
+    Recurrence.WEEKLY: (
+        "каждую неделю",
+        "еженедельно",
+        "по понедельникам",
+        "по вторникам",
+        "по средам",
+        "по четвергам",
+        "по пятницам",
+        "по субботам",
+        "по воскресеньям",
+        "каждый понедельник",
+        "каждый вторник",
+        "каждую среду",
+        "каждый четверг",
+        "каждую пятницу",
+        "каждую субботу",
+        "каждое воскресенье",
+        "по выходным",
+    ),
+    Recurrence.MONTHLY: ("каждый месяц", "ежемесячно", "раз в месяц"),
 }
 _RELATIVE_DAYS = {"сегодня": 0, "завтра": 1, "послезавтра": 2}
+# Автор берёт дело на себя: «напомни мне», «себе», «я заберу», «сама схожу»
+_SELF_RE = re.compile(
+    r"\b(напомни(ть)?\s+мне|мне\s+напомни(ть)?|себе|я\s+сам[аи]?|сам[аи]?\s+\w+[ую]\b"
+    r"|я\s+\w+[ую]\b|мо[её]\s+дело|для\s+себя)",
+    re.IGNORECASE,
+)
 
 
 class TaskExtractor:
     def __init__(self, client: LLMClient | None = None) -> None:
         self._client = client or LLMClient()
 
-    def extract(self, message: str, now: datetime | None = None) -> TaskDraft:
+    def extract(
+        self,
+        message: str,
+        now: datetime | None = None,
+        author: str | None = None,
+        members: list[str] | None = None,
+    ) -> TaskDraft:
+        """members — имена остальных членов семьи: по ним понимаем, кому адресовано дело."""
         now = now or datetime.now()
 
-        rules = self._from_rules(message, now)
-        payload = self._client.extract_task(message, now.isoformat())
+        rules = self._from_rules(message, now, members or [])
+        payload = self._client.extract_task(message, now.isoformat(), author, members)
         if payload:
             return self._merge(self._from_payload(payload, now), rules)
         return rules
@@ -52,6 +85,8 @@ class TaskExtractor:
             updates["clarifying_question"] = None
         if rules.requires_car and not llm.requires_car:
             updates["requires_car"] = True
+        if llm.assignee is None and rules.assignee is not None:
+            updates["assignee"] = rules.assignee
         return llm.model_copy(update=updates) if updates else llm
 
     def _from_payload(self, payload: dict, now: datetime) -> TaskDraft:
@@ -76,9 +111,10 @@ class TaskExtractor:
             location=payload.get("location"),
             confidence=0.95 if not payload.get("clarifying_question") else 0.6,
             clarifying_question=payload.get("clarifying_question"),
+            assignee=(payload.get("assignee") or "").strip() or None,
         )
 
-    def _from_rules(self, message: str, now: datetime) -> TaskDraft:
+    def _from_rules(self, message: str, now: datetime, members: list[str]) -> TaskDraft:
         lowered = message.lower()
 
         recurrence = Recurrence.NONE
@@ -105,7 +141,24 @@ class TaskExtractor:
             requires_car=any(marker in lowered for marker in _CAR_MARKERS),
             confidence=0.5,
             clarifying_question=None if due_at else "На какой день поставить эту задачу?",
+            assignee=self._assignee_from_text(lowered, members),
         )
+
+    @staticmethod
+    def _assignee_from_text(lowered: str, members: list[str]) -> str | None:
+        """Явно названный член семьи («Олегу забрать», «папа, купи») или сам автор."""
+        words = re.findall(r"[а-яёa-z]+", lowered)
+        for name in members:
+            base = name.strip().lower()
+            if not base:
+                continue
+            # Имя в любом падеже: «Олег» → «Олегу», «Папа» → «папе»; короткие — только целиком
+            stem = base[:-1] if len(base) > 3 else base
+            if any(w == base or (len(base) > 3 and w.startswith(stem)) for w in words):
+                return name
+        if _SELF_RE.search(lowered):
+            return "self"
+        return None
 
     @staticmethod
     def _extract_hour(text: str) -> int | None:

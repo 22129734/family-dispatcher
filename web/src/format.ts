@@ -60,6 +60,7 @@ export function formatMinutes(minutes: number): string {
 export const RECURRENCE_LABEL: Record<Task["recurrence"], string | null> = {
   none: null,
   daily: "каждый день",
+  weekdays: "по будням",
   weekly: "каждую неделю",
   monthly: "каждый месяц",
 };

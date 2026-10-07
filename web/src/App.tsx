@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, tokenStore, type Family, type Member, type Session, type Task } from "./api";
+import { api, ApiError, tokenStore, type Family, type Session, type Task } from "./api";
 import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { Join, Welcome } from "./screens/Onboarding";
 import { PhoneLogin } from "./screens/PhoneLogin";
+import { SetPin } from "./screens/SetPin";
 import { ActPage } from "./screens/ActPage";
 import { platform, syncPush } from "./push";
 import { Today, type TaskActions } from "./screens/Today";
@@ -22,7 +23,7 @@ function inviteCodeFromPath(): string | null {
   return match ? match[1] : null;
 }
 
-type Stage = "booting" | "login" | "onboarding" | "home";
+type Stage = "booting" | "login" | "setpin" | "onboarding" | "home";
 
 export default function App() {
   const actToken = actTokenFromPath();
@@ -34,7 +35,7 @@ export default function App() {
 function Main() {
   const [stage, setStage] = useState<Stage>("booting");
   const [session, setSession] = useState<Session | null>(null);
-  const [invitedTo, setInvitedTo] = useState<string | null>(null);
+  const [invitedBy, setInvitedBy] = useState<string | null>(null);
   const inviteCode = inviteCodeFromPath();
 
   // Есть сессия → смотрим, состоит ли человек в семье; нет → вход по телефону
@@ -42,6 +43,8 @@ function Main() {
     if (!tokenStore.get()) return setStage("login");
     try {
       const account = await api.account();
+      // Сразу после первого входа звонком — PIN-код для следующих входов
+      if (!account.has_pin) return setStage("setpin");
       if (account.member && account.family_id) {
         setSession({ token: tokenStore.get() ?? "", member: account.member, family_id: account.family_id });
         setStage("home");
@@ -56,7 +59,12 @@ function Main() {
 
   useEffect(() => {
     void resolve();
-    if (inviteCode) api.inviteInfo(inviteCode).then((info) => setInvitedTo(info.family_name), () => undefined);
+    if (inviteCode) {
+      api.inviteInfo(inviteCode).then(
+        (info) => setInvitedBy(info.members.join(", ") || null),
+        () => undefined,
+      );
+    }
   }, [resolve, inviteCode]);
 
   const onToken = useCallback(
@@ -82,7 +90,8 @@ function Main() {
   }, []);
 
   if (stage === "booting") return <div className="min-h-dvh" />;
-  if (stage === "login") return <PhoneLogin onToken={onToken} invitedTo={invitedTo} />;
+  if (stage === "login") return <PhoneLogin onToken={onToken} invitedBy={invitedBy} />;
+  if (stage === "setpin") return <SetPin onDone={() => void resolve()} />;
   if (stage === "onboarding" || !session) {
     return inviteCode ? <Join code={inviteCode} onSession={start} /> : <Welcome onSession={start} />;
   }
@@ -91,7 +100,7 @@ function Main() {
 
 function Home({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("today");
-  const [me, setMe] = useState<Member>(session.member);
+  const me = session.member;
   const [family, setFamily] = useState<Family | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -158,6 +167,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     reopen: (id) => run(async () => replace(await api.reopen(id))),
     assign: (id, memberId) => run(async () => replace(await api.updateTask(id, { assignee_id: memberId }))),
     due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
+    repeat: (id, recurrence) => run(async () => replace(await api.updateTask(id, { recurrence }))),
     remove: (id) =>
       run(async () => {
         setTasks((list) => list.filter((t) => t.id !== id));
@@ -194,12 +204,11 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             tasks={tasks}
             members={family?.members ?? [me]}
             meId={me.id}
-            familyName={family?.name ?? ""}
             actions={actions}
             loading={loading}
           />
         ) : family ? (
-          <FamilyScreen family={family} me={me} onMeChanged={setMe} onLogout={onLogout} />
+          <FamilyScreen family={family} me={me} onLogout={onLogout} />
         ) : null}
       </main>
 

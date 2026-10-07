@@ -11,7 +11,7 @@ class OfflineClient:
 
     enabled = False
 
-    def extract_task(self, message: str, now_iso: str) -> None:
+    def extract_task(self, message: str, now_iso: str, *args: object) -> None:
         return None
 
 
@@ -21,7 +21,7 @@ class StubLLM:
     def __init__(self, payload: dict) -> None:
         self._payload = payload
 
-    def extract_task(self, message: str, now_iso: str) -> dict:
+    def extract_task(self, message: str, now_iso: str, *args: object) -> dict:
         return self._payload
 
 
@@ -107,3 +107,45 @@ def test_llm_values_win_over_rules() -> None:
     draft = extractor.extract("каждый день полить цветы", NOW)
     assert draft.recurrence == Recurrence.WEEKLY
     assert draft.priority == Priority.LOW
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("напомни мне завтра купить хлеб", "self"),
+        ("я заберу Машу в 6", "self"),
+        ("сама схожу в аптеку", "self"),
+        ("купить себе куртку", "self"),
+        ("Олегу забрать посылку", "Олег"),
+        ("папа, купи молоко", "Папа"),
+        ("забрать Машу с танцев", None),
+        ("купи мне лекарства", None),  # просьба к другому, а не дело себе
+    ],
+)
+def test_explicit_assignee_is_recognised(
+    offline_extractor: TaskExtractor, message: str, expected: str | None
+) -> None:
+    draft = offline_extractor.extract(message, now=NOW, author="Аня", members=["Олег", "Папа"])
+    assert draft.assignee == expected
+
+
+def test_llm_assignee_wins_and_rules_fill_gap() -> None:
+    llm = TaskExtractor(client=StubLLM({"title": "Купить хлеб", "assignee": "self"}))
+    assert llm.extract("купить хлеб", now=NOW).assignee == "self"
+    silent = TaskExtractor(client=StubLLM({"title": "Купить хлеб"}))
+    assert silent.extract("напомни мне купить хлеб", now=NOW).assignee == "self"
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("по будням в 8 отвести сына в школу", Recurrence.WEEKDAYS),
+        ("каждую субботу уборка", Recurrence.WEEKLY),
+        ("раз в месяц оплатить интернет", Recurrence.MONTHLY),
+        ("каждый вечер выгулять собаку", Recurrence.DAILY),
+    ],
+)
+def test_recurrence_markers(
+    offline_extractor: TaskExtractor, message: str, expected: Recurrence
+) -> None:
+    assert offline_extractor.extract(message, now=NOW).recurrence == expected

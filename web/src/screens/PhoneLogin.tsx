@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type PhoneCheck } from "../api";
 import { Button, ErrorNote } from "../components/ui";
+import { PinField } from "../components/PinField";
 
 const POLL_MS = 2500;
 
@@ -25,10 +26,10 @@ const digitsCount = (value: string) => value.replace(/\D/g, "").length;
 
 export function PhoneLogin({
   onToken,
-  invitedTo,
+  invitedBy,
 }: {
   onToken: (token: string) => void;
-  invitedTo?: string | null;
+  invitedBy?: string | null;
 }) {
   const [phone, setPhone] = useState("+7");
   const [consent, setConsent] = useState(false);
@@ -38,10 +39,13 @@ export function PhoneLogin({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<number | undefined>(undefined);
+  const [pinMode, setPinMode] = useState<string | null>(null); // маска номера, если вход по PIN
+  const [pin, setPin] = useState("");
 
   // Ожидание звонка: опрашиваем сервер и считаем оставшееся время
   useEffect(() => {
-    if (!check) return;
+    if (!check || check.method !== "call" || !check.check_id || !check.expires_in_s) return;
+    const checkId = check.check_id;
     const deadline = Date.now() + check.expires_in_s * 1000;
     setSecondsLeft(check.expires_in_s);
     setExpired(false);
@@ -52,7 +56,7 @@ export function PhoneLogin({
 
     const poll = async () => {
       try {
-        const status = await api.phoneCheckStatus(check.check_id);
+        const status = await api.phoneCheckStatus(checkId);
         if (status.status === "confirmed" && status.token) return onToken(status.token);
         if (status.status === "expired" || status.status === "used") return setExpired(true);
       } catch {
@@ -68,12 +72,19 @@ export function PhoneLogin({
     };
   }, [check, onToken]);
 
-  async function start(e?: FormEvent) {
+  async function start(e?: FormEvent, call = false) {
     e?.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      setCheck(await api.startPhoneCheck(phone));
+      const started = await api.startPhoneCheck(phone, call);
+      if (started.method === "pin") {
+        setPin("");
+        setPinMode(started.phone_masked);
+      } else {
+        setPinMode(null);
+        setCheck(started);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -81,7 +92,53 @@ export function PhoneLogin({
     }
   }
 
-  if (check) {
+  async function loginWithPin(value: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const { token } = await api.pinLogin(phone, value);
+      onToken(token);
+    } catch (err) {
+      setError((err as Error).message);
+      setPin("");
+      setBusy(false);
+    }
+  }
+
+  if (pinMode) {
+    return (
+      <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
+        <div className="pt-12 pb-6">
+          <h1 className="text-3xl leading-tight font-bold tracking-tight">Введите PIN-код</h1>
+          <p className="mt-3 text-base text-ink-2">
+            Для номера <span className="font-medium text-ink">{pinMode}</span>
+          </p>
+        </div>
+        <PinField
+          value={pin}
+          onChange={(value) => {
+            setPin(value);
+            if (value.length === 4) void loginWithPin(value);
+          }}
+          autoComplete="current-password"
+          disabled={busy}
+        />
+        <div className="mt-4">
+          <ErrorNote>{error}</ErrorNote>
+        </div>
+        <div className="mt-auto flex flex-col gap-2 pt-6">
+          <Button variant="soft" className="w-full" onClick={() => start(undefined, true)} disabled={busy}>
+            Забыли PIN-код? Войти звонком
+          </Button>
+          <Button variant="ghost" className="w-full" onClick={() => setPinMode(null)}>
+            Изменить номер
+          </Button>
+        </div>
+      </main>
+    );
+  }
+
+  if (check && check.method === "call") {
     const minutes = Math.floor(secondsLeft / 60);
     const seconds = String(secondsLeft % 60).padStart(2, "0");
     return (
@@ -97,7 +154,7 @@ export function PhoneLogin({
         {expired ? (
           <div className="flex flex-col gap-3">
             <p className="text-ink-2">Время вышло. Попробуйте ещё раз — это займёт минуту.</p>
-            <Button className="w-full" onClick={() => start()} disabled={busy}>
+            <Button className="w-full" onClick={() => start(undefined, true)} disabled={busy}>
               {busy ? "Готовим…" : "Попробовать снова"}
             </Button>
           </div>
@@ -132,7 +189,7 @@ export function PhoneLogin({
     <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
       <div className="pt-12 pb-8">
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
-        {invitedTo && <p className="text-sm font-medium text-accent">Приглашение в семью «{invitedTo}»</p>}
+        {invitedBy && <p className="text-sm font-medium text-accent">Вас приглашает {invitedBy}</p>}
         <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">
           Поручения, которые доходят и выполняются
         </h1>
@@ -171,9 +228,8 @@ export function PhoneLogin({
         <ErrorNote>{error}</ErrorNote>
         <div className="mt-auto pt-4">
           <Button type="submit" className="w-full" disabled={busy || digitsCount(phone) !== 11 || !consent}>
-            {busy ? "Готовим…" : "Войти по номеру"}
+            {busy ? "Готовим…" : "Войти"}
           </Button>
-          <p className="mt-3 text-center text-xs text-ink-3">Без паролей и SMS — по бесплатному звонку</p>
         </div>
       </form>
     </main>

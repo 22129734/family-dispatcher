@@ -33,12 +33,24 @@ EXTRACT_TASK_FUNCTION = {
             },
             "duration_minutes": {"type": "integer", "description": "Ожидаемая длительность"},
             "priority": {"type": "string", "enum": ["low", "normal", "high"]},
-            "recurrence": {"type": "string", "enum": ["none", "daily", "weekly", "monthly"]},
+            "recurrence": {
+                "type": "string",
+                "enum": ["none", "daily", "weekdays", "weekly", "monthly"],
+                "description": "Повтор: weekdays — по будням (пн–пт)",
+            },
             "requires_car": {"type": "boolean"},
             "location": {"type": "string"},
             "clarifying_question": {
                 "type": "string",
                 "description": "Один уточняющий вопрос, если сообщение неоднозначно",
+            },
+            "assignee": {
+                "type": "string",
+                "description": (
+                    "Кто сделает, только если это сказано явно: «self» — автор берёт дело "
+                    "на себя («я заберу», «напомни мне», «сама схожу»); имя члена семьи — "
+                    "если сказано, кому поручить; иначе не заполнять"
+                ),
             },
         },
         "required": ["title"],
@@ -99,10 +111,21 @@ class LLMClient:
                 call.tokens_out = usage.get("completion_tokens")
                 return data
 
-    def extract_task(self, message: str, now_iso: str) -> dict | None:
+    def extract_task(
+        self,
+        message: str,
+        now_iso: str,
+        author: str | None = None,
+        members: list[str] | None = None,
+    ) -> dict | None:
         """Аргументы вызова create_task или None, если модель недоступна."""
         if not self.enabled:
             return None
+        context = f"Сейчас: {now_iso}."
+        if author:
+            context += f" Автор сообщения: {author}."
+        if members:
+            context += f" Остальные члены семьи: {', '.join(members)}."
         try:
             data = self._chat(
                 "extract_task",

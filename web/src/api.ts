@@ -15,12 +15,14 @@ export interface Session {
   family_id: string;
 }
 
+/** Начало входа: «pin» — у номера есть PIN-код; «call» — позвонить на call_phone. */
 export interface PhoneCheck {
-  check_id: string;
-  call_phone: string;
-  call_phone_pretty: string;
+  method: "call" | "pin";
   phone_masked: string;
-  expires_in_s: number;
+  check_id: string | null;
+  call_phone: string | null;
+  call_phone_pretty: string | null;
+  expires_in_s: number | null;
 }
 
 export interface PhoneCheckStatus {
@@ -30,6 +32,7 @@ export interface PhoneCheckStatus {
 
 export interface Account {
   phone_masked: string;
+  has_pin: boolean;
   member: Member | null;
   family_id: string | null;
 }
@@ -51,6 +54,8 @@ export interface Family {
   members: Member[];
 }
 
+export type Recurrence = "none" | "daily" | "weekdays" | "weekly" | "monthly";
+
 export interface Task {
   id: string;
   title: string;
@@ -59,7 +64,7 @@ export interface Task {
   due_at: string | null;
   duration_minutes: number;
   priority: "low" | "normal" | "high";
-  recurrence: "none" | "daily" | "weekly" | "monthly";
+  recurrence: Recurrence;
   requires_car: boolean;
   location: string | null;
   clarifying_question: string | null;
@@ -119,7 +124,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = tokenStore.get();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const response = await fetch(`/api/v1${path}`, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(`/api/v1${path}`, { ...init, headers });
+  } catch {
+    // «Load failed» / «Failed to fetch» — запрос не дошёл до сервера
+    throw new ApiError(0, "Нет связи с сервером. Проверьте интернет и попробуйте ещё раз");
+  }
   if (!response.ok) {
     let message = "Что-то пошло не так";
     try {
@@ -139,17 +150,18 @@ const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 
 export const api = {
-  startPhoneCheck: (phone: string) => post<PhoneCheck>("/auth/phone/start", { phone }),
+  startPhoneCheck: (phone: string, call = false) => post<PhoneCheck>("/auth/phone/start", { phone, call }),
+  pinLogin: (phone: string, pin: string) => post<{ token: string }>("/auth/pin/login", { phone, pin }),
+  setPin: (pin: string) => post<void>("/auth/pin", { pin }),
   phoneCheckStatus: (checkId: string) => request<PhoneCheckStatus>(`/auth/phone/status/${checkId}`),
   account: () => request<Account>("/account"),
   logout: () => post<void>("/auth/logout").catch(() => undefined),
 
-  createFamily: (family_name: string, member_name: string, has_car: boolean) =>
-    post<Session>("/families", { family_name, member_name, has_car }),
+  createFamily: (member_name: string) => post<Session>("/families", { member_name }),
   inviteInfo: (code: string) =>
     request<{ family_name: string; members: string[] }>(`/invites/${code}`),
-  join: (code: string, member_name: string, role: Role, has_car: boolean) =>
-    post<Session>(`/invites/${code}/join`, { member_name, role, has_car }),
+  join: (code: string, member_name: string, role: Role) =>
+    post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),
   updateMe: (changes: Partial<Pick<Member, "name" | "has_car" | "dislikes">>) =>
     patch<Member>("/me", changes),
@@ -158,7 +170,7 @@ export const api = {
   tasks: () => request<Task[]>("/tasks"),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
-  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "assignee_id">>) =>
+  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "assignee_id" | "recurrence">>) =>
     patch<Task>(`/tasks/${id}`, changes),
   accept: (id: string) => post<Task>(`/tasks/${id}/accept`),
   decline: (id: string, reason: string | null) => post<Task>(`/tasks/${id}/decline`, { reason }),

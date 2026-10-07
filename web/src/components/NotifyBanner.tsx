@@ -64,15 +64,23 @@ export function NotifyBanner() {
           <p className="font-semibold">Чтобы поручения приходили уведомлением</p>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink-2">
             <li>
-              Нажмите <span className="font-medium text-ink">«Поделиться»</span>{" "}
-              <ShareIcon /> внизу Safari
+              Нажмите <B>«•••»</B> справа в нижней строке Safari
             </li>
             <li>
-              Выберите <span className="font-medium text-ink">«На экран „Домой“»</span>
+              Нажмите <B>«Поделиться»</B> <ShareIcon />
             </li>
-            <li>Откройте «Диспетчер» с экрана «Домой» и включите уведомления</li>
+            <li>
+              В открывшемся окне нажмите <B>«•••» (Ещё)</B> и выберите <B>«На экран „Домой“»</B>
+            </li>
+            <li>
+              Нажмите <B>«Добавить»</B>
+            </li>
+            <li>Откройте «Диспетчер» с экрана «Домой», войдите и нажмите «Включить»</li>
           </ol>
-          <p className="mt-2 text-xs text-ink-3">На iPhone уведомления работают только так (iOS 16.4 и новее)</p>
+          <p className="mt-2 text-xs text-ink-3">
+            Если кнопка «Поделиться» видна сразу внизу экрана — начните со второго шага. На iPhone
+            уведомления работают только из приложения на экране «Домой» (iOS 16.4 и новее).
+          </p>
         </>
       )}
 
@@ -122,6 +130,10 @@ export function NotifyBanner() {
       </button>
     </div>
   );
+}
+
+function B({ children }: { children: React.ReactNode }) {
+  return <span className="font-medium text-ink">{children}</span>;
 }
 
 function ShareIcon() {

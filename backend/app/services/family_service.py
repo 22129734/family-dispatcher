@@ -9,8 +9,9 @@
 и из кнопок push-уведомления, поэтому живут здесь, а не в роутерах.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
+from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
 
 from app.models import EventRow, FamilyRow, MemberRow, TaskRow
@@ -18,7 +19,26 @@ from app.schemas.task import TaskDraft
 
 # Кто может брать поручения: взрослые и подростки
 _DOERS = {"adult", "teen"}
-_RECURRENCE_STEP = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}
+_RECURRENCE_STEP = {
+    "daily": relativedelta(days=1),
+    "weekdays": relativedelta(days=1),
+    "weekly": relativedelta(weeks=1),
+    "monthly": relativedelta(months=1),
+}
+# Повтор без срока: следующий раз — в 18:00
+_DEFAULT_HOUR = 18
+
+
+def next_due(due_at: datetime | None, recurrence: str, now: datetime) -> datetime | None:
+    """Срок следующего повтора: шагаем от прежнего срока, пока не окажемся в будущем."""
+    step = _RECURRENCE_STEP.get(recurrence)
+    if step is None:
+        return None
+    due = due_at or now.replace(hour=_DEFAULT_HOUR, minute=0, second=0, microsecond=0)
+    due += step
+    while due <= now or (recurrence == "weekdays" and due.weekday() >= 5):
+        due += step if recurrence != "weekdays" else relativedelta(days=1)
+    return due
 
 
 class TaskActionError(Exception):
@@ -44,6 +64,20 @@ def default_assignee(
     if len(adults) == 1:
         return adults[0], None
     return None, None
+
+
+def assignee_for(
+    family: FamilyRow, author: MemberRow, draft: TaskDraft
+) -> tuple[MemberRow | None, str | None]:
+    """Кому поручить: явно сказанное в сообщении важнее правила «второму взрослому»."""
+    if draft.assignee == "self":
+        return author, None
+    if draft.assignee:
+        wanted = draft.assignee.strip().lower()
+        for member in family.members:
+            if member.name.strip().lower() == wanted:
+                return member, None
+    return default_assignee(family, author, draft.requires_car)
 
 
 def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> TaskRow:
@@ -112,8 +146,8 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
     task.completed_at = now
     task.accepted_at = task.accepted_at or now
 
-    step = _RECURRENCE_STEP.get(task.recurrence)
-    if step and task.due_at:
+    due = next_due(task.due_at, task.recurrence, now)
+    if due is not None:
         # Следующая — тому же исполнителю, снова ждёт ответа
         members = {m.id: m for m in member.family.members}
         next_task = TaskRow(
@@ -122,7 +156,7 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             title=task.title,
             source=task.source,
             beneficiary=task.beneficiary,
-            due_at=task.due_at + step,
+            due_at=due,
             duration_minutes=task.duration_minutes,
             priority=task.priority,
             recurrence=task.recurrence,

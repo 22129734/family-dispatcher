@@ -1,12 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Role, type Session } from "../api";
-import { Button, ErrorNote, Field, Toggle } from "../components/ui";
-import { CAR_LABEL } from "./FamilyScreen";
+import { Button, ErrorNote, Field } from "../components/ui";
 
 export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
-  const [familyName, setFamilyName] = useState("");
   const [name, setName] = useState("");
-  const [hasCar, setHasCar] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,7 +12,7 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
     setBusy(true);
     setError(null);
     try {
-      onSession(await api.createFamily(familyName, name, hasCar));
+      onSession(await api.createFamily(name));
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -26,21 +23,14 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
     <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
       <div className="pt-12 pb-8">
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
-        <h1 className="text-3xl leading-tight font-bold tracking-tight">Создайте семью</h1>
+        <h1 className="text-3xl leading-tight font-bold tracking-tight">Как вас зовут?</h1>
         <p className="mt-3 text-base text-ink-2">
-          Потом пригласите мужа или жену по ссылке — поручения будут приходить им сами.
+          Так вас увидят близкие. Потом пригласите мужа или жену по ссылке — поручения будут
+          приходить им сами.
         </p>
       </div>
 
       <form onSubmit={submit} className="flex flex-1 flex-col gap-4">
-        <Field
-          label="Как назовём семью"
-          placeholder="Например, Ивановы"
-          value={familyName}
-          onChange={(e) => setFamilyName(e.target.value)}
-          required
-          maxLength={120}
-        />
         <Field
           label="Ваше имя"
           placeholder="Как вас называют дома"
@@ -50,13 +40,10 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
           maxLength={80}
           autoComplete="given-name"
         />
-        <Toggle checked={hasCar} onChange={setHasCar}>
-          {CAR_LABEL}
-        </Toggle>
         <ErrorNote>{error}</ErrorNote>
         <div className="mt-auto pt-4">
-          <Button type="submit" className="w-full" disabled={busy || !familyName.trim() || !name.trim()}>
-            {busy ? "Создаём…" : "Создать семью"}
+          <Button type="submit" className="w-full" disabled={busy || !name.trim()}>
+            {busy ? "Создаём…" : "Продолжить"}
           </Button>
           <p className="mt-3 text-center text-xs text-ink-3">
             Уже есть семья? Попросите близких прислать ссылку-приглашение.
@@ -78,7 +65,6 @@ export function Join({ code, onSession }: { code: string; onSession: (s: Session
   const [notFound, setNotFound] = useState(false);
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>("adult");
-  const [hasCar, setHasCar] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,7 +77,7 @@ export function Join({ code, onSession }: { code: string; onSession: (s: Session
     setBusy(true);
     setError(null);
     try {
-      onSession(await api.join(code, name, role, hasCar));
+      onSession(await api.join(code, name, role));
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);
@@ -116,11 +102,9 @@ export function Join({ code, onSession }: { code: string; onSession: (s: Session
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
         <p className="text-sm font-medium text-accent">Приглашение</p>
         <h1 className="mt-1 text-3xl font-bold tracking-tight">
-          {info ? `Семья «${info.family_name}»` : "…"}
+          {info ? `Вас приглашает ${info.members.join(", ")}` : "…"}
         </h1>
-        {info && info.members.length > 0 && (
-          <p className="mt-2 text-ink-2">Уже здесь: {info.members.join(", ")}</p>
-        )}
+        <p className="mt-2 text-ink-2">Поручения будут приходить вам уведомлением — с кнопкой «Беру».</p>
       </div>
 
       <form onSubmit={submit} className="flex flex-1 flex-col gap-4">
@@ -149,11 +133,6 @@ export function Join({ code, onSession }: { code: string; onSession: (s: Session
             ))}
           </div>
         </div>
-        {role !== "child" && (
-          <Toggle checked={hasCar} onChange={setHasCar}>
-            {CAR_LABEL}
-          </Toggle>
-        )}
         <ErrorNote>{error}</ErrorNote>
         <div className="mt-auto pt-4">
           <Button type="submit" className="w-full" disabled={busy || !info || !name.trim()}>

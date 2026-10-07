@@ -25,6 +25,13 @@ class Settings(BaseSettings):
     # Подпись ссылок действий из уведомлений (HMAC). В продакшне — случайная строка.
     secret_key: str = "local-secret-key"
 
+    # Почта: утренний отчёт команде (Яндекс Почта, пароль приложения)
+    smtp_host: str = "smtp.yandex.ru"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    report_to: str = "family-dispatcher@yandex.ru"
+
     database_url: str = "sqlite:///./family_dispatcher.db"
     cors_origins: str = "http://localhost:5173"
     admin_token: str = ""

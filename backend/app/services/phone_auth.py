@@ -7,8 +7,11 @@
 локальной разработки и тестов. В продакшне без ключа вход недоступен.
 """
 
+import hashlib
+import hmac
 import logging
 import re
+import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -24,6 +27,13 @@ CHECK_TTL = timedelta(minutes=5)  # столько SMS.RU ждёт звонка
 POLL_INTERVAL = timedelta(seconds=2)  # не дёргаем провайдера чаще
 PER_PHONE_LIMIT = (3, timedelta(minutes=10))
 PER_IP_LIMIT = (10, timedelta(hours=1))
+
+# PIN-код для быстрого входа без звонка
+PIN_RE = re.compile(r"^\d{4}$")
+PIN_MAX_FAILURES = 5  # подряд — дальше вход только звонком
+PIN_LOCK = timedelta(minutes=15)
+PIN_IP_LIMIT = (20, timedelta(hours=1))  # неудачных попыток с одного адреса
+_SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
 
 
 class PhoneAuthError(Exception):
@@ -135,3 +145,29 @@ def check_limits(recent_for_phone: int, recent_for_ip: int) -> None:
 
 def is_expired(created_at: datetime, now: datetime) -> bool:
     return now - created_at > CHECK_TTL
+
+
+# ---------- PIN-код ----------
+
+
+def hash_pin(pin: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(pin.encode(), salt=salt, **_SCRYPT)
+    return f"scrypt${salt.hex()}${digest.hex()}"
+
+
+def verify_pin(pin: str, stored: str | None) -> bool:
+    if not stored:
+        return False
+    try:
+        scheme, salt_hex, digest_hex = stored.split("$")
+    except ValueError:
+        return False
+    if scheme != "scrypt":
+        return False
+    digest = hashlib.scrypt(pin.encode(), salt=bytes.fromhex(salt_hex), **_SCRYPT)
+    return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+def pin_locked(locked_until: datetime | None, now: datetime) -> bool:
+    return locked_until is not None and locked_until > now

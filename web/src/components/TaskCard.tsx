@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Member, Task } from "../api";
+import type { Member, Recurrence, Task } from "../api";
 import { formatDue, fromInputValue, RECURRENCE_LABEL, toInputValue } from "../format";
 import { Avatar } from "./ui";
 
@@ -14,8 +14,17 @@ interface Props {
   onReopen: () => void;
   onAssign: (memberId: string) => void;
   onDue: (iso: string | null) => void;
+  onRepeat: (recurrence: Recurrence) => void;
   onDelete: () => void;
 }
+
+const REPEAT_OPTIONS: [Recurrence, string][] = [
+  ["none", "Не повторять"],
+  ["daily", "Каждый день"],
+  ["weekdays", "По будням"],
+  ["weekly", "Каждую неделю"],
+  ["monthly", "Каждый месяц"],
+];
 
 /** Статус поручения так, как его видит автор. */
 function statusLabel(task: Task, assignee: Member | undefined, meId: string) {
@@ -69,7 +78,6 @@ export function TaskCard(props: Props) {
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
             <span className={overdue ? "font-medium text-warn" : ""}>{formatDue(task.due_at)}</span>
             {recurrence && <span>· {recurrence}</span>}
-            {task.requires_car && <span>· 🚗</span>}
             {task.priority === "high" && !done && <span className="font-medium text-warn">· срочно</span>}
           </p>
           {status && <p className={`mt-1 text-sm font-medium ${status.tone}`}>{status.text}</p>}
@@ -151,6 +159,23 @@ export function TaskCard(props: Props) {
                   className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base"
                 />
               </label>
+
+              <div>
+                <span className="mb-1 block text-xs font-medium text-ink-3">Повторять</span>
+                <div className="flex flex-wrap gap-2">
+                  {REPEAT_OPTIONS.map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => props.onRepeat(value)}
+                      className={`h-9 rounded-full border px-3 text-sm ${
+                        task.recurrence === value ? "border-accent bg-accent-soft" : "border-line"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <div>
                 <span className="mb-1 block text-xs font-medium text-ink-3">Кто делает</span>

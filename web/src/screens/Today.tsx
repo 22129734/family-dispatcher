@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Member, Task } from "../api";
+import type { Member, Recurrence, Task } from "../api";
 import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
 import { BUCKET_TITLES, bucketOf, type Bucket } from "../format";
@@ -13,6 +13,7 @@ export interface TaskActions {
   reopen: (id: string) => void;
   assign: (id: string, memberId: string) => void;
   due: (id: string, iso: string | null) => void;
+  repeat: (id: string, recurrence: Recurrence) => void;
   remove: (id: string) => void;
 }
 
@@ -20,14 +21,12 @@ export function Today({
   tasks,
   members,
   meId,
-  familyName,
   actions,
   loading,
 }: {
   tasks: Task[];
   members: Member[];
   meId: string;
-  familyName: string;
   actions: TaskActions;
   loading: boolean;
 }) {
@@ -53,8 +52,7 @@ export function Today({
   return (
     <div className="px-4 pb-4">
       <header className="pt-6 pb-4">
-        <p className="text-sm text-ink-2">{familyName}</p>
-        <h1 className="mt-0.5 text-2xl font-bold tracking-tight">
+        <h1 className="text-2xl font-bold tracking-tight">
           {greeting}
           {myOpen > 0 ? `, на вас ${myOpen} ${plural(myOpen, "дело", "дела", "дел")}` : ""}
         </h1>
@@ -106,6 +104,7 @@ export function Today({
                   onReopen={() => actions.reopen(task.id)}
                   onAssign={(memberId) => actions.assign(task.id, memberId)}
                   onDue={(iso) => actions.due(task.id, iso)}
+                  onRepeat={(value) => actions.repeat(task.id, value)}
                   onDelete={() => actions.remove(task.id)}
                 />
               ))}

@@ -14,24 +14,50 @@ def _uuid() -> str:
     return uuid.uuid4().hex
 
 
-def _token() -> str:
-    return secrets.token_urlsafe(32)
-
-
 def _invite_code() -> str:
     return secrets.token_urlsafe(6)
 
 
 class AccountRow(Base):
-    """Учётная запись человека: подтверждённый телефон и сессия."""
+    """Учётная запись человека: подтверждённый телефон и PIN-код для быстрого входа."""
 
     __tablename__ = "accounts"
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     phone: Mapped[str] = mapped_column(String(16), unique=True, index=True)  # 7XXXXXXXXXX
-    token: Mapped[str] = mapped_column(String(64), unique=True, index=True, default=_token)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     last_login_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    # PIN хранится только хэшем (scrypt). После 5 ошибок подряд — вход только звонком.
+    pin_hash: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    pin_failures: Mapped[int] = mapped_column(Integer, default=0)
+    pin_locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class SessionRow(Base):
+    """Сессия устройства. У аккаунта их несколько: телефон, приложение на экране, компьютер."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    account_id: Mapped[str] = mapped_column(
+        ForeignKey("accounts.id", ondelete="CASCADE"), index=True
+    )
+    # Храним sha256 токена: утечка базы не даёт войти
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    user_agent: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class LoginAttemptRow(Base):
+    """Неудачные попытки входа по PIN — для ограничения перебора с одного адреса."""
+
+    __tablename__ = "login_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    phone: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, index=True)
 
 
 class PhoneCheckRow(Base):
