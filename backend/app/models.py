@@ -105,6 +105,8 @@ class MemberRow(Base):
     has_car: Mapped[bool] = mapped_column(Boolean, default=False)
     capacity_minutes: Mapped[int] = mapped_column(Integer, default=600)
     dislikes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Личная настройка: за сколько минут до срока напоминать о деле (0 — не напоминать)
+    remind_before_min: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     family: Mapped[FamilyRow] = relationship(back_populates="members")
@@ -137,6 +139,11 @@ class TaskRow(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Если исполнитель ответил «Не могу» — кто и почему; задача возвращается автору
     decline_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # Список покупок и других пунктов: [{"text": "молоко", "done": false}, ...]
+    items: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    # Напоминание перед сроком отправлено; исполнитель ответил «Я помню»
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    remembered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

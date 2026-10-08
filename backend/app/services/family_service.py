@@ -93,6 +93,7 @@ def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> T
         requires_car=draft.requires_car,
         location=draft.location,
         clarifying_question=draft.clarifying_question,
+        items=[{"text": text, "done": False} for text in draft.items],
     )
 
 
@@ -116,6 +117,23 @@ def accept(task: TaskRow, member: MemberRow) -> bool:
         return False
     task.status = "accepted"
     task.accepted_at = datetime.now()
+    return True
+
+
+def remember(task: TaskRow, member: MemberRow) -> bool:
+    """«Я помню» на напоминании: исполнитель подтвердил, что дело в силе.
+
+    Если поручение ещё ждало ответа, «помню» означает и «беру».
+    """
+    if task.assignee_id != member.id:
+        raise TaskActionError(403, "Это поручение другому человеку")
+    if task.status == "done":
+        return False
+    now = datetime.now()
+    task.remembered_at = now
+    if task.status == "new":
+        task.status = "accepted"
+        task.accepted_at = now
     return True
 
 
@@ -162,6 +180,8 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             recurrence=task.recurrence,
             requires_car=task.requires_car,
             location=task.location,
+            # Тот же список покупок — снова не отмеченный
+            items=[{"text": item["text"], "done": False} for item in task.items or []],
         )
         assign(
             next_task, members.get(task.assignee_id), members[task.created_by_id], task.rationale

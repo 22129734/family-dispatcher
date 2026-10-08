@@ -94,6 +94,7 @@ def _info(task: TaskRow, member: MemberRow) -> ActInfoOut:
         can_decline=mine and task.status != "done",
         can_done=task.status != "done"
         and (mine or task.created_by_id == member.id or task.assignee_id is None),
+        can_remember=mine and task.status == "accepted" and task.remembered_at is None,
     )
 
 
@@ -108,15 +109,27 @@ def act_info(token: str, db: DbSession) -> ActInfoOut:
 @router.post("/act/{token}/{action}", response_model=ActInfoOut)
 def act(
     token: str,
-    action: Literal["accept", "decline", "done"],
+    action: Literal["accept", "decline", "done", "remember"],
     background: BackgroundTasks,
     db: DbSession,
     payload: ActRequest | None = None,
 ) -> ActInfoOut:
-    """Кнопки «Беру» / «Не могу» / «Сделано» из уведомления или со страницы задачи."""
+    """Кнопки «Беру» / «Не могу» / «Сделано» / «Я помню» из уведомления или со страницы задачи."""
     task, member = _resolve(db, token)
     author_id = task.created_by_id
     try:
+        if action == "remember":
+            was_new = task.status == "new"
+            if fs.remember(task, member):
+                fs.track(db, member, "task_remembered", via="push")
+            db.commit()
+            if was_new and author_id != member.id:
+                background.add_task(
+                    notifications.deliver,
+                    author_id,
+                    notifications.answer_message(task, member, "accepted"),
+                )
+            return _info(task, member)
         if action == "accept":
             changed = fs.accept(task, member)
             kind = "accepted"

@@ -36,3 +36,5 @@ class TaskDraft(BaseModel):
     )
     # Кому адресовано дело, если это сказано явно: "self" — автору, иначе имя члена семьи
     assignee: str | None = None
+    # Список покупок или пунктов: «купи молоко, хлеб и яйца» → ["молоко", "хлеб", "яйца"]
+    items: list[str] = Field(default_factory=list)

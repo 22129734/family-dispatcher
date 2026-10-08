@@ -168,6 +168,11 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     assign: (id, memberId) => run(async () => replace(await api.updateTask(id, { assignee_id: memberId }))),
     due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
     repeat: (id, recurrence) => run(async () => replace(await api.updateTask(id, { recurrence }))),
+    items: (id, items) => {
+      // Отметка в списке — сразу на экране, сервер догонит
+      setTasks((list) => list.map((t) => (t.id === id ? { ...t, items } : t)));
+      void run(async () => replace(await api.setItems(id, items)));
+    },
     remove: (id) =>
       run(async () => {
         setTasks((list) => list.filter((t) => t.id !== id));
@@ -181,12 +186,15 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       const task = await api.dispatch(text, source);
       setTasks((list) => [task, ...list]);
       setTab("today");
+      const assignee = family?.members.find((m) => m.id === task.assignee_id);
       notify(
         !task.assignee_id
           ? "Добавлено — выберите, кто сделает"
           : task.assignee_id === me.id
             ? "Записано — это ваше дело"
-            : `Поручено: ${memberName(task.assignee_id)}. Ждём ответа`,
+            : assignee && !assignee.notifications
+              ? `Поручено: ${assignee.name}. Уведомления у него(неё) выключены — скажите сами`
+              : `Поручено: ${memberName(task.assignee_id)}. Ждём ответа`,
       );
     } catch (err) {
       notify((err as Error).message);

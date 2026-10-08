@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Member, Recurrence, Task } from "../api";
+import type { Member, Recurrence, Task, TaskItem } from "../api";
 import { formatDue, fromInputValue, RECURRENCE_LABEL, toInputValue } from "../format";
 import { Avatar } from "./ui";
 
@@ -15,6 +15,7 @@ interface Props {
   onAssign: (memberId: string) => void;
   onDue: (iso: string | null) => void;
   onRepeat: (recurrence: Recurrence) => void;
+  onItems: (items: TaskItem[]) => void;
   onDelete: () => void;
 }
 
@@ -33,8 +34,14 @@ function statusLabel(task: Task, assignee: Member | undefined, meId: string) {
     return { text: task.decline_reason ?? "Не назначено — выберите, кто сделает", tone: "text-warn" };
   }
   if (task.assignee_id === meId) return null;
-  if (task.status === "accepted") return { text: `${assignee?.name ?? "Исполнитель"} взял(а)`, tone: "text-ok" };
-  return { text: `Ждёт ответа: ${assignee?.name ?? "исполнитель"}`, tone: "text-ink-3" };
+  const name = assignee?.name ?? "Исполнитель";
+  if (task.status === "accepted") {
+    return { text: `${name} взял(а)${task.remembered_at ? " · помнит" : ""}`, tone: "text-ok" };
+  }
+  if (assignee && !assignee.notifications) {
+    return { text: `${name} не получает уведомления — скажите сами`, tone: "text-warn" };
+  }
+  return { text: `Ждёт ответа: ${name}`, tone: "text-ink-3" };
 }
 
 export function TaskCard(props: Props) {
@@ -100,10 +107,17 @@ export function TaskCard(props: Props) {
           </button>
         </div>
       )}
+      {task.items.length > 0 && <Items task={task} canEdit={!done} onItems={props.onItems} />}
+
       {mine && task.status === "accepted" && (
         <div className="px-3.5 pb-3.5">
-          <button onClick={props.onDone} className="h-11 w-full rounded-xl bg-ok-soft font-semibold text-ok active:opacity-80">
-            Сделано
+          {/* Кнопка-действие, а не отметка: пустой кружок и контур, зелёная заливка — только у сделанного */}
+          <button
+            onClick={props.onDone}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-ok font-semibold text-ok active:bg-ok-soft"
+          >
+            <span className="h-4 w-4 rounded-full border-2 border-current" aria-hidden />
+            Отметить «Сделано»
           </button>
         </div>
       )}
@@ -215,5 +229,63 @@ export function TaskCard(props: Props) {
         </div>
       )}
     </li>
+  );
+}
+
+/** Список покупок: отмечает любой в семье, пункт можно добавить. */
+function Items({ task, canEdit, onItems }: { task: Task; canEdit: boolean; onItems: (items: TaskItem[]) => void }) {
+  const [adding, setAdding] = useState("");
+  const left = task.items.filter((i) => !i.done).length;
+
+  const toggle = (index: number) =>
+    onItems(task.items.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
+
+  return (
+    <div className="px-3.5 pb-3">
+      <p className="mb-1 text-xs font-medium text-ink-3">
+        {left ? `Осталось ${left} из ${task.items.length}` : "Всё куплено"}
+      </p>
+      <ul className="space-y-0.5">
+        {task.items.map((item, index) => (
+          <li key={`${item.text}-${index}`}>
+            <button
+              disabled={!canEdit}
+              onClick={() => toggle(index)}
+              className="flex w-full items-center gap-2.5 rounded-lg py-1.5 text-left active:bg-surface-2"
+            >
+              <span
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 text-[11px] ${
+                  item.done ? "border-ok bg-ok text-white" : "border-ink-3"
+                }`}
+                aria-hidden
+              >
+                {item.done ? "✓" : ""}
+              </span>
+              <span className={item.done ? "text-ink-3 line-through" : ""}>{item.text}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {canEdit && (
+        <form
+          className="mt-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const text = adding.trim();
+            if (!text) return;
+            onItems([...task.items, { text, done: false }]);
+            setAdding("");
+          }}
+        >
+          <input
+            value={adding}
+            onChange={(e) => setAdding(e.target.value)}
+            maxLength={120}
+            placeholder="+ добавить в список"
+            className="h-9 w-full rounded-lg border border-transparent bg-transparent px-1 text-sm outline-none focus:border-line"
+          />
+        </form>
+      )}
+    </div>
   );
 }

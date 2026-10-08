@@ -31,6 +31,9 @@ class MemberOut(BaseModel):
     has_car: bool
     capacity_minutes: int
     dislikes: list[str]
+    remind_before_min: int = 60
+    # Есть ли у человека устройство с push — второй супруг должен видеть, что уведомления не дойдут
+    notifications: bool = False
 
 
 class UpdateMemberRequest(BaseModel):
@@ -38,6 +41,8 @@ class UpdateMemberRequest(BaseModel):
     has_car: bool | None = None
     capacity_minutes: int | None = Field(default=None, ge=0, le=6000)
     dislikes: list[str] | None = None
+    # За сколько минут до срока напоминать: 0 — не напоминать, максимум — за сутки
+    remind_before_min: Literal[0, 15, 30, 60, 120, 1440] | None = None
 
 
 class PhoneStartRequest(BaseModel):
@@ -99,6 +104,17 @@ class FamilyOut(BaseModel):
     members: list[MemberOut]
 
 
+class TaskItem(BaseModel):
+    """Пункт списка в задаче — например, покупка."""
+
+    text: str = Field(min_length=1, max_length=120)
+    done: bool = False
+
+
+class ItemsRequest(BaseModel):
+    items: list[TaskItem] = Field(max_length=60)
+
+
 class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -118,6 +134,9 @@ class TaskOut(BaseModel):
     created_by_id: str
     rationale: str | None
     decline_reason: str | None
+    items: list[TaskItem] = []
+    reminded_at: datetime | None = None
+    remembered_at: datetime | None = None
     created_at: datetime
     accepted_at: datetime | None
     completed_at: datetime | None
@@ -180,6 +199,7 @@ class ActInfoOut(BaseModel):
     can_accept: bool
     can_decline: bool
     can_done: bool
+    can_remember: bool = False
 
 
 # События клиента: открытия, просмотры и воронка подключения уведомлений

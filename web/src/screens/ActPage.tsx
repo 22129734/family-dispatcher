@@ -15,7 +15,7 @@ export function ActPage({ token }: { token: string }) {
     api.actInfo(token).then(setInfo, (err) => setError((err as Error).message));
   }, [token]);
 
-  async function act(action: "accept" | "decline" | "done") {
+  async function act(action: "accept" | "decline" | "done" | "remember") {
     setBusy(true);
     try {
       setInfo(await api.act(token, action, action === "decline" ? reason.trim() || null : null));
@@ -48,7 +48,7 @@ export function ActPage({ token }: { token: string }) {
               {task.status === "done"
                 ? "✓ Сделано"
                 : task.status === "accepted"
-                  ? `✓ ${mine ? "Вы берёте" : `${info.assignee_name} берёт`}`
+                  ? `✓ ${mine ? "Вы берёте" : `${info.assignee_name} берёт`}${task.remembered_at ? (mine ? " · помните" : " · помнит") : ""}`
                   : task.assignee_id
                     ? (mine ? "Ждёт вашего ответа" : "Ждёт ответа")
                     : (task.decline_reason ?? "Без исполнителя")}
@@ -81,6 +81,11 @@ export function ActPage({ token }: { token: string }) {
               {info.can_accept && (
                 <Button onClick={() => act("accept")} disabled={busy}>
                   Беру
+                </Button>
+              )}
+              {info.can_remember && (
+                <Button variant="soft" onClick={() => act("remember")} disabled={busy}>
+                  Я помню
                 </Button>
               )}
               {info.can_done && !info.can_accept && (

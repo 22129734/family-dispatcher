@@ -40,6 +40,17 @@ _RECURRENCE_MARKERS = {
     Recurrence.MONTHLY: ("каждый месяц", "ежемесячно", "раз в месяц"),
 }
 _RELATIVE_DAYS = {"сегодня": 0, "завтра": 1, "послезавтра": 2}
+# «Купи молоко, хлеб и яйца» → список покупок (правила — подстраховка, основное — LLM)
+_BUY_RE = re.compile(
+    r"^\s*(?:надо\s+|нужно\s+)?(?:купи(?:ть)?|докупи(?:ть)?)\s+(.+)$", re.IGNORECASE
+)
+_NOISE_RE = re.compile(
+    r"\b(сегодня|завтра|послезавтра|срочно|по дороге( домой)?|после работы|вечером|утром"
+    r"|в\s+\d{1,2}(:\d{2})?)\b",
+    re.IGNORECASE,
+)
+MAX_ITEMS = 60
+
 # Автор берёт дело на себя: «напомни мне», «себе», «я заберу», «сама схожу»
 _SELF_RE = re.compile(
     r"\b(напомни(ть)?\s+мне|мне\s+напомни(ть)?|себе|я\s+сам[аи]?|сам[аи]?\s+\w+[ую]\b"
@@ -87,6 +98,8 @@ class TaskExtractor:
             updates["requires_car"] = True
         if llm.assignee is None and rules.assignee is not None:
             updates["assignee"] = rules.assignee
+        if not llm.items and rules.items:
+            updates["items"] = rules.items
         return llm.model_copy(update=updates) if updates else llm
 
     def _from_payload(self, payload: dict, now: datetime) -> TaskDraft:
@@ -112,6 +125,7 @@ class TaskExtractor:
             confidence=0.95 if not payload.get("clarifying_question") else 0.6,
             clarifying_question=payload.get("clarifying_question"),
             assignee=(payload.get("assignee") or "").strip() or None,
+            items=_clean_items(payload.get("items")),
         )
 
     def _from_rules(self, message: str, now: datetime, members: list[str]) -> TaskDraft:
@@ -142,7 +156,19 @@ class TaskExtractor:
             confidence=0.5,
             clarifying_question=None if due_at else "На какой день поставить эту задачу?",
             assignee=self._assignee_from_text(lowered, members),
+            items=self._items_from_text(message),
         )
+
+    @staticmethod
+    def _items_from_text(message: str) -> list[str]:
+        """Покупки через запятую или «и»; одна вещь — не список, а просто задача."""
+        match = _BUY_RE.match(message.strip().rstrip("."))
+        if not match:
+            return []
+        rest = _NOISE_RE.sub(" ", match.group(1))
+        parts = re.split(r",|;|\s+и\s+", rest)
+        items = _clean_items(parts)
+        return items if len(items) >= 2 else []
 
     @staticmethod
     def _assignee_from_text(lowered: str, members: list[str]) -> str | None:
@@ -167,3 +193,14 @@ class TaskExtractor:
             return None
         hour = int(match.group(1))
         return hour if 0 <= hour <= 23 else None
+
+
+def _clean_items(raw: object) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    items = []
+    for value in raw:
+        text = " ".join(str(value).split()).strip(" .,-")
+        if text and text.lower() not in {item.lower() for item in items}:
+            items.append(text[:120])
+    return items[:MAX_ITEMS]

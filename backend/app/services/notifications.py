@@ -101,6 +101,40 @@ def new_task_message(task: TaskRow, author: MemberRow) -> PushMessage:
     )
 
 
+def _when(due: datetime, now: datetime) -> str:
+    minutes = max(0, round((due - now).total_seconds() / 60))
+    if minutes < 60:
+        return f"через {minutes} мин" if minutes else "сейчас"
+    day = (
+        "сегодня"
+        if due.date() == now.date()
+        else "завтра"
+        if (due.date() - now.date()).days == 1
+        else due.strftime("%d.%m")
+    )
+    return f"{day} в {due:%H:%M}"
+
+
+def reminder_message(task: TaskRow, now: datetime) -> PushMessage:
+    """Исполнителю перед сроком.
+
+    Ещё не ответил — «Беру» / «Не могу»; уже взял — «Я помню» / «Сделано».
+    """
+    url, act = _act(task, task.assignee_id)
+    if task.status == "new":
+        actions = [{"action": "accept", "title": "Беру"}, {"action": "decline", "title": "Не могу"}]
+        title = f"Ждёт ответа, {_when(task.due_at, now)}"
+    else:
+        actions = [
+            {"action": "remember", "title": "Я помню"},
+            {"action": "done", "title": "Сделано"},
+        ]
+        title = f"Напоминание: {_when(task.due_at, now)}"
+    return PushMessage(
+        title=title, body=task.title, url=url, tag=f"task-{task.id}", actions=actions, act_url=act
+    )
+
+
 def answer_message(task: TaskRow, who: MemberRow, kind: str) -> PushMessage:
     """Автору: исполнитель ответил «Беру» / «Не могу» или отметил «Сделано»."""
     verb = {"accepted": "берёт", "declined": "не может", "done": "сделал(а)"}[kind]

@@ -1,6 +1,6 @@
 // Service worker: устанавливаемое приложение, оболочка без сети и push-уведомления.
 // API-запросы всегда идут в сеть — данные семьи не кэшируем.
-const SHELL = "shell-v2";
+const SHELL = "shell-v3";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(["/", "/icon.svg"])));
@@ -70,14 +70,15 @@ self.addEventListener("notificationclick", (event) => {
   const { url, act_url } = notification.data || {};
   notification.close();
 
-  if (event.action === "accept" && act_url) {
-    // «Беру» прямо из уведомления — без открытия приложения
+  const confirmations = { accept: "Записали: вы берёте", remember: "Хорошо, вы помните", done: "Отмечено: сделано" };
+  if (confirmations[event.action] && act_url) {
+    // «Беру», «Я помню», «Сделано» прямо из уведомления — без открытия приложения
     event.waitUntil(
-      fetch(`${act_url}/accept`, { method: "POST" })
+      fetch(`${act_url}/${event.action}`, { method: "POST" })
         .then(async (response) => {
           if (!response.ok) throw new Error(String(response.status));
           const info = await response.json();
-          return self.registration.showNotification("Записали: вы берёте", {
+          return self.registration.showNotification(confirmations[event.action], {
             body: info.task.title,
             tag: notification.tag,
             silent: true,

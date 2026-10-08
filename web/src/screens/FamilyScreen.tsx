@@ -6,6 +6,20 @@ import { SetPin } from "./SetPin";
 
 const ROLE_LABEL: Record<Member["role"], string> = { adult: "взрослый", teen: "подросток", child: "ребёнок" };
 
+/** Ссылки в приглашении — латиницей: кириллический адрес мессенджеры показывают как «xn--…». */
+const SHARE_ORIGIN = window.location.hostname.startsWith("xn--")
+  ? "https://semeinidispetcher.ru"
+  : window.location.origin;
+
+const REMIND_OPTIONS: [number, string][] = [
+  [15, "За 15 мин"],
+  [30, "За 30 мин"],
+  [60, "За час"],
+  [120, "За 2 часа"],
+  [1440, "За день"],
+  [0, "Не напоминать"],
+];
+
 export function FamilyScreen({
   family,
   me,
@@ -52,6 +66,15 @@ export function FamilyScreen({
                   {m.id === me.id && <span className="text-ink-3"> · вы</span>}
                 </p>
                 <p className="text-sm text-ink-2">{ROLE_LABEL[m.role]}</p>
+                {m.role !== "child" &&
+                  (m.notifications ? (
+                    <p className="text-xs text-ok">🔔 Уведомления включены</p>
+                  ) : (
+                    <p className="text-xs font-medium text-warn">
+                      🔕 Уведомления выключены —{" "}
+                      {m.id === me.id ? "включите на вкладке «Дела»" : "поручения сами не дойдут"}
+                    </p>
+                  ))}
               </div>
             </li>
           ))}
@@ -59,6 +82,8 @@ export function FamilyScreen({
       </section>
 
       <Invite family={family} me={me} />
+
+      <Reminders initial={family.members.find((m) => m.id === me.id)?.remind_before_min ?? 60} />
 
       <section className="space-y-2">
         <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Вход</h2>
@@ -79,7 +104,7 @@ export function FamilyScreen({
  */
 function Invite({ family, me }: { family: Family; me: Member }) {
   const [copied, setCopied] = useState(false);
-  const url = `${window.location.origin}/join/${family.invite_code}`;
+  const url = `${SHARE_ORIGIN}/join/${family.invite_code}`;
   const text = `${me.name} приглашает тебя в Семейный диспетчер — поручения будут приходить уведомлением. Открой ссылку:\n${url}`;
   const encodedUrl = encodeURIComponent(url);
   const encodedText = encodeURIComponent(text);
@@ -152,6 +177,41 @@ function Invite({ family, me }: { family: Family; me: Member }) {
       <p className="text-xs text-ink-3">
         Для Max: нажмите «Скопировать приглашение» и вставьте сообщение в чат — ссылка будет внутри.
       </p>
+    </section>
+  );
+}
+
+/** Личная настройка: за сколько до срока напоминать о моих делах. */
+function Reminders({ initial }: { initial: number }) {
+  const [value, setValue] = useState(initial);
+
+  async function choose(minutes: number) {
+    const previous = value;
+    setValue(minutes);
+    try {
+      await api.updateMe({ remind_before_min: minutes });
+    } catch {
+      setValue(previous);
+    }
+  }
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Напоминать о моих делах</h2>
+      <div className="flex flex-wrap gap-2">
+        {REMIND_OPTIONS.map(([minutes, label]) => (
+          <button
+            key={minutes}
+            onClick={() => void choose(minutes)}
+            className={`h-9 rounded-full border px-3 text-sm ${
+              value === minutes ? "border-accent bg-accent-soft" : "border-line"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-ink-3">Придёт уведомление с кнопками «Я помню» и «Сделано».</p>
     </section>
   );
 }

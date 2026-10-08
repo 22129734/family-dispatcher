@@ -7,6 +7,14 @@ export interface Member {
   has_car: boolean;
   capacity_minutes: number;
   dislikes: string[];
+  remind_before_min: number;
+  /** Есть устройство с push — иначе поручения до человека сами не дойдут */
+  notifications: boolean;
+}
+
+export interface TaskItem {
+  text: string;
+  done: boolean;
 }
 
 export interface Session {
@@ -45,6 +53,7 @@ export interface ActInfo {
   can_accept: boolean;
   can_decline: boolean;
   can_done: boolean;
+  can_remember: boolean;
 }
 
 export interface Family {
@@ -73,6 +82,9 @@ export interface Task {
   created_by_id: string;
   rationale: string | null;
   decline_reason: string | null;
+  items: TaskItem[];
+  reminded_at: string | null;
+  remembered_at: string | null;
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
@@ -163,7 +175,7 @@ export const api = {
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),
-  updateMe: (changes: Partial<Pick<Member, "name" | "has_car" | "dislikes">>) =>
+  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min">>) =>
     patch<Member>("/me", changes),
   family: () => request<Family>("/family"),
 
@@ -172,6 +184,7 @@ export const api = {
     post<Task>("/tasks/dispatch", { message, source }),
   updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "assignee_id" | "recurrence">>) =>
     patch<Task>(`/tasks/${id}`, changes),
+  setItems: (id: string, items: TaskItem[]) => request<Task>(`/tasks/${id}/items`, { method: "PUT", body: JSON.stringify({ items }) }),
   accept: (id: string) => post<Task>(`/tasks/${id}/accept`),
   decline: (id: string, reason: string | null) => post<Task>(`/tasks/${id}/decline`, { reason }),
   done: (id: string) => post<Task>(`/tasks/${id}/done`),
@@ -182,7 +195,7 @@ export const api = {
   pushSubscribe: (endpoint: string, p256dh: string, auth: string) =>
     post<void>("/push/subscribe", { endpoint, keys: { p256dh, auth } }),
   actInfo: (token: string) => request<ActInfo>(`/act/${token}`),
-  act: (token: string, action: "accept" | "decline" | "done", reason: string | null = null) =>
+  act: (token: string, action: "accept" | "decline" | "done" | "remember", reason: string | null = null) =>
     post<ActInfo>(`/act/${token}/${action}`, action === "decline" ? { reason } : undefined),
 
   track: (name: ClientEvent, props: Record<string, string> = {}) =>

@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.auth import CurrentAccount, CurrentMember, CurrentToken, DbSession, member_of
-from app.models import FamilyRow, MemberRow, TaskRow
+from app.models import FamilyRow, MemberRow, PushSubscriptionRow, TaskRow
 from app.schemas.api import (
     CreateFamilyRequest,
     CreateTaskRequest,
@@ -15,6 +15,7 @@ from app.schemas.api import (
     DispatchRequest,
     FamilyOut,
     InviteInfo,
+    ItemsRequest,
     JoinFamilyRequest,
     MemberOut,
     SessionOut,
@@ -148,13 +149,22 @@ def update_me(payload: UpdateMemberRequest, member: CurrentMember, db: DbSession
 
 
 @router.get("/family", response_model=FamilyOut, tags=["family"])
-def get_family(member: CurrentMember) -> FamilyOut:
+def get_family(member: CurrentMember, db: DbSession) -> FamilyOut:
     family = member.family
+    ids = [m.id for m in family.members]
+    with_push = set(
+        db.scalars(
+            select(PushSubscriptionRow.member_id).where(PushSubscriptionRow.member_id.in_(ids))
+        )
+    )
     return FamilyOut(
         id=family.id,
         name=family.name,
         invite_code=family.invite_code,
-        members=[MemberOut.model_validate(m) for m in family.members],
+        members=[
+            MemberOut.model_validate(m).model_copy(update={"notifications": m.id in with_push})
+            for m in family.members
+        ],
     )
 
 
@@ -244,6 +254,10 @@ def update_task(
         if field == "recurrence":
             value = str(value or "none")
         setattr(task, field, value)
+    if "due_at" in changes or "assignee_id" in payload.model_dump(exclude_unset=True):
+        # Новый срок или исполнитель — напоминание отправится заново
+        task.reminded_at = None
+        task.remembered_at = None
     if "due_at" in changes and task.due_at is not None:
         task.clarifying_question = None
     fs.track(db, member, "task_edited", fields=fields)
@@ -312,6 +326,18 @@ def reopen_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
     task.status = "accepted" if task.accepted_at else "new"
     task.completed_at = None
     fs.track(db, member, "task_reopened")
+    db.commit()
+    return task
+
+
+@router.put("/tasks/{task_id}/items", response_model=TaskOut, tags=["tasks"])
+def set_items(task_id: str, payload: ItemsRequest, member: CurrentMember, db: DbSession) -> TaskRow:
+    """Список покупок: отметить купленное, добавить или убрать пункт. Доступен всей семье."""
+    task = _family_task(db, member, task_id)
+    before = {item["text"]: item.get("done", False) for item in task.items or []}
+    task.items = [item.model_dump() for item in payload.items]
+    checked = sum(1 for item in payload.items if item.done and not before.get(item.text, False))
+    fs.track(db, member, "task_items_updated", count=len(payload.items), checked=checked)
     db.commit()
     return task
 

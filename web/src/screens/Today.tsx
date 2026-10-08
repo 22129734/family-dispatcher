@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Member, Recurrence, Task } from "../api";
+import type { Member, Recurrence, Task, TaskItem } from "../api";
 import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
 import { BUCKET_TITLES, bucketOf, type Bucket } from "../format";
@@ -14,6 +14,7 @@ export interface TaskActions {
   assign: (id: string, memberId: string) => void;
   due: (id: string, iso: string | null) => void;
   repeat: (id: string, recurrence: Recurrence) => void;
+  items: (id: string, items: TaskItem[]) => void;
   remove: (id: string) => void;
 }
 
@@ -105,6 +106,7 @@ export function Today({
                   onAssign={(memberId) => actions.assign(task.id, memberId)}
                   onDue={(iso) => actions.due(task.id, iso)}
                   onRepeat={(value) => actions.repeat(task.id, value)}
+                  onItems={(items) => actions.items(task.id, items)}
                   onDelete={() => actions.remove(task.id)}
                 />
               ))}
