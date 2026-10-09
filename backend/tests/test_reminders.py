@@ -288,3 +288,64 @@ def test_reject_recurring_removes_spawned_next(
         if t["status"] != "done"
     ]
     assert [t["id"] for t in open_after] == [task["id"]]
+
+
+# ---------- Проверка просьбы перед отправкой ----------
+
+
+def test_parse_does_not_save_and_flags_unclear(client: TestClient, family: dict[str, str]) -> None:
+    clear = client.post(
+        "/api/v1/tasks/parse",
+        json={"message": "Папе завтра в 19 забрать посылку", "source": "voice"},
+        headers=auth(family["mom"]),
+    ).json()
+    assert clear["assignee_id"] == family["dad_id"] and clear["due_at"] and not clear["unclear"]
+    vague = client.post(
+        "/api/v1/tasks/parse", json={"message": "забрать посылку"}, headers=auth(family["mom"])
+    ).json()
+    assert vague["due_at"] is None and vague["unclear"] is True
+    assert (
+        client.get("/api/v1/tasks", headers=auth(family["mom"])).json() == []
+    )  # ничего не создано
+
+
+def test_create_with_all_fields_and_deferred_notify(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    task = client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Забрать заказ с ВБ",
+            "assignee_id": family["dad_id"],
+            "due_at": "2026-10-14T19:00:00",
+            "recurrence": "weekly",
+            "priority": "high",
+            "items": ["хлеб", " ", "молоко"],
+            "source": "voice",
+            "defer_notify": True,
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    assert (task["recurrence"], task["priority"], [i["text"] for i in task["items"]]) == (
+        "weekly", "high", ["хлеб", "молоко"],
+    )  # fmt: skip
+    assert sent == []  # уведомление ждёт файлов
+    assert (
+        client.post(f"/api/v1/tasks/{task['id']}/notify", headers=auth(family["dad"])).status_code
+        == 403
+    )
+    client.post(f"/api/v1/tasks/{task['id']}/notify", headers=auth(family["mom"]))
+    assert sent and sent[-1][0] == family["dad_id"]
+
+
+def test_confirm_mode_setting(client: TestClient, family: dict[str, str]) -> None:
+    me = client.get("/api/v1/me", headers=auth(family["mom"])).json()["member"]
+    assert me["confirm_mode"] is None  # не выбирали — «если неясно»
+    saved = client.patch("/api/v1/me", json={"confirm_mode": "always"}, headers=auth(family["mom"]))
+    assert saved.json()["confirm_mode"] == "always"
+    assert (
+        client.patch(
+            "/api/v1/me", json={"confirm_mode": "sometimes"}, headers=auth(family["mom"])
+        ).status_code
+        == 422
+    )

@@ -10,8 +10,39 @@ export interface Member {
   remind_before_min: number;
   /** Тема оформления; null — не выбирал(а), показываем «Лаванду» */
   theme: string | null;
+  /** Проверка просьбы перед отправкой; null — «если что-то неясно» */
+  confirm_mode: ConfirmMode | null;
   /** Есть устройство с push — иначе поручения до человека сами не дойдут */
   notifications: boolean;
+}
+
+export type ConfirmMode = "auto" | "always" | "never";
+
+/** Разобранная фраза — ещё не задача (шторка «Проверьте просьбу»). */
+export interface Draft {
+  title: string;
+  due_at: string | null;
+  recurrence: Recurrence;
+  priority: "low" | "normal" | "high";
+  items: string[];
+  requires_car: boolean;
+  assignee_id: string | null;
+  rationale: string | null;
+  clarifying_question: string | null;
+  unclear: boolean;
+}
+
+export interface NewTask {
+  title: string;
+  due_at: string | null;
+  assignee_id?: string | null;
+  recurrence?: Recurrence;
+  priority?: "low" | "normal" | "high";
+  items?: string[];
+  requires_car?: boolean;
+  source?: "text" | "voice" | "manual";
+  source_text?: string | null;
+  defer_notify?: boolean;
 }
 
 export interface TaskFile {
@@ -196,12 +227,14 @@ export const api = {
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),
-  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme">>) =>
+  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme" | "confirm_mode">>) =>
     patch<Member>("/me", changes),
   family: () => request<Family>("/family"),
 
   tasks: (doneDays = 1) => request<Task[]>(`/tasks?include_done_days=${doneDays}`),
-  createTask: (title: string, due_at: string | null) => post<Task>("/tasks", { title, due_at }),
+  createTask: (task: NewTask) => post<Task>("/tasks", task),
+  parseTask: (message: string, source: "text" | "voice") => post<Draft>("/tasks/parse", { message, source }),
+  notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
   updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "assignee_id" | "recurrence">>) =>

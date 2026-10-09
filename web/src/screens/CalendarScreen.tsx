@@ -234,7 +234,7 @@ function QuickAdd({ day, onCreated }: { day: string; onCreated: (task: Task) => 
     setBusy(true);
     setError(null);
     try {
-      onCreated(await api.createTask(title.trim(), `${day}T${time || "18:00"}:00`));
+      onCreated(await api.createTask({ title: title.trim(), due_at: `${day}T${time || "18:00"}:00` }));
       setTitle("");
     } catch (err) {
       setError((err as Error).message);

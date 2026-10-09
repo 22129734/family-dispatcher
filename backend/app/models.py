@@ -118,6 +118,8 @@ class MemberRow(Base):
     remind_before_min: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
     # Тема оформления; пусто — тема по умолчанию («Лаванда»)
     theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Проверка просьбы перед отправкой: auto — если что-то неясно, always, never; пусто — auto
+    confirm_mode: Mapped[str | None] = mapped_column(String(8), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     family: Mapped[FamilyRow] = relationship(back_populates="members")

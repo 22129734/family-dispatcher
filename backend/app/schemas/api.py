@@ -35,6 +35,7 @@ class MemberOut(BaseModel):
     dislikes: list[str]
     remind_before_min: int = 60
     theme: str | None = None
+    confirm_mode: str | None = None
     # Есть ли у человека устройство с push — второй супруг должен видеть, что уведомления не дойдут
     notifications: bool = False
 
@@ -47,6 +48,7 @@ class UpdateMemberRequest(BaseModel):
     # За сколько минут до срока напоминать: 0 — не напоминать, максимум — за сутки
     remind_before_min: Literal[0, 15, 30, 60, 120, 1440] | None = None
     theme: Literal["dawn", "lavender", "night", "mint"] | None = None
+    confirm_mode: Literal["auto", "always", "never"] | None = None
 
 
 class PhoneStartRequest(BaseModel):
@@ -186,6 +188,30 @@ class CreateTaskRequest(BaseModel):
     duration_minutes: int = Field(default=30, ge=5, le=600)
     assignee_id: str | None = None
     requires_car: bool = False
+    # Поля из шторки проверки (после /tasks/parse)
+    recurrence: Recurrence = Recurrence.NONE
+    priority: Literal["low", "normal", "high"] = "normal"
+    items: list[str] = Field(default_factory=list, max_length=60)
+    source: Literal["text", "voice", "manual"] = "manual"
+    source_text: str | None = Field(default=None, max_length=1000)
+    # True — не слать уведомление сразу: сначала прикрепят файлы, потом POST /tasks/{id}/notify
+    defer_notify: bool = False
+
+
+class DraftOut(BaseModel):
+    """Разобранная фраза — ещё не задача: человек проверит и поправит перед отправкой."""
+
+    title: str
+    due_at: datetime | None
+    recurrence: str
+    priority: str
+    items: list[str]
+    requires_car: bool
+    assignee_id: str | None
+    rationale: str | None
+    clarifying_question: str | None
+    # Срок или исполнитель не поняты — в режиме «если неясно» показываем шторку
+    unclear: bool
 
 
 class UpdateTaskRequest(BaseModel):

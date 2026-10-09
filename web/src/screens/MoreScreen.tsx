@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api, type Family, type Member } from "../api";
 import { Button } from "../components/ui";
 import { applyTheme, currentTheme, THEMES, type ThemeKey } from "../theme";
+import type { ConfirmMode } from "../api";
 import { SetPin } from "./SetPin";
 import { InstallCard } from "../components/InstallCard";
 import { VoiceFeedback } from "../components/VoiceFeedback";
@@ -116,6 +117,8 @@ export function MoreScreen({
       </header>
 
       <ThemePicker />
+
+      <ConfirmModeSetting initial={family?.members.find((m) => m.id === me.id)?.confirm_mode ?? null} />
 
       <Reminders initial={family?.members.find((m) => m.id === me.id)?.remind_before_min ?? me.remind_before_min} />
 
@@ -301,6 +304,49 @@ function ThemePicker() {
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+const CONFIRM_OPTIONS: [ConfirmMode, string, string][] = [
+  ["never", "Отправлять сразу", "Сказали — просьба ушла. Поправить можно карандашом."],
+  ["auto", "Проверять, если что-то неясно", "Покажем просьбу, только когда не поняли срок или кому. Рекомендуем."],
+  ["always", "Всегда проверять", "Перед каждой отправкой: день, время, повтор, кому, список и файлы."],
+];
+
+/** Проверка просьбы перед отправкой — для тех, кто хочет всё уточнять сам. */
+function ConfirmModeSetting({ initial }: { initial: ConfirmMode | null }) {
+  const [mode, setMode] = useState<ConfirmMode>(initial ?? "auto");
+
+  async function choose(value: ConfirmMode) {
+    const previous = mode;
+    setMode(value);
+    try {
+      await api.updateMe({ confirm_mode: value });
+    } catch {
+      setMode(previous);
+    }
+  }
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Перед отправкой просьбы</h2>
+      {CONFIRM_OPTIONS.map(([value, title, note]) => (
+        <button
+          key={value}
+          onClick={() => void choose(value)}
+          aria-pressed={mode === value}
+          className={`bg-surface w-full rounded-2xl border p-3 text-left transition ${
+            mode === value ? "ring-2 ring-accent" : ""
+          }`}
+        >
+          <span className="block text-sm font-semibold">
+            {title}
+            {mode === value && <span className="text-accent"> ✓</span>}
+          </span>
+          <span className="mt-0.5 block text-xs text-ink-2">{note}</span>
+        </button>
+      ))}
     </section>
   );
 }

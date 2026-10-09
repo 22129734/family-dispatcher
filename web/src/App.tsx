@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, tokenStore, type Family, type Session, type Task } from "./api";
+import { api, ApiError, tokenStore, type Draft, type Family, type Session, type Task } from "./api";
+import { ConfirmSheet } from "./components/ConfirmSheet";
 import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
@@ -250,9 +251,51 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     speech.start();
   };
 
+  // Шторка «Проверьте просьбу»: что сказали и что из этого понял разбор
+  const [confirm, setConfirm] = useState<{ draft: Draft; text: string; source: "text" | "voice" } | null>(null);
+
+  function announce(task: Task) {
+    setTasks((list) => [task, ...list.filter((t) => t.id !== task.id)]);
+    setTab("today");
+    const assignee = family?.members.find((m) => m.id === task.assignee_id);
+    notify(
+      !task.assignee_id
+        ? "Добавлено — выберите, кто сделает"
+        : task.assignee_id === me.id
+          ? "Записано — это ваше дело"
+          : assignee && !assignee.notifications
+            ? `Попросили: ${assignee.name}. Уведомления у него(неё) выключены — скажите сами`
+            : `Попросили: ${memberName(task.assignee_id)}. Ждём ответа`,
+    );
+  }
+
   async function send(text: string, source: "text" | "voice") {
+    // Режим из профиля: never — сразу, always — всегда шторка, auto (по умолчанию) — если неясно
+    const mode = family?.members.find((m) => m.id === me.id)?.confirm_mode ?? "auto";
     setSending(true);
     try {
+      if (mode !== "never") {
+        const draft = await api.parseTask(text, source);
+        if (mode === "always" || draft.unclear) {
+          setConfirm({ draft, text, source });
+          return;
+        }
+        // Всё понятно — отправляем разобранное, второй раз модель не зовём
+        announce(
+          await api.createTask({
+            title: draft.title,
+            due_at: draft.due_at,
+            assignee_id: draft.assignee_id,
+            recurrence: draft.recurrence,
+            priority: draft.priority,
+            items: draft.items,
+            requires_car: draft.requires_car,
+            source,
+            source_text: text,
+          }),
+        );
+        return;
+      }
       const task = await api.dispatch(text, source);
       setTasks((list) => [task, ...list]);
       setTab("today");
@@ -311,6 +354,22 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           <FamilyScreen family={family} me={me} />
         ) : null}
       </main>
+
+      {confirm && (
+        <ConfirmSheet
+          draft={confirm.draft}
+          text={confirm.text}
+          source={confirm.source}
+          members={family?.members ?? [me]}
+          meId={me.id}
+          onCancel={() => setConfirm(null)}
+          onSent={(task) => {
+            setConfirm(null);
+            announce(task);
+            void refresh();
+          }}
+        />
+      )}
 
       {celebration && (
         <div className="pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-center px-4 pt-[max(16px,env(safe-area-inset-top))]">

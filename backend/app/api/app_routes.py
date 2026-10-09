@@ -15,6 +15,7 @@ from app.schemas.api import (
     CreateTaskRequest,
     DeclineRequest,
     DispatchRequest,
+    DraftOut,
     FamilyOut,
     InviteInfo,
     ItemsRequest,
@@ -223,19 +224,46 @@ def dispatch(
     return task
 
 
+@router.post("/tasks/parse", response_model=DraftOut, tags=["tasks"])
+def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
+    """Разобрать фразу, но не сохранять: шторка «Проверьте просьбу» перед отправкой."""
+    others = [m.name for m in member.family.members if m.id != member.id]
+    draft = extractor.extract(payload.message, datetime.now(), member.name, others)
+    assignee, why = fs.assignee_for(member.family, member, draft)
+    return DraftOut(
+        title=draft.title,
+        due_at=draft.due_at,
+        recurrence=draft.recurrence.value,
+        priority=draft.priority.value,
+        items=draft.items,
+        requires_car=draft.requires_car,
+        assignee_id=assignee.id if assignee else None,
+        rationale=why,
+        clarifying_question=draft.clarifying_question,
+        unclear=draft.due_at is None or assignee is None or bool(draft.clarifying_question),
+    )
+
+
 @router.post("/tasks", response_model=TaskOut, status_code=201, tags=["tasks"])
 def create_task(
     payload: CreateTaskRequest, member: CurrentMember, db: DbSession, background: BackgroundTasks
 ) -> TaskRow:
+    """Просьба со всеми полями: из шторки проверки или вручную."""
     _check_member(member, payload.assignee_id)
     task = TaskRow(
         family_id=member.family_id,
         created_by_id=member.id,
         title=payload.title.strip(),
-        source="manual",
+        source=payload.source,
+        source_text=payload.source_text,
         due_at=payload.due_at,
         duration_minutes=payload.duration_minutes,
         requires_car=payload.requires_car,
+        recurrence=payload.recurrence.value,
+        priority=payload.priority,
+        items=[
+            {"text": text.strip()[:120], "done": False} for text in payload.items if text.strip()
+        ],
     )
     if payload.assignee_id:
         assignee = next(m for m in member.family.members if m.id == payload.assignee_id)
@@ -245,10 +273,26 @@ def create_task(
         fs.assign(task, assignee, member, why)
     db.add(task)
     db.flush()
-    fs.track(db, member, "task_created", source="manual")
+    if payload.source == "manual":
+        fs.track(db, member, "task_created", source="manual")
+    else:
+        # Через шторку проверки — тот же главный сценарий, что и /tasks/dispatch
+        fs.track(db, member, "task_dispatched", source=payload.source, confirmed=True)
     db.commit()
-    _notify_assignee(background, task, member)
+    if not payload.defer_notify:
+        _notify_assignee(background, task, member)
     return task
+
+
+@router.post("/tasks/{task_id}/notify", status_code=204, tags=["tasks"])
+def notify_task(
+    task_id: str, member: CurrentMember, db: DbSession, background: BackgroundTasks
+) -> None:
+    """Отложенное уведомление исполнителю — после того, как к просьбе прикрепили файлы."""
+    task = _family_task(db, member, task_id)
+    if task.created_by_id != member.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Уведомить может только тот, кто просит")
+    _notify_assignee(background, task, member)
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut, tags=["tasks"])
