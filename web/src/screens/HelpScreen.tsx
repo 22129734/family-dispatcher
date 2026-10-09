@@ -4,6 +4,7 @@ import { InstallCard } from "../components/InstallCard";
 import { platform } from "../push";
 
 const SUPPORT_EMAIL = "family-dispatcher@yandex.ru";
+const TESTERS_GROUP = "https://max.ru/join/q1xQqMBZWi_VmWKnjUzJgoQeHkbnfyuzjgYbbu9YV9Q";
 
 interface Contact {
   name: string;
@@ -95,6 +96,25 @@ export function HelpScreen() {
           В письмо сами подставятся модель телефона, браузер и версия приложения. Добавьте, что делали, и скриншот.
         </p>
       </section>
+
+      <a
+        href={TESTERS_GROUP}
+        target="_blank"
+        rel="noreferrer"
+        onClick={() => api.track("screen_view", { screen: "help_testers" })}
+        className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 active:bg-surface-2"
+      >
+        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent" aria-hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium">Группа тестировщиков в Max</span>
+          <span className="block text-xs text-ink-2">Новости, вопросы и ошибки — вместе с командой и другими семьями</span>
+        </span>
+        <span className="text-sm font-medium text-accent">Вступить</span>
+      </a>
 
       <section>
         <h2 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">Или напрямую команде</h2>
