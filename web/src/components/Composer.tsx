@@ -1,12 +1,25 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
-// «Пример:» в начале — без него люди принимали подсказку за уже введённый текст
-// Короткие, чтобы целиком помещались в поле даже на узком экране (340 px)
-const HINTS = [
-  "Пример: забрать Соню в 19",
-  "Пример: купить хлеб, молоко",
-  "Пример: выгулять собаку в 8",
-];
+/**
+ * Примеры сменяются по кругу и показывают, что умеет диспетчер: повторы, список покупок,
+ * «напомни мне», просьбу по имени, срочное. «Пример:» в начале — без него подсказку
+ * принимали за уже введённый текст. Длина — чтобы помещались на экране 340 px.
+ */
+function hints(spouse: string | null): string[] {
+  const name = spouse ?? "Олег";
+  return [
+    "Пример: по средам поливать цветы",
+    `Пример: ${name}, забери Машу в 19`,
+    "Пример: купи хлеб, молоко и яйца",
+    "Пример: напомни мне в 9 позвонить",
+    "Пример: по будням отвести в школу",
+    "Пример: раз в месяц оплатить свет",
+    "Пример: срочно купить лекарства",
+    "Пример: я заберу посылку в субботу",
+  ];
+}
+
+const HINT_MS = 3500;
 
 interface SpeechState {
   listening: boolean;
@@ -20,14 +33,27 @@ export function Composer({
   busy,
   speech,
   note,
+  spouse,
 }: {
   onSend: (text: string, source: "text" | "voice") => Promise<void>;
   busy: boolean;
   speech: SpeechState;
   /** Пояснение под полем — например, что дело запишется на вас */
   note?: string | null;
+  /** Имя второго взрослого — для примера просьбы по имени */
+  spouse?: string | null;
 }) {
   const [text, setText] = useState("");
+  const [focused, setFocused] = useState(false);
+  const examples = hints(spouse ?? null);
+  const [hintIndex, setHintIndex] = useState(() => Math.floor(Math.random() * examples.length));
+
+  // Пока поле пустое и в него не печатают — показываем следующий пример
+  useEffect(() => {
+    if (text || focused) return;
+    const timer = window.setInterval(() => setHintIndex((i) => (i + 1) % examples.length), HINT_MS);
+    return () => window.clearInterval(timer);
+  }, [text, focused, examples.length]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -37,7 +63,7 @@ export function Composer({
     await onSend(message, "text");
   }
 
-  const hint = HINTS[new Date().getMinutes() % HINTS.length];
+  const hint = examples[hintIndex % examples.length];
 
   return (
     <div>
@@ -56,7 +82,10 @@ export function Composer({
           enterKeyHint="send"
           maxLength={1000}
           aria-label="Новое дело"
-          className="h-10 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-ink-3"
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          // Подсказка мельче текста: длинные примеры помещаются, а ввод остаётся 16 px (иначе iPhone приближает)
+          className="h-10 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-[14px] placeholder:text-ink-3"
         />
         <button
           type="submit"

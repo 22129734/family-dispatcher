@@ -321,6 +321,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
               busy={sending}
               speech={speech}
               note={alone ? "Запишется на вас — в семье пока никого нет" : null}
+              spouse={family?.members.find((m) => m.id !== me.id && m.role === "adult")?.name ?? null}
             />
           </div>
         )}
