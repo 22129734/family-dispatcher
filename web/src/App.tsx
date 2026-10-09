@@ -3,6 +3,7 @@ import { api, ApiError, tokenStore, type Family, type Session, type Task } from 
 import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
+import { HelpScreen } from "./screens/HelpScreen";
 import { Join, Welcome } from "./screens/Onboarding";
 import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
@@ -10,7 +11,7 @@ import { ActPage } from "./screens/ActPage";
 import { platform, syncPush } from "./push";
 import { Today, type TaskActions } from "./screens/Today";
 
-type Tab = "today" | "calendar" | "family";
+type Tab = "today" | "calendar" | "family" | "help";
 
 const REFRESH_MS = 20_000;
 
@@ -216,6 +217,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             actions={actions}
             loading={loading}
           />
+        ) : tab === "help" ? (
+          <HelpScreen />
         ) : tab === "calendar" ? (
           <CalendarScreen
             tasks={tasks}
@@ -247,7 +250,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
 
       <div className="pb-safe shrink-0 bg-bg">
         {tab === "today" && <Composer onSend={send} busy={sending} />}
-        <nav className="grid grid-cols-3 border-t border-line">
+        <nav className="grid grid-cols-4 border-t border-line">
           <TabButton active={tab === "today"} onClick={() => setTab("today")} label="Дела">
             <path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" />
           </TabButton>
@@ -256,6 +259,9 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           </TabButton>
           <TabButton active={tab === "family"} onClick={() => setTab("family")} label="Семья">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+          </TabButton>
+          <TabButton active={tab === "help"} onClick={() => setTab("help")} label="Помощь">
+            <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M14.83 9.17l4.24-4.24M4.93 19.07l4.24-4.24" />
           </TabButton>
         </nav>
       </div>
