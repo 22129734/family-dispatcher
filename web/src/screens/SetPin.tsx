@@ -47,7 +47,7 @@ export function SetPin({ onDone, onCancel }: { onDone: () => void; onCancel?: ()
           4 цифры. Дальше будете входить по номеру и PIN-коду — без звонка.
         </p>
       </div>
-      <PinField key={first ?? "first"} value={pin} onChange={enter} autoComplete="new-password" disabled={busy} />
+      <PinField value={pin} onChange={enter} autoComplete="new-password" disabled={busy} />
       <div className="mt-4">
         <ErrorNote>{error}</ErrorNote>
       </div>

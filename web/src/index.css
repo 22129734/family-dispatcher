@@ -301,3 +301,10 @@ h1 {
   font-family: var(--font-display);
   letter-spacing: -0.01em;
 }
+
+/* Мигающий курсор в ячейке PIN-кода */
+@keyframes caret-blink {
+  0%, 45% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+.pin-caret { animation: caret-blink 1s step-end infinite; }

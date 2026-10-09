@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { api, ApiError, type PhoneCheck } from "../api";
 import { Button, ErrorNote } from "../components/ui";
 import { PinField } from "../components/PinField";
+import { holdNumericKeyboard, releaseKeyboard } from "../keyboard";
 
 const POLL_MS = 2500;
 
@@ -79,6 +80,8 @@ export function PhoneLogin({
 
   async function start(e?: FormEvent, call = false) {
     e?.preventDefault();
+    // Синхронно, пока длится нажатие: на iPhone так откроется цифровая клавиатура для PIN
+    if (!call) holdNumericKeyboard();
     setBusy(true);
     setError(null);
     try {
@@ -87,10 +90,12 @@ export function PhoneLogin({
         setPin("");
         setPinMode(started.phone_masked);
       } else {
+        releaseKeyboard();
         setPinMode(null);
         setCheck(started);
       }
     } catch (err) {
+      releaseKeyboard();
       if (err instanceof ApiError && err.status === 428) {
         setAskConsent(true);
         setError(consent ? (err as Error).message : null);
