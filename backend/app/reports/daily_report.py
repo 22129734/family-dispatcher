@@ -10,12 +10,10 @@
 
 import argparse
 import logging
-import smtplib
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
-from email.message import EmailMessage
 
 import httpx
 from sqlalchemy import func, select
@@ -31,6 +29,7 @@ from app.models import (
     PushSubscriptionRow,
     TaskRow,
 )
+from app.services.mailer import send_mail
 from app.services.metrics import real_users, team_family_ids, team_member_ids
 
 logger = logging.getLogger(__name__)
@@ -260,16 +259,7 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
 
 
 def send(report: Report, settings: Settings) -> None:
-    if not settings.smtp_user or not settings.smtp_password:
-        raise RuntimeError("SMTP_USER и SMTP_PASSWORD не заданы")
-    message = EmailMessage()
-    message["Subject"] = report.subject
-    message["From"] = settings.smtp_user
-    message["To"] = settings.report_to
-    message.set_content(report.body)
-    with smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
-        smtp.login(settings.smtp_user, settings.smtp_password)
-        smtp.send_message(message)
+    send_mail(report.subject, report.body, settings=settings)
 
 
 def build(

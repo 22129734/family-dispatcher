@@ -217,6 +217,16 @@ export const api = {
     form.append("upload", file, file.name);
     return request<Task>(`/tasks/${id}/files`, { method: "POST", body: form });
   },
+  feedback: (audio: Blob | null, text: string | null, device: string) => {
+    const form = new FormData();
+    if (audio) {
+      const ext = audio.type.includes("mp4") ? "m4a" : audio.type.includes("ogg") ? "ogg" : "webm";
+      form.append("audio", audio, `feedback.${ext}`);
+    }
+    if (text) form.append("text", text);
+    form.append("device", device);
+    return request<{ status: string }>("/support/feedback", { method: "POST", body: form });
+  },
   detach: (id: string, fileId: string) => request<Task>(`/tasks/${id}/files/${fileId}`, { method: "DELETE" }),
   remove: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
 

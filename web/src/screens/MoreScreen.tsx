@@ -4,6 +4,7 @@ import { Button } from "../components/ui";
 import { applyTheme, currentTheme, THEMES, type ThemeKey } from "../theme";
 import { SetPin } from "./SetPin";
 import { InstallCard } from "../components/InstallCard";
+import { VoiceFeedback } from "../components/VoiceFeedback";
 import { platform } from "../push";
 
 const SUPPORT_EMAIL = "family-dispatcher@yandex.ru";
@@ -136,6 +137,8 @@ export function MoreScreen({
           Что-то не работает или есть идея? Напишите нам — отвечаем сами, без ботов.
         </p>
       </div>
+
+      <VoiceFeedback deviceInfo={deviceInfo} />
 
       <section className="rounded-2xl bg-accent-soft p-4">
         <p className="font-semibold">Написать в поддержку</p>
