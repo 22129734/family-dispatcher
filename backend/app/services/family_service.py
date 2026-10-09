@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models import EventRow, FamilyRow, MemberRow, TaskRow
 from app.schemas.task import TaskDraft
+from app.services.when import plain_title
 
 # Кто может брать поручения: взрослые и подростки
 _DOERS = {"adult", "teen"}
@@ -28,6 +29,39 @@ _RECURRENCE_STEP = {
 }
 # Повтор без срока: следующий раз — в 18:00
 _DEFAULT_HOUR = 18
+
+
+def frequent(db: Session, member: MemberRow, days: int = 90, limit: int = 5):
+    """Дела, которые человек просит снова и снова в разные дни: (название, сколько раз, образец).
+
+    Повторяющиеся по расписанию не берём — они и так создаются сами.
+    """
+    since = datetime.now() - timedelta(days=days)
+    rows = db.scalars(
+        select(TaskRow)
+        .where(
+            TaskRow.created_by_id == member.id,
+            TaskRow.created_at >= since,
+            TaskRow.recurrence == "none",
+        )
+        .order_by(TaskRow.created_at.desc())
+    ).all()
+    groups: dict[str, list[TaskRow]] = {}
+    titles: dict[str, str] = {}
+    for task in rows:
+        title = plain_title(task.title)
+        key = title.lower()
+        groups.setdefault(key, []).append(task)
+        titles.setdefault(key, title)
+    ranked = sorted(
+        (key for key, tasks in groups.items() if len(tasks) >= 2),
+        key=lambda key: (-len(groups[key]), -groups[key][0].created_at.timestamp()),
+    )
+    # Образец — последнее такое дело со временем: подставим привычное время и продолжительность
+    return [
+        (titles[key], len(groups[key]), next((t for t in groups[key] if t.due_at), groups[key][0]))
+        for key in ranked[:limit]
+    ]
 
 
 def next_due(due_at: datetime | None, recurrence: str, now: datetime) -> datetime | None:

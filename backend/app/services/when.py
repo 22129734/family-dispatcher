@@ -79,6 +79,29 @@ def _duration_of(text: str) -> timedelta | None:
     return timedelta(minutes=minutes) if 5 <= minutes <= 16 * 60 else None
 
 
+_TITLE_NOISE = (
+    r"\b(?:напомни(?:ть)?\s+мне|сегодня|послезавтра|завтра|срочно)\b",
+    r"\b(?:в|во|на)\s+(?:" + "|".join(p for p, _ in _WEEKDAYS) + r")\b",
+    r"\bс\s+\d{1,2}(?:[:.]\d{2})?\s*(?:до|по|-|–|—)\s*\d{1,2}(?:[:.]\d{2})?\b",
+    r"\b\d{1,2}(?:[:.]\d{2})?\s*[-–—]\s*\d{1,2}(?:[:.]\d{2})?\b",
+    r"\b(?:в|к|до)\s+\d{1,2}(?:[:.]\d{2})?\b",
+    r"\bна\s+(?:полчаса|полтора\s+часа|час|\d+\s*(?:час\w*|мин\w*))\b",
+    r"\b(?:" + "|".join(p for p, _, _ in _DAYPARTS) + r")\b",
+)
+
+
+def plain_title(title: str) -> str:
+    """Название без дня и времени: «завтра подготовка к школе с 9 до 10» → «Подготовка к школе».
+
+    Так одно и то же дело в разные дни узнаётся как одно — для «Частых дел» и «Повторить».
+    """
+    text = title
+    for pattern in _TITLE_NOISE:
+        text = re.sub(pattern, " ", text, flags=re.IGNORECASE)
+    text = " ".join(text.split()).strip(" ,.-–—")
+    return (text[:1].upper() + text[1:]) if text else title.strip()
+
+
 def end_from_text(text: str, due: datetime | None) -> datetime | None:
     """Окончание дела, только если его назвали: «с 9 до 10», «на полтора часа»."""
     if due is None:

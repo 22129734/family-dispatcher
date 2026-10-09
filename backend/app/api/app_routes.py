@@ -17,6 +17,7 @@ from app.schemas.api import (
     DispatchRequest,
     DraftOut,
     FamilyOut,
+    FrequentOut,
     InviteInfo,
     ItemsRequest,
     JoinFamilyRequest,
@@ -203,6 +204,15 @@ def list_tasks(
     tasks = db.scalars(select(TaskRow).where(TaskRow.family_id == member.family_id)).all()
     visible = [t for t in tasks if t.status != "done" or (t.completed_at or since) >= since]
     return sorted(visible, key=lambda t: (t.status == "done", t.due_at or datetime.max))
+
+
+@router.get("/tasks/frequent", response_model=list[FrequentOut], tags=["tasks"])
+def frequent_tasks(member: CurrentMember, db: DbSession) -> list[FrequentOut]:
+    """«Частые дела» над полем ввода: в одно касание — шторка с заполненными полями."""
+    return [
+        FrequentOut(title=title, count=count, task=TaskOut.model_validate(task))
+        for title, count, task in fs.frequent(db, member)
+    ]
 
 
 @router.post("/tasks/dispatch", response_model=TaskOut, status_code=201, tags=["tasks"])

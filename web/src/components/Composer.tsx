@@ -1,3 +1,4 @@
+import type { Frequent } from "../api";
 import { useEffect, useState, type FormEvent } from "react";
 
 /**
@@ -34,6 +35,8 @@ export function Composer({
   speech,
   note,
   spouse,
+  frequent = [],
+  onFrequent,
 }: {
   onSend: (text: string, source: "text" | "voice") => Promise<void>;
   busy: boolean;
@@ -42,6 +45,9 @@ export function Composer({
   note?: string | null;
   /** Имя второго взрослого — для примера просьбы по имени */
   spouse?: string | null;
+  /** «Частые дела»: в одно касание — шторка с заполненными полями */
+  frequent?: Frequent[];
+  onFrequent?: (item: Frequent) => void;
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -74,6 +80,21 @@ export function Composer({
         </p>
       )}
       {speech.error && <p className="glass mb-2 rounded-2xl px-4 py-2 text-sm text-warn">{speech.error}</p>}
+      {frequent.length > 0 && !text && !speech.listening && (
+        <div className="no-scrollbar mb-2 -mx-3 flex gap-1.5 overflow-x-auto px-3" aria-label="Частые дела">
+          {frequent.map((item) => (
+            <button
+              key={item.title}
+              type="button"
+              disabled={busy}
+              onClick={() => onFrequent?.(item)}
+              className="glass h-8 max-w-[220px] shrink-0 truncate rounded-full px-3 text-sm font-medium shadow-sm active:opacity-70"
+            >
+              ↻ {item.title}
+            </button>
+          ))}
+        </div>
+      )}
       <form onSubmit={submit} className="glass flex items-center gap-2 rounded-[22px] p-1.5 pl-4 shadow-md">
         <input
           value={text}

@@ -454,3 +454,36 @@ def test_end_time_saved_moved_with_due_and_kept_on_repeat(
         f"/api/v1/tasks/{nxt['id']}", json={"ends_at": None}, headers=auth(family["mom"])
     ).json()
     assert cleared["ends_at"] is None
+
+
+def test_frequent_tasks_group_by_plain_title(client: TestClient, family: dict[str, str]) -> None:
+    for title in (
+        "завтра подготовка к школе с 9 до 10",
+        "Подготовка к школе",
+        "в пятницу подготовка к школе",
+        "Купить хлеб",
+        "купить хлеб",
+        "Позвонить в банк",
+    ):
+        client.post("/api/v1/tasks", json={"title": title}, headers=auth(family["mom"]))
+    # Повтор по расписанию — не «частое», он и так создаётся сам
+    for _ in range(3):
+        client.post(
+            "/api/v1/tasks",
+            json={"title": "Полить цветы", "recurrence": "weekly"},
+            headers=auth(family["mom"]),
+        )
+    copy = client.post(
+        "/api/v1/tasks",
+        json={"title": "Купить хлеб", "source": "copy", "items": ["батон"]},
+        headers=auth(family["mom"]),
+    )
+    assert copy.status_code == 201
+
+    frequent = client.get("/api/v1/tasks/frequent", headers=auth(family["mom"])).json()
+    assert [(f["title"], f["count"]) for f in frequent] == [
+        ("Купить хлеб", 3),
+        ("Подготовка к школе", 3),
+    ]
+    assert frequent[0]["task"]["items"][0]["text"] == "батон"  # образец — последняя такая задача
+    assert client.get("/api/v1/tasks/frequent", headers=auth(family["dad"])).json() == []

@@ -179,6 +179,14 @@ class TaskOut(BaseModel):
     completed_at: datetime | None
 
 
+class FrequentOut(BaseModel):
+    """Частое дело: очищенное название и последняя такая задача — образец для шторки."""
+
+    title: str
+    count: int
+    task: TaskOut
+
+
 class DispatchRequest(BaseModel):
     message: str = Field(min_length=1, max_length=1000)
     source: Literal["text", "voice"] = "text"
@@ -195,7 +203,8 @@ class CreateTaskRequest(BaseModel):
     recurrence: Recurrence = Recurrence.NONE
     priority: Literal["low", "normal", "high"] = "normal"
     items: list[str] = Field(default_factory=list, max_length=60)
-    source: Literal["text", "voice", "manual"] = "manual"
+    # copy — «Повторить» или «Частые дела»: по образцу прежней задачи
+    source: Literal["text", "voice", "manual", "copy"] = "manual"
     source_text: str | None = Field(default=None, max_length=1000)
     note: str | None = Field(default=None, max_length=2000)
     # True — не слать уведомление сразу: сначала прикрепят файлы, потом POST /tasks/{id}/notify

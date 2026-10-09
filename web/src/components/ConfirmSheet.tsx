@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type Draft, type Member, type Recurrence, type Task } from "../api";
 import { addToTime, endIso } from "../format";
@@ -55,23 +55,32 @@ export function ConfirmSheet({
   source,
   members,
   meId,
+  heading = "Проверьте просьбу",
+  startTime: initialTime,
+  durationMin,
   onCancel,
   onSent,
 }: {
   draft: Draft;
   text: string;
-  source: "text" | "voice";
+  source: "text" | "voice" | "copy";
   members: Member[];
   meId: string;
+  heading?: string;
+  /** Копия дела: прежнее время и продолжительность, день выбирают заново */
+  startTime?: string;
+  durationMin?: number | null;
   onCancel: () => void;
   onSent: (task: Task) => void;
 }) {
   const [title, setTitle] = useState(draft.title);
   const [assignee, setAssignee] = useState<string | null>(draft.assignee_id);
   const [date, setDate] = useState(draft.due_at ? draft.due_at.slice(0, 10) : "");
-  const [time, setTime] = useState(draft.due_at ? draft.due_at.slice(11, 16) : "");
-  const [end, setEnd] = useState(draft.ends_at ? draft.ends_at.slice(11, 16) : "");
-  const [showEnd, setShowEnd] = useState(!!draft.ends_at);
+  const [time, setTime] = useState(draft.due_at ? draft.due_at.slice(11, 16) : (initialTime ?? ""));
+  const [end, setEnd] = useState(
+    draft.ends_at ? draft.ends_at.slice(11, 16) : durationMin ? addToTime(initialTime || "18:00", durationMin) : "",
+  );
+  const [showEnd, setShowEnd] = useState(!!draft.ends_at || !!durationMin);
   const [repeat, setRepeat] = useState<Recurrence>(draft.recurrence);
   const [urgent, setUrgent] = useState(draft.priority === "high");
   const [items, setItems] = useState<string[]>(draft.items);
@@ -86,6 +95,11 @@ export function ConfirmSheet({
   const dueAt = date ? `${date}T${time || "18:00"}:00` : null;
   const endsAt = dueAt && showEnd && end ? endIso(dueAt, end) : null;
   const startTime = time || "18:00";
+  // У копии продолжительность сохраняется: сдвинули начало — окончание следом
+  useEffect(() => {
+    if (durationMin && showEnd) setEnd(addToTime(startTime, durationMin));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startTime]);
 
   async function send() {
     if (!title.trim()) return setError("Напишите, что нужно сделать");
@@ -126,7 +140,7 @@ export function ConfirmSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-ink-3/40" />
-        <p className="font-display text-lg font-bold">Проверьте просьбу</p>
+        <p className="font-display text-lg font-bold">{heading}</p>
         {draft.clarifying_question && !draft.due_at && (
           <p className="mt-1 text-sm font-medium text-warn">{draft.clarifying_question}</p>
         )}

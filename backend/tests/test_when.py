@@ -6,7 +6,7 @@ import pytest
 
 from app.schemas.task import TaskDraft
 from app.services.task_extractor import TaskExtractor
-from app.services.when import due_from_text, end_from_text
+from app.services.when import due_from_text, end_from_text, plain_title
 
 FRIDAY_4PM = datetime(2026, 10, 9, 16, 20)
 
@@ -112,3 +112,19 @@ def test_llm_end_before_start_is_ignored() -> None:
         "завтра подготовка к школе с 9 до 10", now=FRIDAY_4PM
     )
     assert draft.ends_at == datetime(2026, 10, 10, 10, 0)
+
+
+@pytest.mark.parametrize(
+    ("title", "plain"),
+    [
+        ("завтра подготовка к школе с 9 до 10", "Подготовка к школе"),
+        ("Подготовка к школе", "Подготовка к школе"),
+        ("в субботу уборка 10–12", "Уборка"),
+        ("напомни мне завтра в 9 позвонить врачу", "Позвонить врачу"),
+        ("после работы забрать посылку", "Забрать посылку"),
+        ("тренировка в 18 на полтора часа", "Тренировка"),
+        ("завтра", "завтра"),  # всё название — время: оставляем как было
+    ],
+)
+def test_plain_title(title: str, plain: str) -> None:
+    assert plain_title(title) == plain

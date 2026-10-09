@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, tokenStore, type Draft, type Family, type Session, type Task } from "./api";
+import { api, ApiError, tokenStore, type Draft, type Family, type Frequent, type Session, type Task } from "./api";
+import { parseLocal, plainTitle } from "./format";
 import { ConfirmSheet } from "./components/ConfirmSheet";
 import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
@@ -238,6 +239,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       setTasks((list) => list.map((t) => (t.id === id ? { ...t, items } : t)));
       void run(async () => replace(await api.setItems(id, items)));
     },
+    copy: (task) => copyTask(task, plainTitle(task.title)),
     remove: (id) =>
       run(async () => {
         setTasks((list) => list.filter((t) => t.id !== id));
@@ -254,9 +256,53 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   };
 
   // Шторка «Проверьте просьбу»: что сказали и что из этого понял разбор
-  const [confirm, setConfirm] = useState<{ draft: Draft; text: string; source: "text" | "voice" } | null>(null);
+  const [confirm, setConfirm] = useState<{
+    draft: Draft;
+    text: string;
+    source: "text" | "voice" | "copy";
+    heading?: string;
+    startTime?: string;
+    durationMin?: number | null;
+  } | null>(null);
+
+  // «Частые дела» над полем ввода — обновляем после каждой новой просьбы
+  const [frequent, setFrequent] = useState<Frequent[]>([]);
+  const loadFrequent = useCallback(() => {
+    api.frequent().then(setFrequent).catch(() => undefined);
+  }, []);
+  useEffect(loadFrequent, [loadFrequent]);
+
+  /** Копия дела: те же поля, время и продолжительность; день выбирают заново. */
+  function copyTask(task: Task, title = task.title) {
+    const minutes =
+      task.due_at && task.ends_at
+        ? Math.round((parseLocal(task.ends_at).getTime() - parseLocal(task.due_at).getTime()) / 60_000)
+        : null;
+    setConfirm({
+      draft: {
+        title,
+        due_at: null,
+        ends_at: null,
+        recurrence: "none",
+        priority: task.priority,
+        items: task.items.map((item) => item.text),
+        requires_car: task.requires_car,
+        note: task.note,
+        assignee_id: task.assignee_id,
+        rationale: null,
+        clarifying_question: null,
+        unclear: true,
+      },
+      text: title,
+      source: "copy",
+      heading: "Повторить дело",
+      startTime: task.due_at ? task.due_at.slice(11, 16) : undefined,
+      durationMin: minutes,
+    });
+  }
 
   function announce(task: Task) {
+    loadFrequent();
     setTasks((list) => [task, ...list.filter((t) => t.id !== task.id)]);
     setTab("today");
     const assignee = family?.members.find((m) => m.id === task.assignee_id);
@@ -364,6 +410,9 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           draft={confirm.draft}
           text={confirm.text}
           source={confirm.source}
+          heading={confirm.heading}
+          startTime={confirm.startTime}
+          durationMin={confirm.durationMin}
           members={family?.members ?? [me]}
           meId={me.id}
           onCancel={() => setConfirm(null)}
@@ -401,6 +450,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
               speech={speech}
               note={alone ? "Запишется на вас — в семье пока никого нет" : null}
               spouse={family?.members.find((m) => m.id !== me.id && m.role === "adult")?.name ?? null}
+              frequent={frequent}
+              onFrequent={(item) => copyTask(item.task, item.title)}
             />
           </div>
         )}

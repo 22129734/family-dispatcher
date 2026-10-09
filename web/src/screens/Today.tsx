@@ -25,6 +25,8 @@ export interface TaskActions {
   repeat: (id: string, recurrence: Recurrence) => void;
   items: (id: string, items: TaskItem[]) => void;
   remove: (id: string) => void;
+  /** «Повторить»: шторка с теми же полями, день выбирают заново */
+  copy: (task: Task) => void;
 }
 
 export function Today({
@@ -232,6 +234,7 @@ export function Today({
                   onRepeat={(value) => actions.repeat(task.id, value)}
                   onItems={(items) => actions.items(task.id, items)}
                   onDelete={() => actions.remove(task.id)}
+                  onCopy={() => actions.copy(task)}
                 />
               ))}
             </ul>

@@ -308,3 +308,11 @@ h1 {
   50%, 100% { opacity: 0; }
 }
 .pin-caret { animation: caret-blink 1s step-end infinite; }
+
+/* Лента без полосы прокрутки — «Частые дела» над полем ввода */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

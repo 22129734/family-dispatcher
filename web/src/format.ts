@@ -50,6 +50,28 @@ export function toInputValue(iso: string | null): string {
 
 export const fromInputValue = (value: string) => (value ? `${value}:00` : null);
 
+const WEEKDAYS = "понедельник|вторник|сред[ау]|четверг|пятниц[ау]|суббот[ау]|воскресень[ея]";
+const DAYPARTS = "после работы|с работы|после смены|после школы|из школы|после садика|из садика|из сада|перед сном|в обед|днём|днем|утром|с утра|вечером|вечерком|ночью";
+const T = "\\d{1,2}(?:[:.]\\d{2})?";
+// Как plain_title на сервере: «завтра подготовка к школе с 9 до 10» → «Подготовка к школе»
+const TITLE_NOISE = [
+  "(?:напомни(?:ть)?\\s+мне|сегодня|послезавтра|завтра|срочно)",
+  `(?:в|во|на)\\s+(?:${WEEKDAYS})`,
+  `с\\s+${T}\\s*(?:до|по|-|–|—)\\s*${T}`,
+  `${T}\\s*[-–—]\\s*${T}`,
+  `(?:в|к|до)\\s+${T}`,
+  "на\\s+(?:полчаса|полтора\\s+часа|час|\\d+\\s*(?:час[а-яё]*|мин[а-яё]*))",
+  `(?:${DAYPARTS})`,
+].map((p) => new RegExp(`(^|[^а-яёa-z0-9])${p}(?![а-яёa-z0-9])`, "gi"));
+
+/** Название без дня и времени — для копии дела. */
+export function plainTitle(title: string): string {
+  let text = title;
+  for (const re of TITLE_NOISE) text = text.replace(re, "$1 ");
+  text = text.split(/\s+/).join(" ").replace(/^[\s,.\-–—]+|[\s,.\-–—]+$/g, "");
+  return text ? text[0].toUpperCase() + text.slice(1) : title.trim();
+}
+
 /** «сегодня, 09:00–10:00»: окончание показываем, только если его назвали. */
 export function formatSpan(due: string | null, ends: string | null | undefined): string {
   return formatDue(due) + (due && ends ? `–${ends.slice(11, 16)}` : "");

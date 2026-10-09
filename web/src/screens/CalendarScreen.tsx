@@ -191,6 +191,7 @@ export function CalendarScreen({
                 onRepeat={(value) => actions.repeat(entry.task.id, value)}
                 onItems={(items) => actions.items(entry.task.id, items)}
                 onDelete={() => actions.remove(entry.task.id)}
+                onCopy={() => actions.copy(entry.task)}
               />
             ),
           )}

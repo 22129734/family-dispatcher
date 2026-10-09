@@ -24,6 +24,7 @@ interface Props {
   onRepeat: (recurrence: Recurrence) => void;
   onItems: (items: TaskItem[]) => void;
   onDelete: () => void;
+  onCopy: () => void;
 }
 
 const REPEAT_OPTIONS: [Recurrence, string][] = [
@@ -174,13 +175,21 @@ export function TaskCard(props: Props) {
 
       {task.items.length > 0 && <Items task={task} canEdit={!done} onItems={props.onItems} />}
 
-      {canReject && !rejecting && (
-        <div className="px-3.5 pb-3">
+      {done && !rejecting && !open && (
+        <div className="flex gap-2 px-3.5 pb-3">
+          {canReject && (
+            <button
+              onClick={() => setRejecting(true)}
+              className="h-9 rounded-xl border border-warn/40 px-3 text-sm font-semibold text-warn active:bg-warn-soft"
+            >
+              Не выполнено
+            </button>
+          )}
           <button
-            onClick={() => setRejecting(true)}
-            className="h-9 rounded-xl border border-warn/40 px-3 text-sm font-semibold text-warn active:bg-warn-soft"
+            onClick={props.onCopy}
+            className="h-9 rounded-xl border border-line px-3 text-sm font-semibold text-ink-2 active:bg-surface-2"
           >
-            Не выполнено
+            ⧉ Повторить
           </button>
         </div>
       )}
@@ -400,7 +409,13 @@ export function TaskCard(props: Props) {
             </>
           )}
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button
+              onClick={props.onCopy}
+              className="h-10 rounded-xl bg-surface-2 px-4 text-sm font-medium active:opacity-70"
+            >
+              ⧉ Повторить
+            </button>
             {mine && !done && task.status === "accepted" && (
               <button
                 onClick={() => setDeclining(true)}

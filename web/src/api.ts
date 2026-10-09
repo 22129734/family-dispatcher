@@ -34,6 +34,13 @@ export interface Draft {
   unclear: boolean;
 }
 
+/** Частое дело: очищенное название и последняя такая задача — образец для шторки. */
+export interface Frequent {
+  title: string;
+  count: number;
+  task: Task;
+}
+
 export interface NewTask {
   title: string;
   due_at: string | null;
@@ -42,7 +49,7 @@ export interface NewTask {
   priority?: "low" | "normal" | "high";
   items?: string[];
   requires_car?: boolean;
-  source?: "text" | "voice" | "manual";
+  source?: "text" | "voice" | "manual" | "copy";
   source_text?: string | null;
   note?: string | null;
   ends_at?: string | null;
@@ -116,7 +123,7 @@ export type Recurrence = "none" | "daily" | "weekdays" | "weekly" | "monthly";
 export interface Task {
   id: string;
   title: string;
-  source: "text" | "voice" | "manual";
+  source: "text" | "voice" | "manual" | "copy";
   beneficiary: string | null;
   due_at: string | null;
   duration_minutes: number;
@@ -241,6 +248,7 @@ export const api = {
 
   tasks: (doneDays = 1) => request<Task[]>(`/tasks?include_done_days=${doneDays}`),
   createTask: (task: NewTask) => post<Task>("/tasks", task),
+  frequent: () => request<Frequent[]>("/tasks/frequent"),
   parseTask: (message: string, source: "text" | "voice") => post<Draft>("/tasks/parse", { message, source }),
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>
