@@ -15,6 +15,7 @@ interface Props {
   onReopen: () => void;
   onReject: (comment: string | null) => void;
   onRename: (title: string) => void;
+  onNote: (note: string | null) => void;
   onAttach: (file: File) => Promise<void>;
   onDetach: (fileId: string) => void;
   onAssign: (memberId: string) => void;
@@ -66,6 +67,17 @@ export function TaskCard(props: Props) {
   const authorName = members.find((m) => m.id === task.created_by_id)?.name ?? "Автор";
   const [title, setTitle] = useState(task.title);
   useEffect(() => setTitle(task.title), [task.title]);
+  const [note, setNote] = useState(task.note ?? "");
+  // С сервера подтягиваем, только если там другое (не затираем пробел, который сейчас печатают)
+  useEffect(() => setNote((local) => (local.trim() === (task.note ?? "") ? local : (task.note ?? ""))), [task.note]);
+  // Сохраняем сами через секунду тишины — не полагаемся на уход из поля
+  useEffect(() => {
+    if (note.trim() === (task.note ?? "")) return;
+    const timer = window.setTimeout(() => props.onNote(note.trim() || null), 1000);
+    return () => window.clearTimeout(timer);
+    // props.onNote меняется на каждый рендер — следим только за текстом
+  }, [note, task.note]);
+  const [firstItem, setFirstItem] = useState("");
   // Посылка с маркетплейса без кода получения — подскажем прикрепить
   const askForCode = !done && task.files.length === 0 && PICKUP_RE.test(task.title);
   const recurrence = RECURRENCE_LABEL[task.recurrence];
@@ -102,6 +114,9 @@ export function TaskCard(props: Props) {
             {task.priority === "high" && !done && <span className="font-medium text-warn">· срочно</span>}
           </p>
           {status && <p className={`mt-1 text-sm font-medium ${status.tone}`}>{status.text}</p>}
+          {task.note && !open && (
+            <p className="mt-1.5 line-clamp-2 rounded-lg bg-surface-2 px-2 py-1 text-sm text-ink-2">📝 {task.note}</p>
+          )}
         </button>
 
         <div className="flex shrink-0 flex-col items-center gap-0.5 pt-0.5">
@@ -263,6 +278,38 @@ export function TaskCard(props: Props) {
                   className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base outline-none focus:border-accent"
                 />
               </label>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink-3">Заметка</span>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
+                  className="w-full resize-y rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
+                />
+              </label>
+
+              {task.items.length === 0 && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!firstItem.trim()) return;
+                    props.onItems([{ text: firstItem.trim(), done: false }]);
+                    setFirstItem("");
+                  }}
+                >
+                  <span className="mb-1 block text-xs font-medium text-ink-3">Список с галочками</span>
+                  <input
+                    value={firstItem}
+                    onChange={(e) => setFirstItem(e.target.value)}
+                    maxLength={120}
+                    placeholder="+ пункт: покупка, вопрос врачу, что взять"
+                    className="h-11 w-full rounded-xl border border-dashed border-line bg-bg px-3 text-base outline-none focus:border-accent"
+                  />
+                </form>
+              )}
 
               <div>
                 <span className="mb-1 block text-xs font-medium text-ink-3">Файлы</span>

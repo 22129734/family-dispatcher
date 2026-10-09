@@ -349,3 +349,64 @@ def test_confirm_mode_setting(client: TestClient, family: dict[str, str]) -> Non
         ).status_code
         == 422
     )
+
+
+# ---------- Заметки ----------
+
+
+def test_note_is_saved_edited_and_shown_in_push(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    task = client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Приём у врача",
+            "note": "Кабинет 214, взять результаты анализов",
+            "items": ["давление", "продлить рецепт"],
+            "assignee_id": family["dad_id"],
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    assert task["note"] == "Кабинет 214, взять результаты анализов"
+    assert sent[-1][1].body == "Приём у врача\nКабинет 214, взять результаты анализов"
+
+    edited = client.patch(
+        f"/api/v1/tasks/{task['id']}", json={"note": "  Кабинет 301  "}, headers=auth(family["dad"])
+    ).json()
+    assert edited["note"] == "Кабинет 301"
+    cleared = client.patch(
+        f"/api/v1/tasks/{task['id']}", json={"note": " "}, headers=auth(family["mom"])
+    ).json()
+    assert cleared["note"] is None
+
+
+def test_push_shows_items_when_no_note(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Купить продукты",
+            "items": ["хлеб", "молоко"],
+            "assignee_id": family["dad_id"],
+        },
+        headers=auth(family["mom"]),
+    )
+    assert sent[-1][1].body == "Купить продукты\nхлеб, молоко"
+
+
+def test_llm_note_and_items_are_mapped() -> None:
+    from app.services.task_extractor import TaskExtractor
+
+    class Stub:
+        enabled = True
+
+        def extract_task(self, *args: object) -> dict:
+            return {
+                "title": "Приём у врача",
+                "items": ["давление", "продлить рецепт"],
+                "note": " кабинет 214 ",
+            }
+
+    draft = TaskExtractor(client=Stub()).extract("к врачу в среду, спросить про давление")
+    assert (draft.items, draft.note) == (["давление", "продлить рецепт"], "кабинет 214")

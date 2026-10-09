@@ -50,6 +50,17 @@ _NOISE_RE = re.compile(
     r"|в\s+\d{1,2}(:\d{2})?)\b",
     re.IGNORECASE,
 )
+# «спросить про давление и продлить рецепт» → вопросы врачу пунктами
+_ASK_RE = re.compile(
+    r"(?:спросить|узнать|уточнить)(?:\s+(?:про|о|об|насчёт|насчет))?\s+(.+)$", re.IGNORECASE
+)
+# Подробности для заметки
+_NOTE_RE = re.compile(
+    r"(?:(?:[а-яё]+|\d+-?[а-яё]*)\s+(?:подъезд|этаж)\b[^,;]*"  # «второй подъезд», «3 этаж»
+    r"|(?:кабинет|каб\.|кабинете|подъезд|этаж|квартира|кв\.|адрес|заказ №|номер заказа)"
+    r"\s*[^,;]+)",
+    re.IGNORECASE,
+)
 MAX_ITEMS = 60
 
 # Автор берёт дело на себя: «напомни мне», «себе», «я заберу», «сама схожу»
@@ -104,6 +115,8 @@ class TaskExtractor:
             updates["assignee"] = rules.assignee
         if not llm.items and rules.items:
             updates["items"] = rules.items
+        if not llm.note and rules.note:
+            updates["note"] = rules.note
         return llm.model_copy(update=updates) if updates else llm
 
     def _from_payload(self, payload: dict, now: datetime) -> TaskDraft:
@@ -117,8 +130,15 @@ class TaskExtractor:
             except (ValueError, TypeError):
                 due_at = None
 
+        items = _clean_items(payload.get("items"))
+        title = payload["title"]
+        if len(items) == 1:
+            # Одна вещь — не список: «купить хлеб», а не «Купить продукты» с пунктом «хлеб»
+            if re.fullmatch(r"купить (продукты|покупки|всё нужное)", title.strip().lower()):
+                title = f"Купить {items[0]}"
+            items = []
         return TaskDraft(
-            title=payload["title"],
+            title=title,
             beneficiary=payload.get("beneficiary"),
             due_at=due_at,
             duration_minutes=payload.get("duration_minutes") or 30,
@@ -129,7 +149,8 @@ class TaskExtractor:
             confidence=0.95 if not payload.get("clarifying_question") else 0.6,
             clarifying_question=payload.get("clarifying_question"),
             assignee=(payload.get("assignee") or "").strip() or None,
-            items=_clean_items(payload.get("items")),
+            items=items,
+            note=(str(payload.get("note") or "").strip() or None),
         )
 
     def _from_rules(self, message: str, now: datetime, members: list[str]) -> TaskDraft:
@@ -155,18 +176,34 @@ class TaskExtractor:
             clarifying_question=None if due_at else "На какой день поставить эту задачу?",
             assignee=self._assignee_from_text(lowered, members),
             items=self._items_from_text(message),
+            note=self._note_from_text(message),
         )
 
     @staticmethod
     def _items_from_text(message: str) -> list[str]:
-        """Покупки через запятую или «и»; одна вещь — не список, а просто задача."""
-        match = _BUY_RE.match(message.strip().rstrip("."))
+        """Пункты: покупки («купи хлеб, молоко», «продукты: курица, рис») и вопросы
+        («спросить про давление и рецепт»). Одна вещь — не список, а просто задача."""
+        text = message.strip().rstrip(".")
+        ask = _ASK_RE.search(text)
+        if ask:
+            rest = _NOTE_RE.sub(" ", ask.group(1))
+            items = _clean_items(re.split(r",|;|\s+и\s+", rest))
+            return items
+        match = _BUY_RE.match(text)
         if not match:
             return []
-        rest = _NOISE_RE.sub(" ", match.group(1))
-        parts = re.split(r",|;|\s+и\s+", rest)
-        items = _clean_items(parts)
+        rest = match.group(1)
+        if ":" in rest:  # «продукты на выходные: курица, рис» — список после двоеточия
+            rest = rest.split(":", 1)[1]
+        rest = _NOISE_RE.sub(" ", rest)
+        items = _clean_items(re.split(r",|;|\s+и\s+", rest))
         return items if len(items) >= 2 else []
+
+    @staticmethod
+    def _note_from_text(message: str) -> str | None:
+        """Подробности для заметки: «кабинет 214», «подъезд 3», «адрес …»."""
+        found = [m.group(0).strip(" ,.") for m in _NOTE_RE.finditer(message)]
+        return "; ".join(found) or None
 
     @staticmethod
     def _assignee_from_text(lowered: str, members: list[str]) -> str | None:

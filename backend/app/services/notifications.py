@@ -89,11 +89,20 @@ def _act(task: TaskRow, member_id: str) -> tuple[str, str]:
     return f"/t/{token}", f"/api/v1/act/{token}"
 
 
+def _with_details(task: TaskRow) -> str:
+    """Название, а под ним — начало заметки или пунктов списка: видно, не открывая приложение."""
+    extra = task.note or ", ".join(i["text"] for i in (task.items or []))
+    if not extra:
+        return task.title
+    extra = " ".join(extra.split())
+    return f"{task.title}\n{extra[:90]}{'…' if len(extra) > 90 else ''}"
+
+
 def new_task_message(task: TaskRow, author: MemberRow) -> PushMessage:
     url, act = _act(task, task.assignee_id)
     return PushMessage(
         title=f"{author.name} просит",
-        body=task.title,
+        body=_with_details(task),
         url=url,
         tag=f"task-{task.id}",
         actions=[{"action": "accept", "title": "Беру"}, {"action": "decline", "title": "Не могу"}],

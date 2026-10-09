@@ -171,6 +171,7 @@ class TaskOut(BaseModel):
     reminded_at: datetime | None = None
     remembered_at: datetime | None = None
     feedback: str | None = None
+    note: str | None = None
     feedback_at: datetime | None = None
     created_at: datetime
     accepted_at: datetime | None
@@ -194,6 +195,7 @@ class CreateTaskRequest(BaseModel):
     items: list[str] = Field(default_factory=list, max_length=60)
     source: Literal["text", "voice", "manual"] = "manual"
     source_text: str | None = Field(default=None, max_length=1000)
+    note: str | None = Field(default=None, max_length=2000)
     # True — не слать уведомление сразу: сначала прикрепят файлы, потом POST /tasks/{id}/notify
     defer_notify: bool = False
 
@@ -207,6 +209,7 @@ class DraftOut(BaseModel):
     priority: str
     items: list[str]
     requires_car: bool
+    note: str | None
     assignee_id: str | None
     rationale: str | None
     clarifying_question: str | None
@@ -220,6 +223,7 @@ class UpdateTaskRequest(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=5, le=600)
     assignee_id: str | None = None
     recurrence: Recurrence | None = None
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class RejectRequest(BaseModel):

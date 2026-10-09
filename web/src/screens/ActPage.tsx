@@ -45,6 +45,18 @@ export function ActPage({ token }: { token: string }) {
             </p>
             <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">{task.title}</h1>
             <p className="mt-2 text-ink-2">{formatDue(task.due_at)}</p>
+            {task.note && (
+              <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-base">📝 {task.note}</p>
+            )}
+            {task.items.length > 0 && (
+              <ul className="mt-3 space-y-1">
+                {task.items.map((item, i) => (
+                  <li key={`${item.text}-${i}`} className={`text-base ${item.done ? "text-ink-3 line-through" : ""}`}>
+                    {item.done ? "☑" : "☐"} {item.text}
+                  </li>
+                ))}
+              </ul>
+            )}
             {task.files.length > 0 && (
               <div className="mt-3">
                 <FileStrip files={task.files} />

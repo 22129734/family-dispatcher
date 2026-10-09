@@ -151,3 +151,33 @@ def test_recurrence_markers(
     offline_extractor: TaskExtractor, message: str, expected: Recurrence
 ) -> None:
     assert offline_extractor.extract(message, now=NOW).recurrence == expected
+
+
+@pytest.mark.parametrize(
+    ("message", "items", "note"),
+    [
+        (
+            "Записаться к врачу в среду, спросить про давление и продлить рецепт, кабинет 214",
+            ["давление", "продлить рецепт"],
+            "кабинет 214",
+        ),
+        (
+            "Купи продукты на выходные: курица, рис, овощи и сок",
+            ["курица", "рис", "овощи", "сок"],
+            None,
+        ),
+        ("Ксюше забрать Машу с танцев, второй подъезд", [], "второй подъезд"),
+        ("Забрать посылку, номер заказа 12345", [], "номер заказа 12345"),
+    ],
+)
+def test_rules_items_and_note(
+    offline_extractor: TaskExtractor, message: str, items: list[str], note: str | None
+) -> None:
+    draft = offline_extractor.extract(message, now=NOW)
+    assert (draft.items, draft.note) == (items, note)
+
+
+def test_single_item_from_llm_is_not_a_list() -> None:
+    llm = TaskExtractor(client=StubLLM({"title": "Купить продукты", "items": ["хлеб"]}))
+    draft = llm.extract("купить хлеб", now=NOW)
+    assert (draft.title, draft.items) == ("Купить хлеб", [])

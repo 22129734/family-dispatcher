@@ -213,6 +213,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       }),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
     rename: (id, title) => run(async () => replace(await api.updateTask(id, { title }))),
+    note: (id, note) => run(async () => replace(await api.updateTask(id, { note }))),
     attach: async (id, file) => {
       try {
         replace(await api.attach(id, file));
@@ -289,6 +290,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             recurrence: draft.recurrence,
             priority: draft.priority,
             items: draft.items,
+            note: draft.note,
             requires_car: draft.requires_car,
             source,
             source_text: text,

@@ -73,6 +73,7 @@ export function ConfirmSheet({
   const [urgent, setUrgent] = useState(draft.priority === "high");
   const [items, setItems] = useState<string[]>(draft.items);
   const [newItem, setNewItem] = useState("");
+  const [note, setNote] = useState(draft.note ?? "");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +95,7 @@ export function ConfirmSheet({
         recurrence: repeat,
         priority: urgent ? "high" : "normal",
         items,
+        note: note.trim() || null,
         requires_car: draft.requires_car,
         source,
         source_text: text,
@@ -210,7 +212,17 @@ export function ConfirmSheet({
           </Chip>
         </div>
 
-        <Label>Список (купить, взять с собой)</Label>
+        <Label>Заметка</Label>
+        <textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={2000}
+          rows={2}
+          placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
+          className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
+        />
+
+        <Label>Список с галочками — покупки, вопросы врачу, что взять</Label>
         <div className="flex flex-wrap gap-1.5">
           {items.map((item, i) => (
             <span key={`${item}-${i}`} className="flex h-8 items-center gap-1 rounded-full bg-surface-2 pr-1 pl-3 text-sm">

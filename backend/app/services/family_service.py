@@ -95,6 +95,7 @@ def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> T
         location=draft.location,
         clarifying_question=draft.clarifying_question,
         items=[{"text": text, "done": False} for text in draft.items],
+        note=draft.note,
     )
 
 
@@ -184,6 +185,7 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             location=task.location,
             # Тот же список покупок — снова не отмеченный
             items=[{"text": item["text"], "done": False} for item in task.items or []],
+            note=task.note,
         )
         assign(
             next_task, members.get(task.assignee_id), members[task.created_by_id], task.rationale

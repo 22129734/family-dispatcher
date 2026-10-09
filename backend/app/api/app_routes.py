@@ -237,6 +237,7 @@ def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
         priority=draft.priority.value,
         items=draft.items,
         requires_car=draft.requires_car,
+        note=draft.note,
         assignee_id=assignee.id if assignee else None,
         rationale=why,
         clarifying_question=draft.clarifying_question,
@@ -264,6 +265,7 @@ def create_task(
         items=[
             {"text": text.strip()[:120], "done": False} for text in payload.items if text.strip()
         ],
+        note=(payload.note or "").strip() or None,
     )
     if payload.assignee_id:
         assignee = next(m for m in member.family.members if m.id == payload.assignee_id)
@@ -317,6 +319,8 @@ def update_task(
             continue
         if field == "recurrence":
             value = str(value or "none")
+        if field == "note":
+            value = (value or "").strip() or None
         setattr(task, field, value)
     if "due_at" in changes or "assignee_id" in payload.model_dump(exclude_unset=True):
         # Новый срок или исполнитель — напоминание отправится заново
