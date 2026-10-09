@@ -7,6 +7,9 @@
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <path d="M256 118 110 236v158h104v-98h84v98h104V236z" fill="#fff"/>
-  <circle cx="256" cy="228" r="30" fill="#8a5dfa"/>
+  <path d="M256 96 92 226v190h328V226z" fill="#fff"/>
+  <circle cx="206" cy="268" r="34" fill="#7a52f7"/>
+  <path d="M150 380c4-40 28-64 56-64s52 24 56 64z" fill="#7a52f7"/>
+  <circle cx="310" cy="282" r="28" fill="#ff6b9a"/>
+  <path d="M264 380c4-34 22-54 46-54s42 20 46 54z" fill="#ff6b9a"/>
 </svg>
