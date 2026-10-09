@@ -118,15 +118,15 @@ export function Today({
   );
 }
 
-type Scope = "mine" | "assigned" | "all";
+export type Scope = "mine" | "assigned" | "all";
 
-const SCOPES: [Scope, string][] = [
+export const SCOPES: [Scope, string][] = [
   ["mine", "Мне"],
   ["assigned", "Я поручил(а)"],
   ["all", "Вся семья"],
 ];
 
-function inScope(task: Task, scope: Scope, meId: string) {
+export function inScope(task: Task, scope: Scope, meId: string) {
   if (scope === "mine") return task.assignee_id === meId;
   if (scope === "assigned") return task.created_by_id === meId && task.assignee_id !== meId;
   return true;

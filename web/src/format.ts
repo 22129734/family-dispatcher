@@ -72,3 +72,28 @@ export function avatarTone(memberId: string, members: { id: string }[]): string 
   const index = members.findIndex((m) => m.id === memberId);
   return AVATAR_TONES[(index < 0 ? 0 : index) % AVATAR_TONES.length];
 }
+
+export const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/**
+ * Будущие повторы задачи в окне [from, to) — для календаря. Сервер создаёт следующую
+ * задачу только после «Сделано», поэтому дальние повторы рисуем как прогноз.
+ */
+export function repeatsBetween(task: Task, from: Date, to: Date, limit = 62): Date[] {
+  if (task.recurrence === "none" || !task.due_at || task.status === "done") return [];
+  const result: Date[] = [];
+  const next = parseLocal(task.due_at);
+  const step = () => {
+    if (task.recurrence === "monthly") next.setMonth(next.getMonth() + 1);
+    else if (task.recurrence === "weekly") next.setDate(next.getDate() + 7);
+    else next.setDate(next.getDate() + 1);
+    if (task.recurrence === "weekdays") while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+  };
+  step();
+  while (next < to && result.length < limit) {
+    if (next >= from) result.push(new Date(next));
+    step();
+  }
+  return result;
+}

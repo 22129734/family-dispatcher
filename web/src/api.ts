@@ -179,7 +179,8 @@ export const api = {
     patch<Member>("/me", changes),
   family: () => request<Family>("/family"),
 
-  tasks: () => request<Task[]>("/tasks"),
+  tasks: (doneDays = 1) => request<Task[]>(`/tasks?include_done_days=${doneDays}`),
+  createTask: (title: string, due_at: string | null) => post<Task>("/tasks", { title, due_at }),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
   updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "assignee_id" | "recurrence">>) =>

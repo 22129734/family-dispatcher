@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, tokenStore, type Family, type Session, type Task } from "./api";
 import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
+import { CalendarScreen } from "./screens/CalendarScreen";
 import { Join, Welcome } from "./screens/Onboarding";
 import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
@@ -9,7 +10,7 @@ import { ActPage } from "./screens/ActPage";
 import { platform, syncPush } from "./push";
 import { Today, type TaskActions } from "./screens/Today";
 
-type Tab = "today" | "family";
+type Tab = "today" | "calendar" | "family";
 
 const REFRESH_MS = 20_000;
 
@@ -215,6 +216,24 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             actions={actions}
             loading={loading}
           />
+        ) : tab === "calendar" ? (
+          <CalendarScreen
+            tasks={tasks}
+            members={family?.members ?? [me]}
+            meId={me.id}
+            actions={actions}
+            onCreated={(task) => {
+              setTasks((list) => [task, ...list]);
+              const assignee = family?.members.find((m) => m.id === task.assignee_id);
+              notify(
+                task.assignee_id === me.id
+                  ? "Записано — это ваше дело"
+                  : assignee
+                    ? `Поручено: ${assignee.name}${assignee.notifications ? "" : ". Уведомления выключены — скажите сами"}`
+                    : "Добавлено — выберите, кто сделает",
+              );
+            }}
+          />
         ) : family ? (
           <FamilyScreen family={family} me={me} onLogout={onLogout} />
         ) : null}
@@ -228,9 +247,12 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
 
       <div className="pb-safe shrink-0 bg-bg">
         {tab === "today" && <Composer onSend={send} busy={sending} />}
-        <nav className="grid grid-cols-2 border-t border-line">
+        <nav className="grid grid-cols-3 border-t border-line">
           <TabButton active={tab === "today"} onClick={() => setTab("today")} label="Дела">
             <path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" />
+          </TabButton>
+          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} label="Календарь">
+            <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
           </TabButton>
           <TabButton active={tab === "family"} onClick={() => setTab("family")} label="Семья">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
