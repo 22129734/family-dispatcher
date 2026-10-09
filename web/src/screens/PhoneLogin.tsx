@@ -209,7 +209,7 @@ export function PhoneLogin({
           <p className="text-sm font-medium text-accent">Вам рекомендует {recommendedBy}</p>
         )}
         <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">
-          Поручения, которые доходят и выполняются
+          Просьбы, которые доходят и выполняются
         </h1>
         <p className="mt-3 text-base text-ink-2">
           Скажите, что нужно сделать, — диспетчер передаст дело, напомнит в нужный момент и покажет, что его

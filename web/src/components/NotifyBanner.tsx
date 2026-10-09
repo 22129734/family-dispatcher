@@ -47,7 +47,7 @@ export function NotifyBanner() {
     <div className="appear mb-4 rounded-2xl border border-accent/40 bg-accent-soft p-4">
       {state === "ios-install" && (
         <>
-          <p className="font-semibold">Чтобы поручения приходили уведомлением</p>
+          <p className="font-semibold">Чтобы просьбы приходили уведомлением</p>
           <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink-2">
             <li>
               Нажмите <B>«•••»</B> справа в нижней строке Safari
@@ -74,7 +74,7 @@ export function NotifyBanner() {
         <>
           <p className="font-semibold">Включите уведомления</p>
           <p className="mt-1 text-sm text-ink-2">
-            Поручения будут приходить сами — с кнопками «Беру» и «Не могу». Открывать приложение не нужно.
+            Просьбы будут приходить сами — с кнопками «Беру» и «Не могу». Открывать приложение не нужно.
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -104,7 +104,7 @@ export function NotifyBanner() {
       {state === "unsupported" && (
         <>
           <p className="font-semibold">Этот браузер не умеет уведомления</p>
-          <p className="mt-1 text-sm text-ink-2">Откройте сайт в Chrome или Яндекс Браузере — там поручения будут приходить сами.</p>
+          <p className="mt-1 text-sm text-ink-2">Откройте сайт в Chrome или Яндекс Браузере — там просьбы будут приходить сами.</p>
         </>
       )}
 

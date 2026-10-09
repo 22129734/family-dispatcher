@@ -27,7 +27,7 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
         <h1 className="text-3xl leading-tight font-bold tracking-tight">Как вас зовут?</h1>
         <p className="mt-3 text-base text-ink-2">
-          Так вас увидят близкие. Потом пригласите мужа или жену по ссылке — поручения будут
+          Так вас увидят близкие. Потом пригласите мужа или жену по ссылке — просьбы будут
           приходить им сами.
         </p>
       </div>
@@ -106,7 +106,7 @@ export function Join({ code, onSession }: { code: string; onSession: (s: Session
         <h1 className="mt-1 text-3xl font-bold tracking-tight">
           {info ? `Вас приглашает ${info.members.join(", ")}` : "…"}
         </h1>
-        <p className="mt-2 text-ink-2">Поручения будут приходить вам уведомлением — с кнопкой «Беру».</p>
+        <p className="mt-2 text-ink-2">Просьбы будут приходить вам уведомлением — с кнопкой «Беру».</p>
       </div>
 
       <form onSubmit={submit} className="flex flex-1 flex-col gap-4">

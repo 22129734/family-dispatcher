@@ -234,7 +234,7 @@ export type Scope = "mine" | "assigned" | "all";
 
 export const SCOPES: [Scope, string][] = [
   ["mine", "Мне"],
-  ["assigned", "Я поручил(а)"],
+  ["assigned", "Я попросил(а)"],
   ["all", "Вся семья"],
 ];
 
@@ -246,8 +246,8 @@ export function inScope(task: Task, scope: Scope, meId: string) {
 
 function EmptyState({ hasMembers, scope }: { hasMembers: boolean; scope: Scope }) {
   const text = {
-    mine: "Вам пока ничего не поручили.",
-    assigned: "Вы пока никому ничего не поручали.",
+    mine: "Вас пока ни о чём не просили.",
+    assigned: "Вы пока ни о чём не просили.",
     all: "В семье пока нет дел.",
   }[scope];
   return (
@@ -258,7 +258,7 @@ function EmptyState({ hasMembers, scope }: { hasMembers: boolean; scope: Scope }
       </p>
       {!hasMembers && (
         <p className="mt-4 text-sm text-ink-2">
-          Поручения уходят близким — пригласите мужа или жену во вкладке «Семья».
+          Просьбы уходят близким — пригласите мужа или жену во вкладке «Семья».
         </p>
       )}
     </div>

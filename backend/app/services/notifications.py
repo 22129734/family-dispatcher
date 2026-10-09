@@ -92,7 +92,7 @@ def _act(task: TaskRow, member_id: str) -> tuple[str, str]:
 def new_task_message(task: TaskRow, author: MemberRow) -> PushMessage:
     url, act = _act(task, task.assignee_id)
     return PushMessage(
-        title=f"{author.name}: новое поручение",
+        title=f"{author.name} просит",
         body=task.title,
         url=url,
         tag=f"task-{task.id}",

@@ -105,7 +105,7 @@ def test_new_task_notifies_assignee_with_action_buttons(
     member_id, message = sent[0]
     assert member_id == family["dad_id"]
     assert message.body == "Купить смесь"
-    assert message.title == "Мама: новое поручение"
+    assert message.title == "Мама просит"
     assert [a["action"] for a in message.actions] == ["accept", "decline"]
     assert message.url.startswith("/t/") and message.act_url.startswith("/api/v1/act/")
     assert task["status"] == "new"

@@ -363,7 +363,7 @@ def set_items(task_id: str, payload: ItemsRequest, member: CurrentMember, db: Db
 def delete_task(task_id: str, member: CurrentMember, db: DbSession) -> None:
     task = _family_task(db, member, task_id)
     if task.created_by_id != member.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Удалить может только автор поручения")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Удалить может только автор просьбы")
     db.delete(task)
     fs.track(db, member, "task_deleted")
     db.commit()

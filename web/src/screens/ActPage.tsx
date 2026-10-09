@@ -39,7 +39,7 @@ export function ActPage({ token }: { token: string }) {
           <>
             <p className="text-sm font-medium text-accent">
               {task.created_by_id && info.author_name !== info.member_name
-                ? `${info.author_name} поручает вам`
+                ? `${info.author_name} просит вас`
                 : "Ваше дело"}
             </p>
             <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">{task.title}</h1>

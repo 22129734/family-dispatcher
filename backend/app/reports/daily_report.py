@@ -221,7 +221,7 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
     )
     actions = sum(n for name, n in events.items() if name not in PASSIVE)
     created = events["task_dispatched"] + events["task_created"]
-    report.section("Поручения за день")
+    report.section("Просьбы за день")
     report.add(f"Создано: {created} (голосом и текстом — {events['task_dispatched']})")
     report.add(
         f"«Беру»: {events['task_accepted']} · «Не могу»: {events['task_declined']} · "

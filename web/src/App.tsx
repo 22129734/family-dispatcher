@@ -247,8 +247,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           : task.assignee_id === me.id
             ? "Записано — это ваше дело"
             : assignee && !assignee.notifications
-              ? `Поручено: ${assignee.name}. Уведомления у него(неё) выключены — скажите сами`
-              : `Поручено: ${memberName(task.assignee_id)}. Ждём ответа`,
+              ? `Попросили: ${assignee.name}. Уведомления у него(неё) выключены — скажите сами`
+              : `Попросили: ${memberName(task.assignee_id)}. Ждём ответа`,
       );
     } catch (err) {
       notify((err as Error).message);
@@ -286,7 +286,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
                 task.assignee_id === me.id
                   ? "Записано — это ваше дело"
                   : assignee
-                    ? `Поручено: ${assignee.name}${assignee.notifications ? "" : ". Уведомления выключены — скажите сами"}`
+                    ? `Попросили: ${assignee.name}${assignee.notifications ? "" : ". Уведомления выключены — скажите сами"}`
                     : "Добавлено — выберите, кто сделает",
               );
             }}

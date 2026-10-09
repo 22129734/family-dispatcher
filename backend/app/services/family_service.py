@@ -112,7 +112,7 @@ def assign(task: TaskRow, assignee: MemberRow | None, author: MemberRow, why: st
 def accept(task: TaskRow, member: MemberRow) -> bool:
     """«Беру». True — статус изменился (нужно уведомить автора)."""
     if task.assignee_id != member.id:
-        raise TaskActionError(403, "Это поручение другому человеку")
+        raise TaskActionError(403, "Это просьба к другому человеку")
     if task.status != "new":
         return False
     task.status = "accepted"
@@ -126,7 +126,7 @@ def remember(task: TaskRow, member: MemberRow) -> bool:
     Если поручение ещё ждало ответа, «помню» означает и «беру».
     """
     if task.assignee_id != member.id:
-        raise TaskActionError(403, "Это поручение другому человеку")
+        raise TaskActionError(403, "Это просьба к другому человеку")
     if task.status == "done":
         return False
     now = datetime.now()
@@ -140,7 +140,7 @@ def remember(task: TaskRow, member: MemberRow) -> bool:
 def decline(task: TaskRow, member: MemberRow, reason: str | None) -> None:
     """«Не могу»: задача возвращается автору без исполнителя, с причиной."""
     if task.assignee_id != member.id:
-        raise TaskActionError(403, "Это поручение другому человеку")
+        raise TaskActionError(403, "Это просьба к другому человеку")
     if task.status == "done":
         raise TaskActionError(409, "Задача уже сделана")
     reason = (reason or "").strip()
