@@ -5,12 +5,13 @@
 """
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from dateutil import parser as date_parser
 
 from app.schemas.task import Priority, Recurrence, TaskDraft
 from app.services.llm_client import LLMClient
+from app.services.when import due_from_text
 
 _URGENT_MARKERS = ("срочно", "сегодня", "как можно скорее", "горит")
 _CAR_MARKERS = ("отвезти", "забрать", "привезти", "заехать", "довезти")
@@ -54,7 +55,7 @@ MAX_ITEMS = 60
 # Автор берёт дело на себя: «напомни мне», «себе», «я заберу», «сама схожу»
 _SELF_RE = re.compile(
     r"\b(напомни(ть)?\s+мне|мне\s+напомни(ть)?|себе|я\s+сам[аи]?|сам[аи]?\s+\w+[ую]\b"
-    r"|я\s+\w+[ую]\b|мо[её]\s+дело|для\s+себя)",
+    r"|я\s+\w+[ую]\b|мо[её]\s+дело|для\s+себя|мне\s+(?:нужно|надо)|(?:нужно|надо)\s+мне)",
     re.IGNORECASE,
 )
 
@@ -94,6 +95,9 @@ class TaskExtractor:
         if llm.due_at is None and rules.due_at is not None:
             updates["due_at"] = rules.due_at
             updates["clarifying_question"] = None
+        elif llm.due_at is None and not llm.clarifying_question and rules.clarifying_question:
+            # Срок не понял никто, а модель не спросила — спросим сами, а не тихо «без срока»
+            updates["clarifying_question"] = rules.clarifying_question
         if rules.requires_car and not llm.requires_car:
             updates["requires_car"] = True
         if llm.assignee is None and rules.assignee is not None:
@@ -137,13 +141,7 @@ class TaskExtractor:
                 recurrence = value
                 break
 
-        due_at = None
-        for word, offset in _RELATIVE_DAYS.items():
-            if word in lowered:
-                due_at = (now + timedelta(days=offset)).replace(
-                    hour=self._extract_hour(lowered) or 18, minute=0, second=0, microsecond=0
-                )
-                break
+        due_at = due_from_text(lowered, now)
 
         priority = Priority.HIGH if any(m in lowered for m in _URGENT_MARKERS) else Priority.NORMAL
 
@@ -185,14 +183,6 @@ class TaskExtractor:
         if _SELF_RE.search(lowered):
             return "self"
         return None
-
-    @staticmethod
-    def _extract_hour(text: str) -> int | None:
-        match = re.search(r"\bв (\d{1,2})(?::\d{2})?\b", text)
-        if not match:
-            return None
-        hour = int(match.group(1))
-        return hour if 0 <= hour <= 23 else None
 
 
 def _clean_items(raw: object) -> list[str]:
