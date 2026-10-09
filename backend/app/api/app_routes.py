@@ -1,13 +1,15 @@
 """API мобильного веб-приложения: семья, участники, задачи, события."""
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 
 from app.auth import CurrentAccount, CurrentMember, CurrentToken, DbSession, member_of
-from app.models import FamilyRow, MemberRow, PushSubscriptionRow, TaskRow
+from app.models import FamilyRow, MemberRow, PushSubscriptionRow, TaskFileRow, TaskRow
 from app.schemas.api import (
     CreateFamilyRequest,
     CreateTaskRequest,
@@ -27,7 +29,7 @@ from app.schemas.api import (
     UpdateTaskRequest,
 )
 from app.services import family_service as fs
-from app.services import notifications
+from app.services import files, notifications
 from app.services.family_service import TaskActionError
 from app.services.task_extractor import TaskExtractor
 
@@ -382,11 +384,75 @@ def set_items(task_id: str, payload: ItemsRequest, member: CurrentMember, db: Db
     return task
 
 
+@router.post("/tasks/{task_id}/files", response_model=TaskOut, status_code=201, tags=["tasks"])
+async def attach_file(
+    task_id: str, upload: UploadFile, member: CurrentMember, db: DbSession
+) -> TaskRow:
+    """Прикрепить фото, скриншот или PDF — например, QR-код получения с Ozon или WB."""
+    task = _family_task(db, member, task_id)
+    data = await upload.read(files.MAX_BYTES + 1)
+    content_type = (upload.content_type or "").split(";")[0].strip().lower()
+    try:
+        files.check(content_type, data, len(task.files))
+    except files.FileError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    name = Path(upload.filename or "файл").name[:200] or "файл"
+    row = TaskFileRow(
+        task_id=task.id,
+        uploaded_by_id=member.id,
+        name=name,
+        content_type=content_type,
+        size=len(data),
+    )
+    db.add(row)
+    db.flush()
+    files.save(row, data)
+    fs.track(db, member, "task_file_added", content_type=content_type)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.delete("/tasks/{task_id}/files/{file_id}", response_model=TaskOut, tags=["tasks"])
+def detach_file(task_id: str, file_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
+    task = _family_task(db, member, task_id)
+    row = db.get(TaskFileRow, file_id)
+    if row is None or row.task_id != task.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Файл не найден")
+    if member.id not in (row.uploaded_by_id, task.created_by_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Удалить может тот, кто прикрепил, или автор"
+        )
+    files.remove(row)
+    db.delete(row)
+    fs.track(db, member, "task_file_removed")
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.get("/files/{file_id}", tags=["tasks"], include_in_schema=False)
+def get_file(file_id: str, db: DbSession, sig: str = "") -> FileResponse:
+    """Файл по подписанной ссылке (её отдаёт API семьи в TaskOut.files[].url)."""
+    row = db.get(TaskFileRow, file_id)
+    if row is None or not files.valid(file_id, sig) or not files.path_of(row).is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Файл не найден")
+    return FileResponse(
+        files.path_of(row),
+        media_type=row.content_type,
+        filename=row.name,
+        content_disposition_type="inline",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
+
+
 @router.delete("/tasks/{task_id}", status_code=204, tags=["tasks"])
 def delete_task(task_id: str, member: CurrentMember, db: DbSession) -> None:
     task = _family_task(db, member, task_id)
     if task.created_by_id != member.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Удалить может только автор просьбы")
+    for row in task.files:
+        files.remove(row)
     db.delete(task)
     fs.track(db, member, "task_deleted")
     db.commit()

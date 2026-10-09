@@ -6,6 +6,7 @@ SQLite в памяти, без LLM, без SMS.RU и без сети. Модул
 """
 
 import os
+import tempfile
 
 import httpx
 import pytest
@@ -16,6 +17,9 @@ os.environ["LLM_MODEL"] = ""
 os.environ["SMSRU_API_ID"] = ""
 os.environ["ADMIN_TOKEN"] = "admin"
 os.environ["APP_ENV"] = "test"
+os.environ["UPLOADS_DIR"] = tempfile.mkdtemp(
+    prefix="fd-uploads-"
+)  # файлы тестов — во временной папке
 
 
 @pytest.fixture(autouse=True)

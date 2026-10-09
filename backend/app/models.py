@@ -162,6 +162,24 @@ class TaskRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    files: Mapped[list["TaskFileRow"]] = relationship(
+        order_by="TaskFileRow.created_at", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class TaskFileRow(Base):
+    """Файл к задаче: фото, скриншот, PDF — например, QR-код получения посылки."""
+
+    __tablename__ = "task_files"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    uploaded_by_id: Mapped[str] = mapped_column(ForeignKey("members.id"))
+    name: Mapped[str] = mapped_column(String(200))
+    content_type: Mapped[str] = mapped_column(String(80))
+    size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
 
 class ComponentCallRow(Base):
     """Обращение решения к компоненту (LLM, навык, голос, push, боты…) — см. services/telemetry."""

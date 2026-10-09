@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from app.schemas.task import Recurrence
 
@@ -128,6 +128,23 @@ class ItemsRequest(BaseModel):
     items: list[TaskItem] = Field(max_length=60)
 
 
+class TaskFileOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    content_type: str
+    size: int
+    uploaded_by_id: str
+
+    @computed_field
+    @property
+    def url(self) -> str:
+        from app.services.files import signature
+
+        return f"/api/v1/files/{self.id}?sig={signature(self.id)}"
+
+
 class TaskOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -148,6 +165,7 @@ class TaskOut(BaseModel):
     rationale: str | None
     decline_reason: str | None
     items: list[TaskItem] = []
+    files: list[TaskFileOut] = []
     reminded_at: datetime | None = None
     remembered_at: datetime | None = None
     feedback: str | None = None

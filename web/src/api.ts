@@ -14,6 +14,16 @@ export interface Member {
   notifications: boolean;
 }
 
+export interface TaskFile {
+  id: string;
+  name: string;
+  content_type: string;
+  size: number;
+  uploaded_by_id: string;
+  /** Подписанная ссылка — открывается без входа, перебрать нельзя */
+  url: string;
+}
+
 export interface TaskItem {
   text: string;
   done: boolean;
@@ -91,6 +101,7 @@ export interface Task {
   /** «Не выполнено»: что не так, по словам автора */
   feedback: string | null;
   feedback_at: string | null;
+  files: TaskFile[];
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
@@ -138,7 +149,8 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
-  if (init.body) headers.set("Content-Type", "application/json");
+  // FormData (файлы) — браузер сам поставит multipart с границей
+  if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
   const token = tokenStore.get();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
@@ -200,6 +212,12 @@ export const api = {
   done: (id: string) => post<Task>(`/tasks/${id}/done`),
   reopen: (id: string) => post<Task>(`/tasks/${id}/reopen`),
   reject: (id: string, comment: string | null) => post<Task>(`/tasks/${id}/reject`, { comment }),
+  attach: (id: string, file: File) => {
+    const form = new FormData();
+    form.append("upload", file, file.name);
+    return request<Task>(`/tasks/${id}/files`, { method: "POST", body: form });
+  },
+  detach: (id: string, fileId: string) => request<Task>(`/tasks/${id}/files/${fileId}`, { method: "DELETE" }),
   remove: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
 
   pushStatus: () => request<{ enabled: boolean; public_key: string | null; devices: number }>("/push/status"),

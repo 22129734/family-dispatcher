@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
     admin_token: str = ""
     web_dist_dir: str = "../web/dist"
+    # Файлы к задачам (коды получения с Ozon/WB, фото, PDF); в Docker — отдельный том
+    uploads_dir: str = "./uploads"
     # Соль для обезличенных идентификаторов в выгрузках аналитики
     analytics_salt: str = "local-salt"
 

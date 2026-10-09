@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Member, Recurrence, Task, TaskItem } from "../api";
 import { formatDue, fromInputValue, RECURRENCE_LABEL, toInputValue } from "../format";
 import { Avatar } from "./ui";
+import { AttachButton, FileStrip, PICKUP_RE } from "./TaskFiles";
 
 interface Props {
   task: Task;
@@ -13,6 +14,9 @@ interface Props {
   onDone: () => void;
   onReopen: () => void;
   onReject: (comment: string | null) => void;
+  onRename: (title: string) => void;
+  onAttach: (file: File) => Promise<void>;
+  onDetach: (fileId: string) => void;
   onAssign: (memberId: string) => void;
   onDue: (iso: string | null) => void;
   onRepeat: (recurrence: Recurrence) => void;
@@ -60,6 +64,10 @@ export function TaskCard(props: Props) {
   const [rejecting, setRejecting] = useState(false);
   const [comment, setComment] = useState("");
   const authorName = members.find((m) => m.id === task.created_by_id)?.name ?? "Автор";
+  const [title, setTitle] = useState(task.title);
+  useEffect(() => setTitle(task.title), [task.title]);
+  // Посылка с маркетплейса без кода получения — подскажем прикрепить
+  const askForCode = !done && task.files.length === 0 && PICKUP_RE.test(task.title);
   const recurrence = RECURRENCE_LABEL[task.recurrence];
   const status = statusLabel(task, assignee, meId);
   const needsMyAnswer = mine && task.status === "new";
@@ -100,6 +108,18 @@ export function TaskCard(props: Props) {
           <Avatar member={assignee} members={members} />
           <span className="max-w-16 truncate text-[11px] text-ink-3">{mine ? "я" : (assignee?.name ?? "никто")}</span>
         </div>
+        <button
+          onClick={() => setOpen(!open)}
+          aria-label={open ? "Свернуть" : "Изменить"}
+          aria-expanded={open}
+          className={`-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
+            open ? "bg-accent text-accent-ink" : "text-ink-3 active:bg-surface-2"
+          }`}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+          </svg>
+        </button>
       </div>
 
       {/* Ответ исполнителя — прямо в карточке, без раскрытия */}
@@ -118,6 +138,21 @@ export function TaskCard(props: Props) {
           <span className="font-semibold text-warn">{author ? "Вы вернули: " : `${authorName}: не выполнено — `}</span>
           {task.feedback}
         </p>
+      )}
+
+      {task.files.length > 0 && (
+        <div className="px-3.5 pb-3">
+          <FileStrip
+            files={task.files}
+            canRemove={(file) => file.uploaded_by_id === meId || author}
+            onRemove={(file) => props.onDetach(file.id)}
+          />
+        </div>
+      )}
+      {askForCode && (
+        <div className="px-3.5 pb-3">
+          <AttachButton onFile={props.onAttach} label="Прикрепить код получения" />
+        </div>
       )}
 
       {task.items.length > 0 && <Items task={task} canEdit={!done} onItems={props.onItems} />}
@@ -217,6 +252,23 @@ export function TaskCard(props: Props) {
 
           {!done && (
             <>
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink-3">Что сделать</span>
+                <input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onBlur={() => title.trim() && title.trim() !== task.title && props.onRename(title.trim())}
+                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                  maxLength={300}
+                  className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base outline-none focus:border-accent"
+                />
+              </label>
+
+              <div>
+                <span className="mb-1 block text-xs font-medium text-ink-3">Файлы</span>
+                <AttachButton onFile={props.onAttach} label="Фото, скриншот или PDF" />
+              </div>
+
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-ink-3">Когда</span>
                 <input

@@ -20,7 +20,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./
 COPY --from=web /web/dist /app/web/dist
 
-RUN useradd --create-home --uid 1000 app && chown -R app /app
+# Файлы к задачам — в томе /data/uploads (переживает пересборку образа)
+ENV UPLOADS_DIR=/data/uploads
+RUN useradd --create-home --uid 1000 app && mkdir -p /data/uploads && chown -R app /app /data/uploads
 USER app
 
 EXPOSE 8000

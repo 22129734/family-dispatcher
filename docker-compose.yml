@@ -27,6 +27,9 @@ services:
       APP_ENV: production
       # Время в базе — местное время семьи (без часового пояса); контейнер живёт по нему же
       TZ: ${TIMEZONE:-Europe/Moscow}
+    volumes:
+      # Файлы к задачам (QR-коды получения, фото, PDF)
+      - uploads:/data/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -65,5 +68,6 @@ services:
 
 volumes:
   pgdata:
+  uploads:
   caddy_data:
   caddy_config:

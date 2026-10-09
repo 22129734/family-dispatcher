@@ -181,6 +181,9 @@ export function CalendarScreen({
                 onDone={() => actions.done(entry.task.id)}
                 onReopen={() => actions.reopen(entry.task.id)}
                 onReject={(comment) => actions.reject(entry.task.id, comment)}
+                onRename={(title) => actions.rename(entry.task.id, title)}
+                onAttach={(file) => actions.attach(entry.task.id, file)}
+                onDetach={(fileId) => actions.detach(entry.task.id, fileId)}
                 onAssign={(memberId) => actions.assign(entry.task.id, memberId)}
                 onDue={(iso) => actions.due(entry.task.id, iso)}
                 onRepeat={(value) => actions.repeat(entry.task.id, value)}

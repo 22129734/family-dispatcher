@@ -211,6 +211,16 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         replace(await api.done(id));
       }),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
+    rename: (id, title) => run(async () => replace(await api.updateTask(id, { title }))),
+    attach: async (id, file) => {
+      try {
+        replace(await api.attach(id, file));
+        notify("Файл прикреплён");
+      } catch (err) {
+        notify((err as Error).message);
+      }
+    },
+    detach: (id, fileId) => run(async () => replace(await api.detach(id, fileId))),
     reject: (id, comment) =>
       run(async () => {
         const task = await api.reject(id, comment);

@@ -15,6 +15,9 @@ export interface TaskActions {
   done: (id: string) => void;
   reopen: (id: string) => void;
   reject: (id: string, comment: string | null) => void;
+  rename: (id: string, title: string) => void;
+  attach: (id: string, file: File) => Promise<void>;
+  detach: (id: string, fileId: string) => void;
   assign: (id: string, memberId: string) => void;
   due: (id: string, iso: string | null) => void;
   repeat: (id: string, recurrence: Recurrence) => void;
@@ -217,6 +220,9 @@ export function Today({
                   onDone={() => actions.done(task.id)}
                   onReopen={() => actions.reopen(task.id)}
                   onReject={(comment) => actions.reject(task.id, comment)}
+                  onRename={(title) => actions.rename(task.id, title)}
+                  onAttach={(file) => actions.attach(task.id, file)}
+                  onDetach={(fileId) => actions.detach(task.id, fileId)}
                   onAssign={(memberId) => actions.assign(task.id, memberId)}
                   onDue={(iso) => actions.due(task.id, iso)}
                   onRepeat={(value) => actions.repeat(task.id, value)}

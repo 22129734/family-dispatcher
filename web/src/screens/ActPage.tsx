@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, type ActInfo } from "../api";
 import { Button } from "../components/ui";
 import { formatDue } from "../format";
+import { FileStrip } from "../components/TaskFiles";
 
 /** Страница задачи из уведомления: ответить без входа в приложение. */
 export function ActPage({ token }: { token: string }) {
@@ -44,6 +45,11 @@ export function ActPage({ token }: { token: string }) {
             </p>
             <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">{task.title}</h1>
             <p className="mt-2 text-ink-2">{formatDue(task.due_at)}</p>
+            {task.files.length > 0 && (
+              <div className="mt-3">
+                <FileStrip files={task.files} />
+              </div>
+            )}
             {task.feedback && task.status !== "done" && (
               <p className="mt-3 rounded-xl bg-warn-soft px-3 py-2 text-sm">
                 <span className="font-semibold text-warn">{info.author_name}: не выполнено — </span>

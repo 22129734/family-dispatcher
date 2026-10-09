@@ -29,3 +29,6 @@ Thumbs.db
 
 *.db
 *.tsbuildinfo
+
+# Файлы, прикреплённые к задачам (локальная разработка)
+backend/uploads/

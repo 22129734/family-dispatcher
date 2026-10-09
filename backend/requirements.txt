@@ -8,3 +8,4 @@ sqlalchemy>=2.0
 alembic>=1.14
 psycopg[binary]>=3.2
 pywebpush>=2.0
+python-multipart>=0.0.20
