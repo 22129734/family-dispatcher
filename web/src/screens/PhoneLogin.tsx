@@ -27,9 +27,11 @@ const digitsCount = (value: string) => value.replace(/\D/g, "").length;
 export function PhoneLogin({
   onToken,
   invitedBy,
+  recommendedBy,
 }: {
   onToken: (token: string) => void;
   invitedBy?: string | null;
+  recommendedBy?: string | null;
 }) {
   const [phone, setPhone] = useState("+7");
   const [consent, setConsent] = useState(false);
@@ -198,6 +200,9 @@ export function PhoneLogin({
       <div className="pt-12 pb-8">
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
         {invitedBy && <p className="text-sm font-medium text-accent">Вас приглашает {invitedBy}</p>}
+        {!invitedBy && recommendedBy && (
+          <p className="text-sm font-medium text-accent">Вам рекомендует {recommendedBy}</p>
+        )}
         <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">
           Поручения, которые доходят и выполняются
         </h1>

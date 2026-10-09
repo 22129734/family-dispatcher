@@ -9,6 +9,7 @@ import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
 import { ActPage } from "./screens/ActPage";
 import { platform, syncPush } from "./push";
+import { referralCode } from "./referral";
 import { Today, type TaskActions } from "./screens/Today";
 
 type Tab = "today" | "calendar" | "family" | "help";
@@ -38,6 +39,7 @@ function Main() {
   const [stage, setStage] = useState<Stage>("booting");
   const [session, setSession] = useState<Session | null>(null);
   const [invitedBy, setInvitedBy] = useState<string | null>(null);
+  const [recommendedBy, setRecommendedBy] = useState<string | null>(null);
   const inviteCode = inviteCodeFromPath();
 
   // Есть сессия → смотрим, состоит ли человек в семье; нет → вход по телефону
@@ -61,9 +63,15 @@ function Main() {
 
   useEffect(() => {
     void resolve();
+    const ref = referralCode();
     if (inviteCode) {
       api.inviteInfo(inviteCode).then(
         (info) => setInvitedBy(info.members.join(", ") || null),
+        () => undefined,
+      );
+    } else if (ref) {
+      api.referralInfo(ref).then(
+        (info) => setRecommendedBy(info.from_name),
         () => undefined,
       );
     }
@@ -92,7 +100,7 @@ function Main() {
   }, []);
 
   if (stage === "booting") return <div className="min-h-dvh" />;
-  if (stage === "login") return <PhoneLogin onToken={onToken} invitedBy={invitedBy} />;
+  if (stage === "login") return <PhoneLogin onToken={onToken} invitedBy={invitedBy} recommendedBy={recommendedBy} />;
   if (stage === "setpin") return <SetPin onDone={() => void resolve()} />;
   if (stage === "onboarding" || !session) {
     return inviteCode ? <Join code={inviteCode} onSession={start} /> : <Welcome onSession={start} />;

@@ -314,3 +314,38 @@ def test_component_calls_are_counted_per_dau_and_exported(
 def test_cache_headers(client: TestClient) -> None:
     assert client.get("/api/v1/invites/nope").headers["cache-control"] == "no-store"
     assert client.get("/health").headers["cache-control"] == "no-cache"
+
+
+def test_referral_link_marks_new_family(client: TestClient, family: dict[str, str]) -> None:
+    ref = client.get("/api/v1/family", headers=auth(family["mom"])).json()["ref_code"]
+    assert client.get(f"/api/v1/referrals/{ref}").json() == {"from_name": "Мама"}
+    assert client.get("/api/v1/referrals/nope").status_code == 404
+
+    token = login(client, "79990000061")
+    created = client.post(
+        "/api/v1/families", json={"member_name": "Оля", "ref": ref}, headers=auth(token)
+    )
+    assert created.status_code == 201
+    # Новая семья — своя, а не семья пригласившего
+    assert (
+        created.json()["family_id"]
+        != client.get("/api/v1/family", headers=auth(family["mom"])).json()["id"]
+    )
+
+    from app.db import SessionLocal
+    from app.models import EventRow, FamilyRow
+
+    with SessionLocal() as db:
+        new = db.get(FamilyRow, created.json()["family_id"])
+        assert new.referred_by_id is not None
+        event = db.query(EventRow).filter(EventRow.name == "family_created").all()[-1]
+        assert event.props == {"from_ref": True}
+
+    # Неизвестный код не мешает созданию семьи
+    other = login(client, "79990000062")
+    assert (
+        client.post(
+            "/api/v1/families", json={"member_name": "Ира", "ref": "nope"}, headers=auth(other)
+        ).status_code
+        == 201
+    )

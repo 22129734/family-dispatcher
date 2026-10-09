@@ -180,6 +180,20 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
     report.add(f"DAU: {len(dau)}  (7 дней: {' · '.join(map(str, week))})")
     report.add(f"Аккаунты: {accounts_total} (+{accounts_new} за день)")
     report.add(f"Семьи: {families_total} (+{families_new} за день)")
+    referred_total = (
+        db.scalar(select(func.count()).where(FamilyRow.referred_by_id.is_not(None))) or 0
+    )
+    referred_new = (
+        db.scalar(
+            select(func.count()).where(
+                FamilyRow.referred_by_id.is_not(None),
+                FamilyRow.created_at >= start,
+                FamilyRow.created_at < end,
+            )
+        )
+        or 0
+    )
+    report.add(f"По рекомендации: {referred_total} (+{referred_new} за день)")
     report.add(f"Устройств с push: {push_devices}")
 
     # Сценарий «поручила — сделано»

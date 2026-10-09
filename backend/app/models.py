@@ -86,6 +86,11 @@ class FamilyRow(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(120))
     invite_code: Mapped[str] = mapped_column(String(32), unique=True, default=_invite_code)
+    # Ссылка-рекомендация для других семей (/?from=<код>) и откуда пришла эта семья
+    ref_code: Mapped[str] = mapped_column(String(32), unique=True, default=_invite_code)
+    referred_by_id: Mapped[str | None] = mapped_column(
+        ForeignKey("families.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     members: Mapped[list["MemberRow"]] = relationship(

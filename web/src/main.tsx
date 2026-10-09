@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import "./installPrompt"; // ловим предложение установки до первого экрана
+import "./referral"; // запоминаем код рекомендации из ссылки до входа
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

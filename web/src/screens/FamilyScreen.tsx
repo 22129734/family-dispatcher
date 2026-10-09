@@ -83,6 +83,8 @@ export function FamilyScreen({
 
       <Invite family={family} me={me} />
 
+      <Recommend family={family} />
+
       <Reminders initial={family.members.find((m) => m.id === me.id)?.remind_before_min ?? 60} />
 
       <section className="space-y-2">
@@ -98,18 +100,64 @@ export function FamilyScreen({
   );
 }
 
-/**
- * Приглашение. Ссылку кладём в текст сообщения, а не отдельным полем: Max и часть
- * мессенджеров на iPhone берут из системного «Поделиться» только текст.
- */
+/** Приглашение в свою семью: человек присоединяется к вашим делам. */
 function Invite({ family, me }: { family: Family; me: Member }) {
-  const [copied, setCopied] = useState(false);
   const url = `${SHARE_ORIGIN}/join/${family.invite_code}`;
-  const text = `${me.name} приглашает тебя в Семейный диспетчер — поручения будут приходить уведомлением. Открой ссылку:\n${url}`;
-  const encodedUrl = encodeURIComponent(url);
-  const encodedText = encodeURIComponent(text);
+  return (
+    <ShareBlock
+      kind="family"
+      title="Пригласить в семью"
+      url={url}
+      text={`${me.name} приглашает тебя в Семейный диспетчер — поручения будут приходить уведомлением. Открой ссылку:
+${url}`}
+      shortText={`${me.name} приглашает тебя в Семейный диспетчер`}
+      copyLabel="Скопировать приглашение"
+    />
+  );
+}
 
-  const track = (channel: string) => api.track("invite_shared", { channel });
+/** Рекомендация другой семье: по ссылке человек создаёт свою семью, а мы знаем, откуда он пришёл. */
+function Recommend({ family }: { family: Family }) {
+  const url = `${SHARE_ORIGIN}/?from=${family.ref_code}`;
+  return (
+    <ShareBlock
+      kind="referral"
+      title="Посоветовать знакомым"
+      description="Для другой семьи — у неё будет своё пространство, ваши дела она не увидит."
+      url={url}
+      text={`Попробуй Семейный диспетчер: пишешь «завтра в 6 забрать Машу» — второму взрослому приходит уведомление, он жмёт «Беру», и видно, что дело взято. Без «я же тебе писала». Бесплатно:
+${url}`}
+      shortText="Семейный диспетчер — поручения, которые доходят и выполняются"
+      copyLabel="Скопировать рекомендацию"
+    />
+  );
+}
+
+/**
+ * Ссылка, копирование и мессенджеры. Ссылку кладём в текст сообщения, а не отдельным полем:
+ * Max и часть мессенджеров на iPhone берут из системного «Поделиться» только текст.
+ */
+function ShareBlock({
+  kind,
+  title,
+  description,
+  url,
+  text,
+  shortText,
+  copyLabel,
+}: {
+  kind: "family" | "referral";
+  title: string;
+  description?: string;
+  url: string;
+  text: string;
+  shortText: string;
+  copyLabel: string;
+}) {
+  const [copied, setCopied] = useState(false);
+  const encodedUrl = encodeURIComponent(url);
+
+  const track = (channel: string) => api.track("invite_shared", { channel, kind });
 
   async function share() {
     track("system");
@@ -134,16 +182,19 @@ function Invite({ family, me }: { family: Family; me: Member }) {
 
   return (
     <section className="space-y-3">
-      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Пригласить в семью</h2>
+      <div>
+        <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">{title}</h2>
+        {description && <p className="mt-1 text-sm text-ink-2">{description}</p>}
+      </div>
       <p className="rounded-2xl border border-line bg-surface px-4 py-3 text-sm break-all text-ink-2 select-all">{url}</p>
 
-      <Button className="w-full" onClick={copy}>
-        {copied ? "Скопировано — вставьте в Max или любой чат" : "Скопировать приглашение"}
+      <Button className="w-full" variant={kind === "family" ? "primary" : "soft"} onClick={copy}>
+        {copied ? "Скопировано — вставьте в Max или любой чат" : copyLabel}
       </Button>
 
       <div className="grid grid-cols-3 gap-2">
         <a
-          href={`https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(`${me.name} приглашает тебя в Семейный диспетчер`)}`}
+          href={`https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(shortText)}`}
           target="_blank"
           rel="noreferrer"
           onClick={() => track("telegram")}
@@ -166,7 +217,7 @@ function Invite({ family, me }: { family: Family; me: Member }) {
           </button>
         ) : (
           <a
-            href={`sms:?&body=${encodedText}`}
+            href={`sms:?&body=${encodeURIComponent(text)}`}
             onClick={() => track("sms")}
             className="flex h-11 items-center justify-center rounded-xl bg-surface-2 text-sm font-medium active:opacity-70"
           >
@@ -174,9 +225,7 @@ function Invite({ family, me }: { family: Family; me: Member }) {
           </a>
         )}
       </div>
-      <p className="text-xs text-ink-3">
-        Для Max: нажмите «Скопировать приглашение» и вставьте сообщение в чат — ссылка будет внутри.
-      </p>
+      <p className="text-xs text-ink-3">Для Max: скопируйте сообщение и вставьте в чат — ссылка будет внутри.</p>
     </section>
   );
 }

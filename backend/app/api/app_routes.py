@@ -18,6 +18,7 @@ from app.schemas.api import (
     ItemsRequest,
     JoinFamilyRequest,
     MemberOut,
+    ReferralInfo,
     SessionOut,
     TaskOut,
     TrackRequest,
@@ -84,6 +85,12 @@ def create_family(
     _require_no_family(db, account)
     # Название семьи не спрашиваем — семья у человека одна
     family = FamilyRow(name=(payload.family_name or "").strip() or "Моя семья")
+    referrer = (
+        db.scalar(select(FamilyRow).where(FamilyRow.ref_code == payload.ref))
+        if payload.ref
+        else None
+    )
+    family.referred_by_id = referrer.id if referrer else None
     member = MemberRow(
         name=payload.member_name.strip(),
         has_car=payload.has_car,
@@ -93,9 +100,18 @@ def create_family(
     family.members.append(member)
     db.add(family)
     db.flush()
-    fs.track(db, member, "family_created")
+    fs.track(db, member, "family_created", from_ref=bool(referrer))
     db.commit()
     return _session(member, token)
+
+
+@router.get("/referrals/{code}", response_model=ReferralInfo, tags=["family"])
+def referral_info(code: str, db: DbSession) -> ReferralInfo:
+    """Публично: кто рекомендует приложение — для строки «Вам рекомендует Аня»."""
+    family = db.scalar(select(FamilyRow).where(FamilyRow.ref_code == code))
+    if family is None or not family.members:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ссылка не найдена")
+    return ReferralInfo(from_name=family.members[0].name)
 
 
 @router.get("/invites/{code}", response_model=InviteInfo, tags=["family"])
@@ -161,6 +177,7 @@ def get_family(member: CurrentMember, db: DbSession) -> FamilyOut:
         id=family.id,
         name=family.name,
         invite_code=family.invite_code,
+        ref_code=family.ref_code,
         members=[
             MemberOut.model_validate(m).model_copy(update={"notifications": m.id in with_push})
             for m in family.members

@@ -12,6 +12,8 @@ Role = Literal["adult", "teen", "child"]
 
 class CreateFamilyRequest(BaseModel):
     family_name: str | None = Field(default=None, max_length=120)
+    # Код ссылки-рекомендации (/?from=<код>), по которой пришла семья
+    ref: str | None = Field(default=None, max_length=32)
     member_name: str = Field(min_length=1, max_length=80)
     has_car: bool = False
 
@@ -94,6 +96,12 @@ class SessionOut(BaseModel):
     family_id: str
 
 
+class ReferralInfo(BaseModel):
+    """Кто рекомендует — имя создателя семьи, больше ничего."""
+
+    from_name: str
+
+
 class InviteInfo(BaseModel):
     family_name: str
     members: list[str]
@@ -103,6 +111,7 @@ class FamilyOut(BaseModel):
     id: str
     name: str
     invite_code: str
+    ref_code: str
     members: list[MemberOut]
 
 

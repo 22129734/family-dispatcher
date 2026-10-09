@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type Role, type Session } from "../api";
+import { clearReferral, referralCode } from "../referral";
 import { Button, ErrorNote, Field } from "../components/ui";
 
 export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
@@ -12,7 +13,8 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
     setBusy(true);
     setError(null);
     try {
-      onSession(await api.createFamily(name));
+      onSession(await api.createFamily(name, referralCode()));
+      clearReferral();
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

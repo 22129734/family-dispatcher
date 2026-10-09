@@ -60,6 +60,7 @@ export interface Family {
   id: string;
   name: string;
   invite_code: string;
+  ref_code: string;
   members: Member[];
 }
 
@@ -170,7 +171,9 @@ export const api = {
   account: () => request<Account>("/account"),
   logout: () => post<void>("/auth/logout").catch(() => undefined),
 
-  createFamily: (member_name: string) => post<Session>("/families", { member_name }),
+  createFamily: (member_name: string, ref: string | null = null) =>
+    post<Session>("/families", { member_name, ref }),
+  referralInfo: (code: string) => request<{ from_name: string }>(`/referrals/${code}`),
   inviteInfo: (code: string) =>
     request<{ family_name: string; members: string[] }>(`/invites/${code}`),
   join: (code: string, member_name: string, role: Role) =>
