@@ -5,7 +5,7 @@ import { InstallCard } from "../components/InstallCard";
 import { InviteSpouseCard } from "../components/InviteSpouseCard";
 import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
-import { avatarTone, BUCKET_TITLES, bucketOf, formatDue, parseLocal, type Bucket } from "../format";
+import { avatarTone, BUCKET_TITLES, bucketOf, formatSpan, parseLocal, type Bucket } from "../format";
 
 const ORDER: Bucket[] = ["overdue", "today", "tomorrow", "later", "undated", "done"];
 
@@ -21,6 +21,7 @@ export interface TaskActions {
   detach: (id: string, fileId: string) => void;
   assign: (id: string, memberId: string) => void;
   due: (id: string, iso: string | null) => void;
+  end: (id: string, iso: string | null) => void;
   repeat: (id: string, recurrence: Recurrence) => void;
   items: (id: string, items: TaskItem[]) => void;
   remove: (id: string) => void;
@@ -120,7 +121,7 @@ export function Today({
             <p className="font-display mt-1 text-xl leading-snug font-bold">{hero.title}</p>
             <div className="mt-3 flex items-center justify-between text-sm font-semibold">
               <span className="opacity-95">
-                {formatDue(hero.due_at)} ·{" "}
+                {formatSpan(hero.due_at, hero.ends_at)} ·{" "}
                 {hero.assignee_id === meId ? "я" : (members.find((m) => m.id === hero.assignee_id)?.name ?? "никто")}
               </span>
               <span className="rounded-full bg-white/25 px-2.5 py-1 text-xs">
@@ -227,6 +228,7 @@ export function Today({
                   onDetach={(fileId) => actions.detach(task.id, fileId)}
                   onAssign={(memberId) => actions.assign(task.id, memberId)}
                   onDue={(iso) => actions.due(task.id, iso)}
+                  onEnd={(iso) => actions.end(task.id, iso)}
                   onRepeat={(value) => actions.repeat(task.id, value)}
                   onItems={(items) => actions.items(task.id, items)}
                   onDelete={() => actions.remove(task.id)}

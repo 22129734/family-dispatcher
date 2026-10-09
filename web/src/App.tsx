@@ -231,6 +231,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       }),
     assign: (id, memberId) => run(async () => replace(await api.updateTask(id, { assignee_id: memberId }))),
     due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
+    end: (id, iso) => run(async () => replace(await api.updateTask(id, { ends_at: iso }))),
     repeat: (id, recurrence) => run(async () => replace(await api.updateTask(id, { recurrence }))),
     items: (id, items) => {
       // Отметка в списке — сразу на экране, сервер догонит
@@ -286,6 +287,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           await api.createTask({
             title: draft.title,
             due_at: draft.due_at,
+            ends_at: draft.ends_at,
             assignee_id: draft.assignee_id,
             recurrence: draft.recurrence,
             priority: draft.priority,

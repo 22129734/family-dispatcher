@@ -31,7 +31,14 @@ EXTRACT_TASK_FUNCTION = {
                 "type": "string",
                 "description": "Крайний срок: местное время семьи, ISO 8601 без часового пояса",
             },
-            "duration_minutes": {"type": "integer", "description": "Ожидаемая длительность"},
+            "ends_at": {
+                "type": "string",
+                "description": (
+                    "Окончание дела, только если оно названо явно: «с 9 до 10» → due_at 9:00, "
+                    "ends_at 10:00; «на час», «на полтора часа». ISO 8601 без пояса. "
+                    "Иначе не заполнять"
+                ),
+            },
             "priority": {"type": "string", "enum": ["low", "normal", "high"]},
             "recurrence": {
                 "type": "string",

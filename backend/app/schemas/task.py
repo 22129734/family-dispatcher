@@ -25,6 +25,8 @@ class TaskDraft(BaseModel):
     beneficiary: str | None = Field(default=None, description="Для кого делается задача")
     due_at: datetime | None = Field(default=None, description="Крайний срок")
     duration_minutes: int = Field(default=30, ge=5, le=600)
+    # Окончание, если его назвали явно: «с 9 до 10», «на час»
+    ends_at: datetime | None = None
     priority: Priority = Priority.NORMAL
     recurrence: Recurrence = Recurrence.NONE
     requires_car: bool = False

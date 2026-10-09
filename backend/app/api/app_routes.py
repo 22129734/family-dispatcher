@@ -224,6 +224,17 @@ def dispatch(
     return task
 
 
+def _valid_end(due: datetime | None, end: datetime | None) -> datetime | None:
+    """Окончание имеет смысл только после начала и в пределах суток."""
+    if due is None or end is None:
+        return None
+    if not (due < end <= due + timedelta(hours=16)):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Окончание должно быть позже начала"
+        )
+    return end
+
+
 @router.post("/tasks/parse", response_model=DraftOut, tags=["tasks"])
 def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
     """Разобрать фразу, но не сохранять: шторка «Проверьте просьбу» перед отправкой."""
@@ -233,6 +244,7 @@ def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
     return DraftOut(
         title=draft.title,
         due_at=draft.due_at,
+        ends_at=draft.ends_at,
         recurrence=draft.recurrence.value,
         priority=draft.priority.value,
         items=draft.items,
@@ -259,6 +271,7 @@ def create_task(
         source_text=payload.source_text,
         due_at=payload.due_at,
         duration_minutes=payload.duration_minutes,
+        ends_at=_valid_end(payload.due_at, payload.ends_at),
         requires_car=payload.requires_car,
         recurrence=payload.recurrence.value,
         priority=payload.priority,
@@ -308,6 +321,15 @@ def update_task(
     task = _family_task(db, member, task_id)
     changes = payload.model_dump(exclude_unset=True)
     fields = ",".join(sorted(changes))
+    if "due_at" in changes or "ends_at" in changes:
+        due = changes.get("due_at", task.due_at)
+        if "ends_at" in changes:
+            end = changes["ends_at"]
+        elif task.ends_at and task.due_at and due:
+            end = due + (task.ends_at - task.due_at)  # перенесли — окончание сдвигается следом
+        else:
+            end = None
+        changes["ends_at"] = _valid_end(due, end)
     if "assignee_id" in changes:
         _check_member(member, changes["assignee_id"])
         new_id = changes.pop("assignee_id")

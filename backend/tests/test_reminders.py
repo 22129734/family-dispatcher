@@ -410,3 +410,47 @@ def test_llm_note_and_items_are_mapped() -> None:
 
     draft = TaskExtractor(client=Stub()).extract("к врачу в среду, спросить про давление")
     assert (draft.items, draft.note) == (["давление", "продлить рецепт"], "кабинет 214")
+
+
+def test_end_time_saved_moved_with_due_and_kept_on_repeat(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    start = (datetime.now() + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    task = client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Подготовка к школе",
+            "due_at": start.isoformat(),
+            "ends_at": (start + timedelta(hours=1)).isoformat(),
+            "recurrence": "daily",
+            "assignee_id": family["dad_id"],
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    assert task["ends_at"] == (start + timedelta(hours=1)).isoformat()
+
+    # Перенесли начало — окончание сдвинулось следом
+    moved = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"due_at": (start + timedelta(hours=2)).isoformat()},
+        headers=auth(family["mom"]),
+    ).json()
+    assert moved["ends_at"] == (start + timedelta(hours=3)).isoformat()
+
+    bad = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"ends_at": start.isoformat()},
+        headers=auth(family["mom"]),
+    )
+    assert bad.status_code == 422
+
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"]))
+    tasks = client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+    nxt = next(t for t in tasks if t["status"] != "done")
+    span = datetime.fromisoformat(nxt["ends_at"]) - datetime.fromisoformat(nxt["due_at"])
+    assert span == timedelta(hours=1)
+
+    cleared = client.patch(
+        f"/api/v1/tasks/{nxt['id']}", json={"ends_at": None}, headers=auth(family["mom"])
+    ).json()
+    assert cleared["ends_at"] is None

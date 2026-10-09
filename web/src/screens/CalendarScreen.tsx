@@ -187,6 +187,7 @@ export function CalendarScreen({
                 onDetach={(fileId) => actions.detach(entry.task.id, fileId)}
                 onAssign={(memberId) => actions.assign(entry.task.id, memberId)}
                 onDue={(iso) => actions.due(entry.task.id, iso)}
+                onEnd={(iso) => actions.end(entry.task.id, iso)}
                 onRepeat={(value) => actions.repeat(entry.task.id, value)}
                 onItems={(items) => actions.items(entry.task.id, items)}
                 onDelete={() => actions.remove(entry.task.id)}
@@ -205,6 +206,14 @@ export function CalendarScreen({
   );
 }
 
+/** «–10:00» у повтора: та же продолжительность, что у текущей задачи. */
+function spanEnd(entry: Entry): string {
+  const { due_at, ends_at } = entry.task;
+  if (!due_at || !ends_at) return "";
+  const end = new Date(entry.at.getTime() + (parseLocal(ends_at).getTime() - parseLocal(due_at).getTime()));
+  return `–${end.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
 /** Будущий повтор: задачи ещё нет, сервер создаст её после «Сделано» у текущей. */
 function RepeatRow({ entry, members, meId }: { entry: Entry; members: Member[]; meId: string }) {
   const assignee = members.find((m) => m.id === entry.task.assignee_id);
@@ -212,6 +221,7 @@ function RepeatRow({ entry, members, meId }: { entry: Entry; members: Member[]; 
     <li className="flex items-center gap-3 rounded-2xl border border-dashed border-line px-3.5 py-3 text-ink-2">
       <span className="text-sm tabular-nums">
         {entry.at.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+        {spanEnd(entry)}
       </span>
       <span className="min-w-0 flex-1 truncate">{entry.task.title}</span>
       <span className="shrink-0 text-xs">

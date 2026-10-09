@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Member, Recurrence, Task, TaskItem } from "../api";
-import { formatDue, fromInputValue, RECURRENCE_LABEL, toInputValue } from "../format";
+import { endIso, formatSpan, fromInputValue, RECURRENCE_LABEL, toInputValue } from "../format";
 import { Avatar } from "./ui";
 import { AttachButton, FileStrip, PICKUP_RE } from "./TaskFiles";
 
@@ -20,6 +20,7 @@ interface Props {
   onDetach: (fileId: string) => void;
   onAssign: (memberId: string) => void;
   onDue: (iso: string | null) => void;
+  onEnd: (iso: string | null) => void;
   onRepeat: (recurrence: Recurrence) => void;
   onItems: (items: TaskItem[]) => void;
   onDelete: () => void;
@@ -78,6 +79,7 @@ export function TaskCard(props: Props) {
     // props.onNote меняется на каждый рендер — следим только за текстом
   }, [note, task.note]);
   const [firstItem, setFirstItem] = useState("");
+  const [showEnd, setShowEnd] = useState(false);
   // Посылка с маркетплейса без кода получения — подскажем прикрепить
   const askForCode = !done && task.files.length === 0 && PICKUP_RE.test(task.title);
   const recurrence = RECURRENCE_LABEL[task.recurrence];
@@ -109,7 +111,7 @@ export function TaskCard(props: Props) {
         <button className="min-w-0 flex-1 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
           <p className={`text-base leading-snug ${done ? "line-through" : ""}`}>{task.title}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
-            <span className={overdue ? "font-medium text-warn" : ""}>{formatDue(task.due_at)}</span>
+            <span className={overdue ? "font-medium text-warn" : ""}>{formatSpan(task.due_at, task.ends_at)}</span>
             {recurrence && <span>· {recurrence}</span>}
             {task.priority === "high" && !done && <span className="font-medium text-warn">· срочно</span>}
           </p>
@@ -316,15 +318,50 @@ export function TaskCard(props: Props) {
                 <AttachButton onFile={props.onAttach} label="Фото, скриншот или PDF" />
               </div>
 
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-ink-3">Когда</span>
-                <input
-                  type="datetime-local"
-                  defaultValue={toInputValue(task.due_at)}
-                  onChange={(e) => props.onDue(fromInputValue(e.target.value))}
-                  className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base"
-                />
-              </label>
+              <div>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-ink-3">Когда</span>
+                  <input
+                    type="datetime-local"
+                    defaultValue={toInputValue(task.due_at)}
+                    onChange={(e) => props.onDue(fromInputValue(e.target.value))}
+                    className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base"
+                  />
+                </label>
+                {task.due_at &&
+                  (task.ends_at || showEnd ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-sm text-ink-2">до</span>
+                      <input
+                        key={task.ends_at ?? "new"}
+                        type="time"
+                        defaultValue={task.ends_at?.slice(11, 16) ?? ""}
+                        onChange={(e) => e.target.value && props.onEnd(endIso(task.due_at!, e.target.value))}
+                        aria-label="Время окончания"
+                        className="h-11 w-32 rounded-xl border border-line bg-bg px-3 text-base"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowEnd(false);
+                          if (task.ends_at) props.onEnd(null);
+                        }}
+                        aria-label="Убрать окончание"
+                        className="flex h-11 w-11 items-center justify-center rounded-xl text-ink-3"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowEnd(true)}
+                      className="mt-2 text-sm font-medium text-accent"
+                    >
+                      + до скольки
+                    </button>
+                  ))}
+              </div>
 
               <div>
                 <span className="mb-1 block text-xs font-medium text-ink-3">Повторять</span>

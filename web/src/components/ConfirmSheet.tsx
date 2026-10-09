@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type Draft, type Member, type Recurrence, type Task } from "../api";
+import { addToTime, endIso } from "../format";
 import { AttachButton } from "./TaskFiles";
 import { Avatar } from "./ui";
 
@@ -69,6 +70,8 @@ export function ConfirmSheet({
   const [assignee, setAssignee] = useState<string | null>(draft.assignee_id);
   const [date, setDate] = useState(draft.due_at ? draft.due_at.slice(0, 10) : "");
   const [time, setTime] = useState(draft.due_at ? draft.due_at.slice(11, 16) : "");
+  const [end, setEnd] = useState(draft.ends_at ? draft.ends_at.slice(11, 16) : "");
+  const [showEnd, setShowEnd] = useState(!!draft.ends_at);
   const [repeat, setRepeat] = useState<Recurrence>(draft.recurrence);
   const [urgent, setUrgent] = useState(draft.priority === "high");
   const [items, setItems] = useState<string[]>(draft.items);
@@ -81,6 +84,8 @@ export function ConfirmSheet({
   const doers = members.filter((m) => m.role !== "child" || m.id === meId);
   const target = members.find((m) => m.id === assignee);
   const dueAt = date ? `${date}T${time || "18:00"}:00` : null;
+  const endsAt = dueAt && showEnd && end ? endIso(dueAt, end) : null;
+  const startTime = time || "18:00";
 
   async function send() {
     if (!title.trim()) return setError("Напишите, что нужно сделать");
@@ -91,6 +96,7 @@ export function ConfirmSheet({
       const task = await api.createTask({
         title: title.trim(),
         due_at: dueAt,
+        ends_at: endsAt,
         assignee_id: assignee,
         recurrence: repeat,
         priority: urgent ? "high" : "normal",
@@ -194,6 +200,52 @@ export function ConfirmSheet({
                 />
               </label>
             </div>
+
+            {showEnd ? (
+              <>
+                <Label>До скольки</Label>
+                <div className="flex flex-wrap gap-2">
+                  {([[30, "30 мин"], [60, "1 час"], [120, "2 часа"]] as const).map(([minutes, label]) => (
+                    <Chip key={minutes} on={end === addToTime(startTime, minutes)} onClick={() => setEnd(addToTime(startTime, minutes))}>
+                      {label}
+                    </Chip>
+                  ))}
+                  <label className={`flex h-9 items-center rounded-full border px-3 text-sm font-medium ${
+                    end && ![30, 60, 120].some((m) => addToTime(startTime, m) === end)
+                      ? "border-transparent bg-accent text-accent-ink"
+                      : "border-line bg-surface-2"
+                  }`}>
+                    <input
+                      type="time"
+                      value={end}
+                      onChange={(e) => setEnd(e.target.value)}
+                      aria-label="Время окончания"
+                      className="w-[74px] bg-transparent text-sm outline-none"
+                    />
+                  </label>
+                  <Chip
+                    on={false}
+                    onClick={() => {
+                      setShowEnd(false);
+                      setEnd("");
+                    }}
+                  >
+                    Без окончания
+                  </Chip>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEnd(true);
+                  setEnd(addToTime(startTime, 60));
+                }}
+                className="mt-3 text-sm font-medium text-accent"
+              >
+                + до скольки
+              </button>
+            )}
           </>
         )}
 

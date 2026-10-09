@@ -156,6 +156,7 @@ class TaskOut(BaseModel):
     beneficiary: str | None
     due_at: datetime | None
     duration_minutes: int
+    ends_at: datetime | None = None
     priority: str
     recurrence: str
     requires_car: bool
@@ -187,6 +188,7 @@ class CreateTaskRequest(BaseModel):
     title: str = Field(min_length=1, max_length=300)
     due_at: datetime | None = None
     duration_minutes: int = Field(default=30, ge=5, le=600)
+    ends_at: datetime | None = None
     assignee_id: str | None = None
     requires_car: bool = False
     # Поля из шторки проверки (после /tasks/parse)
@@ -205,6 +207,7 @@ class DraftOut(BaseModel):
 
     title: str
     due_at: datetime | None
+    ends_at: datetime | None = None
     recurrence: str
     priority: str
     items: list[str]
@@ -221,6 +224,8 @@ class UpdateTaskRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=300)
     due_at: datetime | None = None
     duration_minutes: int | None = Field(default=None, ge=5, le=600)
+    # null — без окончания; при переносе срока окончание сдвигается само
+    ends_at: datetime | None = None
     assignee_id: str | None = None
     recurrence: Recurrence | None = None
     note: str | None = Field(default=None, max_length=2000)

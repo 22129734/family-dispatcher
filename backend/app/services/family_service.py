@@ -89,6 +89,7 @@ def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> T
         beneficiary=draft.beneficiary,
         due_at=draft.due_at,
         duration_minutes=draft.duration_minutes,
+        ends_at=draft.ends_at,
         priority=draft.priority.value,
         recurrence=draft.recurrence.value,
         requires_car=draft.requires_car,
@@ -179,6 +180,8 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             beneficiary=task.beneficiary,
             due_at=due,
             duration_minutes=task.duration_minutes,
+            # Та же продолжительность: «подготовка к школе 9–10» каждый будний день
+            ends_at=due + (task.ends_at - task.due_at) if task.ends_at and task.due_at else None,
             priority=task.priority,
             recurrence=task.recurrence,
             requires_car=task.requires_car,

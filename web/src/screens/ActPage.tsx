@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ActInfo } from "../api";
 import { Button } from "../components/ui";
-import { formatDue } from "../format";
+import { formatSpan } from "../format";
 import { FileStrip } from "../components/TaskFiles";
 
 /** Страница задачи из уведомления: ответить без входа в приложение. */
@@ -44,7 +44,7 @@ export function ActPage({ token }: { token: string }) {
                 : "Ваше дело"}
             </p>
             <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">{task.title}</h1>
-            <p className="mt-2 text-ink-2">{formatDue(task.due_at)}</p>
+            <p className="mt-2 text-ink-2">{formatSpan(task.due_at, task.ends_at)}</p>
             {task.note && (
               <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-base">📝 {task.note}</p>
             )}

@@ -50,6 +50,29 @@ export function toInputValue(iso: string | null): string {
 
 export const fromInputValue = (value: string) => (value ? `${value}:00` : null);
 
+/** «сегодня, 09:00–10:00»: окончание показываем, только если его назвали. */
+export function formatSpan(due: string | null, ends: string | null | undefined): string {
+  return formatDue(due) + (due && ends ? `–${ends.slice(11, 16)}` : "");
+}
+
+/** Окончание по времени «ЧЧ:ММ»: в тот же день, а если раньше начала — на следующий. */
+export function endIso(dueIso: string, hhmm: string): string {
+  const start = parseLocal(dueIso);
+  const [h, m] = hhmm.split(":").map(Number);
+  const end = new Date(start);
+  end.setHours(h, m, 0, 0);
+  if (end <= start) end.setDate(end.getDate() + 1);
+  return `${toInputValue(end.toString())}:00`;
+}
+
+/** «09:00» + 90 минут → «10:30». */
+export function addToTime(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = (h * 60 + m + minutes) % (24 * 60);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
+}
+
 export function formatMinutes(minutes: number): string {
   if (minutes < 60) return `${minutes} мин`;
   const h = Math.floor(minutes / 60);

@@ -139,6 +139,8 @@ class TaskRow(Base):
     beneficiary: Mapped[str | None] = mapped_column(String(80), nullable=True)
     due_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    # Окончание — только если его назвали («с 9 до 10»): видно, когда человек занят
+    ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     priority: Mapped[str] = mapped_column(String(8), default="normal")
     recurrence: Mapped[str] = mapped_column(String(8), default="none")
     requires_car: Mapped[bool] = mapped_column(Boolean, default=False)

@@ -5,13 +5,13 @@
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dateutil import parser as date_parser
 
 from app.schemas.task import Priority, Recurrence, TaskDraft
 from app.services.llm_client import LLMClient
-from app.services.when import due_from_text
+from app.services.when import due_from_text, end_from_text
 
 _URGENT_MARKERS = ("срочно", "сегодня", "как можно скорее", "горит")
 _CAR_MARKERS = ("отвезти", "забрать", "привезти", "заехать", "довезти")
@@ -117,6 +117,14 @@ class TaskExtractor:
             updates["items"] = rules.items
         if not llm.note and rules.note:
             updates["note"] = rules.note
+        if rules.ends_at and rules.due_at and not llm.ends_at:
+            # «с 9 до 10»: модель могла принять «до 10» за срок — начало берём у правил
+            due = updates.get("due_at") or llm.due_at
+            if due is not None and due.time() == rules.ends_at.time():
+                due = rules.due_at
+                updates["due_at"] = due
+            if due is not None:
+                updates["ends_at"] = due + (rules.ends_at - rules.due_at)
         return llm.model_copy(update=updates) if updates else llm
 
     def _from_payload(self, payload: dict, now: datetime) -> TaskDraft:
@@ -130,6 +138,15 @@ class TaskExtractor:
             except (ValueError, TypeError):
                 due_at = None
 
+        ends_at = None
+        if due_at and payload.get("ends_at"):
+            try:
+                ends_at = date_parser.isoparse(payload["ends_at"]).replace(tzinfo=None)
+            except (ValueError, TypeError):
+                ends_at = None
+            if ends_at is not None and not (due_at < ends_at <= due_at + timedelta(hours=16)):
+                ends_at = None
+
         items = _clean_items(payload.get("items"))
         title = payload["title"]
         if len(items) == 1:
@@ -141,6 +158,7 @@ class TaskExtractor:
             title=title,
             beneficiary=payload.get("beneficiary"),
             due_at=due_at,
+            ends_at=ends_at,
             duration_minutes=payload.get("duration_minutes") or 30,
             priority=Priority(payload.get("priority", Priority.NORMAL)),
             recurrence=Recurrence(payload.get("recurrence", Recurrence.NONE)),
@@ -169,6 +187,7 @@ class TaskExtractor:
         return TaskDraft(
             title=message.strip().rstrip("."),
             due_at=due_at,
+            ends_at=end_from_text(message, due_at),
             priority=priority,
             recurrence=recurrence,
             requires_car=any(marker in lowered for marker in _CAR_MARKERS),

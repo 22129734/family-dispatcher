@@ -6,7 +6,7 @@ import pytest
 
 from app.schemas.task import TaskDraft
 from app.services.task_extractor import TaskExtractor
-from app.services.when import due_from_text
+from app.services.when import due_from_text, end_from_text
 
 FRIDAY_4PM = datetime(2026, 10, 9, 16, 20)
 
@@ -54,3 +54,61 @@ def test_question_asked_when_nobody_understood_due() -> None:
     draft: TaskDraft = TaskExtractor(client=SilentLLM()).extract("забрать авито", now=FRIDAY_4PM)
     assert draft.due_at is None
     assert draft.clarifying_question == "На какой день поставить эту задачу?"
+
+
+@pytest.mark.parametrize(
+    ("text", "start", "end"),
+    [
+        ("завтра подготовка к школе с 9 до 10", (10, 9, 0), (10, 10, 0)),
+        ("завтра подготовка к школе с 9-10", (10, 9, 0), (10, 10, 0)),
+        ("в субботу уборка 10–12", (10, 10, 0), (10, 12, 0)),
+        ("завтра с 9:30 по 11 бассейн", (10, 9, 30), (10, 11, 0)),
+        ("завтра с 11 до 1 прогулка", (10, 11, 0), (10, 13, 0)),
+        ("в 18 тренировка на полтора часа", (9, 18, 0), (9, 19, 30)),
+        ("завтра в 10 уроки на час", (10, 10, 0), (10, 11, 0)),
+        ("завтра в 10 созвон на 40 минут", (10, 10, 0), (10, 10, 40)),
+        ("забрать посылку до 19", (9, 19, 0), None),  # «до» без «с» — это срок, не промежуток
+        ("позвонить +7 900-123-45-67 завтра", (10, 18, 0), None),
+    ],
+)
+def test_span_from_text(text: str, start: tuple, end: tuple | None) -> None:
+    due = due_from_text(text, FRIDAY_4PM)
+    assert due == datetime(2026, 10, *start)
+    assert end_from_text(text, due) == (datetime(2026, 10, *end) if end else None)
+
+
+class EndAsStartLLM:
+    """Модель приняла «до 10» за срок и не заполнила окончание."""
+
+    enabled = True
+
+    def extract_task(self, *args: object) -> dict:
+        return {"title": "Подготовка к школе", "due_at": "2026-10-10T10:00:00"}
+
+
+def test_rules_fix_range_when_llm_takes_end_as_due() -> None:
+    draft = TaskExtractor(client=EndAsStartLLM()).extract(
+        "завтра подготовка к школе с 9 до 10", now=FRIDAY_4PM
+    )
+    assert (draft.due_at, draft.ends_at) == (
+        datetime(2026, 10, 10, 9, 0),
+        datetime(2026, 10, 10, 10, 0),
+    )
+
+
+class RangeLLM:
+    enabled = True
+
+    def extract_task(self, *args: object) -> dict:
+        return {
+            "title": "Подготовка к школе",
+            "due_at": "2026-10-10T09:00:00",
+            "ends_at": "2026-10-10T08:00:00",  # раньше начала — отбрасываем, берём правила
+        }
+
+
+def test_llm_end_before_start_is_ignored() -> None:
+    draft = TaskExtractor(client=RangeLLM()).extract(
+        "завтра подготовка к школе с 9 до 10", now=FRIDAY_4PM
+    )
+    assert draft.ends_at == datetime(2026, 10, 10, 10, 0)

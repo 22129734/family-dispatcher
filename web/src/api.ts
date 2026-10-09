@@ -27,6 +27,7 @@ export interface Draft {
   items: string[];
   requires_car: boolean;
   note: string | null;
+  ends_at: string | null;
   assignee_id: string | null;
   rationale: string | null;
   clarifying_question: string | null;
@@ -44,6 +45,7 @@ export interface NewTask {
   source?: "text" | "voice" | "manual";
   source_text?: string | null;
   note?: string | null;
+  ends_at?: string | null;
   defer_notify?: boolean;
 }
 
@@ -134,6 +136,8 @@ export interface Task {
   /** «Не выполнено»: что не так, по словам автора */
   feedback: string | null;
   feedback_at: string | null;
+  /** Окончание, если его назвали («с 9 до 10»); null — дело без продолжительности */
+  ends_at: string | null;
   /** Заметка: кабинет, адрес, что взять — подробности, которые не влезают в название */
   note: string | null;
   files: TaskFile[];
@@ -241,7 +245,7 @@ export const api = {
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
-  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "assignee_id" | "recurrence" | "note">>) =>
+  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "note">>) =>
     patch<Task>(`/tasks/${id}`, changes),
   setItems: (id: string, items: TaskItem[]) => request<Task>(`/tasks/${id}/items`, { method: "PUT", body: JSON.stringify({ items }) }),
   accept: (id: string) => post<Task>(`/tasks/${id}/accept`),
