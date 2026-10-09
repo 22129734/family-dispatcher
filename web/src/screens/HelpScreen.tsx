@@ -22,7 +22,7 @@ const TEAM: Contact[] = [
     ],
   },
   { name: "Ярослав", tone: "tone-b", links: [["ВК", "https://vk.com/id481065077"]] },
-  { name: "Влад", tone: "tone-c", links: [["ВК", "https://vk.com/vladusha09"]] },
+  { name: "Владислав", tone: "tone-c", links: [["ВК", "https://vk.com/vladusha09"]] },
 ];
 
 const buildDate = new Date(__BUILD_TIME__);
