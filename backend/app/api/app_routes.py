@@ -19,6 +19,7 @@ from app.schemas.api import (
     JoinFamilyRequest,
     MemberOut,
     ReferralInfo,
+    RejectRequest,
     SessionOut,
     TaskOut,
     TrackRequest,
@@ -344,6 +345,28 @@ def reopen_task(task_id: str, member: CurrentMember, db: DbSession) -> TaskRow:
     task.completed_at = None
     fs.track(db, member, "task_reopened")
     db.commit()
+    return task
+
+
+@router.post("/tasks/{task_id}/reject", response_model=TaskOut, tags=["tasks"])
+def reject_task(
+    task_id: str,
+    payload: RejectRequest,
+    member: CurrentMember,
+    db: DbSession,
+    background: BackgroundTasks,
+) -> TaskRow:
+    """«Не выполнено»: автор возвращает сделанное исполнителю с обратной связью."""
+    task = _family_task(db, member, task_id)
+    try:
+        fs.reject(db, task, member, payload.comment)
+    except TaskActionError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    fs.track(db, member, "task_rejected", with_comment=bool(task.feedback))
+    db.commit()
+    background.add_task(
+        notifications.deliver, task.assignee_id, notifications.rejected_message(task, member)
+    )
     return task
 
 

@@ -88,6 +88,9 @@ export interface Task {
   items: TaskItem[];
   reminded_at: string | null;
   remembered_at: string | null;
+  /** «Не выполнено»: что не так, по словам автора */
+  feedback: string | null;
+  feedback_at: string | null;
   created_at: string;
   accepted_at: string | null;
   completed_at: string | null;
@@ -196,6 +199,7 @@ export const api = {
   decline: (id: string, reason: string | null) => post<Task>(`/tasks/${id}/decline`, { reason }),
   done: (id: string) => post<Task>(`/tasks/${id}/done`),
   reopen: (id: string) => post<Task>(`/tasks/${id}/reopen`),
+  reject: (id: string, comment: string | null) => post<Task>(`/tasks/${id}/reject`, { comment }),
   remove: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
 
   pushStatus: () => request<{ enabled: boolean; public_key: string | null; devices: number }>("/push/status"),

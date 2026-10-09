@@ -9,9 +9,10 @@
 и из кнопок push-уведомления, поэтому живут здесь, а не в роутерах.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import EventRow, FamilyRow, MemberRow, TaskRow
@@ -163,6 +164,7 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
     task.status = "done"
     task.completed_at = now
     task.accepted_at = task.accepted_at or now
+    task.feedback = None  # замечание «не выполнено» снято — дело сделано заново
 
     due = next_due(task.due_at, task.recurrence, now)
     if due is not None:
@@ -188,6 +190,41 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
         )
         db.add(next_task)
     return True
+
+
+def reject(db: Session, task: TaskRow, member: MemberRow, comment: str | None) -> None:
+    """«Не выполнено»: автор возвращает сделанное исполнителю с комментарием.
+
+    Задача снова «взята» тем же человеком. Если это был повтор, уже созданный следующий
+    повтор убираем — иначе в списке окажутся два одинаковых дела.
+    """
+    if task.created_by_id != member.id:
+        raise TaskActionError(403, "Вернуть может только тот, кто просил")
+    if task.status != "done":
+        raise TaskActionError(409, "Задача ещё не отмечена сделанной")
+    if task.assignee_id in (None, member.id):
+        raise TaskActionError(409, "Это ваше дело — просто верните его в работу")
+    if task.recurrence != "none" and task.completed_at is not None:
+        spawned = db.scalars(
+            select(TaskRow).where(
+                TaskRow.family_id == task.family_id,
+                TaskRow.title == task.title,
+                TaskRow.recurrence == task.recurrence,
+                TaskRow.status != "done",
+                TaskRow.id != task.id,
+                TaskRow.created_at >= task.completed_at - timedelta(seconds=5),
+            )
+        ).all()
+        for extra in spawned:
+            db.delete(extra)
+    now = datetime.now()
+    task.status = "accepted"
+    task.completed_at = None
+    task.accepted_at = task.accepted_at or now
+    task.feedback = (comment or "").strip() or None
+    task.feedback_at = now
+    task.reminded_at = None
+    task.remembered_at = None
 
 
 def track(db: Session, member: MemberRow, name: str, **props: object) -> None:

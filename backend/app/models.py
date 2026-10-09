@@ -155,6 +155,9 @@ class TaskRow(Base):
     # Напоминание перед сроком отправлено; исполнитель ответил «Я помню»
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     remembered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # «Не выполнено»: автор вернул сделанное с комментарием исполнителю
+    feedback: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    feedback_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

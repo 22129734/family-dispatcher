@@ -14,6 +14,7 @@ export interface TaskActions {
   decline: (id: string, reason: string | null) => void;
   done: (id: string) => void;
   reopen: (id: string) => void;
+  reject: (id: string, comment: string | null) => void;
   assign: (id: string, memberId: string) => void;
   due: (id: string, iso: string | null) => void;
   repeat: (id: string, recurrence: Recurrence) => void;
@@ -215,6 +216,7 @@ export function Today({
                   onDecline={(reason) => actions.decline(task.id, reason)}
                   onDone={() => actions.done(task.id)}
                   onReopen={() => actions.reopen(task.id)}
+                  onReject={(comment) => actions.reject(task.id, comment)}
                   onAssign={(memberId) => actions.assign(task.id, memberId)}
                   onDue={(iso) => actions.due(task.id, iso)}
                   onRepeat={(value) => actions.repeat(task.id, value)}

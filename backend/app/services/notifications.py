@@ -135,6 +135,20 @@ def reminder_message(task: TaskRow, now: datetime) -> PushMessage:
     )
 
 
+def rejected_message(task: TaskRow, author: MemberRow) -> PushMessage:
+    """Исполнителю: автор отметил «Не выполнено» — с комментарием и кнопкой «Сделано»."""
+    url, act = _act(task, task.assignee_id)
+    body = f"{task.title} — {task.feedback}" if task.feedback else task.title
+    return PushMessage(
+        title=f"{author.name}: не выполнено",
+        body=body,
+        url=url,
+        tag=f"task-{task.id}",
+        actions=[{"action": "done", "title": "Сделано"}],
+        act_url=act,
+    )
+
+
 def answer_message(task: TaskRow, who: MemberRow, kind: str) -> PushMessage:
     """Автору: исполнитель ответил «Беру» / «Не могу» или отметил «Сделано»."""
     verb = {"accepted": "берёт", "declined": "не может", "done": "сделал(а)"}[kind]

@@ -212,3 +212,79 @@ def test_family_shows_who_has_notifications(client: TestClient, family: dict[str
     finally:
         settings.vapid_public_key, settings.vapid_private_key = "", ""
     assert flags() == {"Мама": False, "Папа": True}
+
+
+# ---------- «Не выполнено» ----------
+
+
+def test_author_rejects_done_task_with_feedback(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    task = client.post(
+        "/api/v1/tasks", json={"title": "Купить продукты"}, headers=auth(family["mom"])
+    ).json()
+    client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"]))
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"]))
+    sent.clear()
+
+    # Исполнитель не может «отклонить» за автора
+    assert (
+        client.post(
+            f"/api/v1/tasks/{task['id']}/reject", json={}, headers=auth(family["dad"])
+        ).status_code
+        == 403
+    )
+
+    back = client.post(
+        f"/api/v1/tasks/{task['id']}/reject",
+        json={"comment": "забыл хлеб"},
+        headers=auth(family["mom"]),
+    ).json()
+    assert (back["status"], back["feedback"], back["completed_at"]) == (
+        "accepted",
+        "забыл хлеб",
+        None,
+    )
+    member_id, message = sent[-1]
+    assert member_id == family["dad_id"]
+    assert message.title == "Мама: не выполнено" and message.body == "Купить продукты — забыл хлеб"
+    assert [a["action"] for a in message.actions] == ["done"]
+
+    # Повторно сделал — замечание снимается
+    redone = client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"])).json()
+    assert redone["status"] == "done" and redone["feedback"] is None
+    # Не сделанное вернуть нельзя
+    other = client.post(
+        "/api/v1/tasks", json={"title": "Вынести мусор"}, headers=auth(family["mom"])
+    ).json()
+    assert (
+        client.post(
+            f"/api/v1/tasks/{other['id']}/reject", json={}, headers=auth(family["mom"])
+        ).status_code
+        == 409
+    )
+
+
+def test_reject_recurring_removes_spawned_next(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    task = task_due_in(client, family, 60)
+    client.patch(
+        f"/api/v1/tasks/{task['id']}", json={"recurrence": "weekly"}, headers=auth(family["mom"])
+    )
+    client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"]))
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"]))
+    open_before = [
+        t
+        for t in client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+        if t["status"] != "done"
+    ]
+    assert len(open_before) == 1  # создан следующий повтор
+
+    client.post(f"/api/v1/tasks/{task['id']}/reject", json={}, headers=auth(family["mom"]))
+    open_after = [
+        t
+        for t in client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+        if t["status"] != "done"
+    ]
+    assert [t["id"] for t in open_after] == [task["id"]]

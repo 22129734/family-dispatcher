@@ -211,6 +211,12 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         replace(await api.done(id));
       }),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
+    reject: (id, comment) =>
+      run(async () => {
+        const task = await api.reject(id, comment);
+        replace(task);
+        notify(`Вернули: ${memberName(task.assignee_id)}. Ждём, пока сделает`);
+      }),
     assign: (id, memberId) => run(async () => replace(await api.updateTask(id, { assignee_id: memberId }))),
     due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
     repeat: (id, recurrence) => run(async () => replace(await api.updateTask(id, { recurrence }))),

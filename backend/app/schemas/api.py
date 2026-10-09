@@ -150,6 +150,8 @@ class TaskOut(BaseModel):
     items: list[TaskItem] = []
     reminded_at: datetime | None = None
     remembered_at: datetime | None = None
+    feedback: str | None = None
+    feedback_at: datetime | None = None
     created_at: datetime
     accepted_at: datetime | None
     completed_at: datetime | None
@@ -174,6 +176,12 @@ class UpdateTaskRequest(BaseModel):
     duration_minutes: int | None = Field(default=None, ge=5, le=600)
     assignee_id: str | None = None
     recurrence: Recurrence | None = None
+
+
+class RejectRequest(BaseModel):
+    """«Не выполнено»: что не так — исполнитель увидит это в уведомлении и в карточке."""
+
+    comment: str | None = Field(default=None, max_length=300)
 
 
 class DeclineRequest(BaseModel):

@@ -12,6 +12,7 @@ interface Props {
   onDecline: (reason: string | null) => void;
   onDone: () => void;
   onReopen: () => void;
+  onReject: (comment: string | null) => void;
   onAssign: (memberId: string) => void;
   onDue: (iso: string | null) => void;
   onRepeat: (recurrence: Recurrence) => void;
@@ -54,6 +55,11 @@ export function TaskCard(props: Props) {
   const mine = task.assignee_id === meId;
   const author = task.created_by_id === meId;
   const canFinish = mine || author || !task.assignee_id;
+  // «Не выполнено» — у автора на деле, которое сделал другой человек
+  const canReject = done && author && !!task.assignee_id && !mine;
+  const [rejecting, setRejecting] = useState(false);
+  const [comment, setComment] = useState("");
+  const authorName = members.find((m) => m.id === task.created_by_id)?.name ?? "Автор";
   const recurrence = RECURRENCE_LABEL[task.recurrence];
   const status = statusLabel(task, assignee, meId);
   const needsMyAnswer = mine && task.status === "new";
@@ -107,7 +113,54 @@ export function TaskCard(props: Props) {
           </button>
         </div>
       )}
+      {!done && task.feedback && (
+        <p className="mx-3.5 mb-3 rounded-xl bg-warn-soft px-3 py-2 text-sm">
+          <span className="font-semibold text-warn">{author ? "Вы вернули: " : `${authorName}: не выполнено — `}</span>
+          {task.feedback}
+        </p>
+      )}
+
       {task.items.length > 0 && <Items task={task} canEdit={!done} onItems={props.onItems} />}
+
+      {canReject && !rejecting && (
+        <div className="px-3.5 pb-3">
+          <button
+            onClick={() => setRejecting(true)}
+            className="h-9 rounded-xl border border-warn/40 px-3 text-sm font-semibold text-warn active:bg-warn-soft"
+          >
+            Не выполнено
+          </button>
+        </div>
+      )}
+      {rejecting && (
+        <form
+          className="space-y-2 px-3.5 pb-3.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            props.onReject(comment.trim() || null);
+            setRejecting(false);
+            setComment("");
+          }}
+        >
+          <textarea
+            autoFocus
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            maxLength={300}
+            rows={2}
+            placeholder="Что не так? Например: купил не тот хлеб"
+            className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
+          />
+          <div className="flex gap-2">
+            <button type="submit" className="h-10 flex-1 rounded-xl bg-accent text-sm font-semibold text-accent-ink active:opacity-80">
+              Вернуть: {members.find((m) => m.id === task.assignee_id)?.name ?? "исполнителю"}
+            </button>
+            <button type="button" onClick={() => setRejecting(false)} className="h-10 rounded-xl px-4 text-sm text-ink-2">
+              Отмена
+            </button>
+          </div>
+        </form>
+      )}
 
       {mine && task.status === "accepted" && (
         <div className="px-3.5 pb-3.5">

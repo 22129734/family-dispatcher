@@ -180,6 +180,7 @@ export function CalendarScreen({
                 onDecline={(reason) => actions.decline(entry.task.id, reason)}
                 onDone={() => actions.done(entry.task.id)}
                 onReopen={() => actions.reopen(entry.task.id)}
+                onReject={(comment) => actions.reject(entry.task.id, comment)}
                 onAssign={(memberId) => actions.assign(entry.task.id, memberId)}
                 onDue={(iso) => actions.due(entry.task.id, iso)}
                 onRepeat={(value) => actions.repeat(entry.task.id, value)}
