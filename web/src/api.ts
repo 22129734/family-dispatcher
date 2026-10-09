@@ -8,6 +8,8 @@ export interface Member {
   capacity_minutes: number;
   dislikes: string[];
   remind_before_min: number;
+  /** Тема оформления; null — не выбирал(а), показываем «Лаванду» */
+  theme: string | null;
   /** Есть устройство с push — иначе поручения до человека сами не дойдут */
   notifications: boolean;
 }
@@ -179,7 +181,7 @@ export const api = {
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),
-  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min">>) =>
+  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme">>) =>
     patch<Member>("/me", changes),
   family: () => request<Family>("/family"),
 

@@ -34,6 +34,7 @@ class MemberOut(BaseModel):
     capacity_minutes: int
     dislikes: list[str]
     remind_before_min: int = 60
+    theme: str | None = None
     # Есть ли у человека устройство с push — второй супруг должен видеть, что уведомления не дойдут
     notifications: bool = False
 
@@ -45,6 +46,7 @@ class UpdateMemberRequest(BaseModel):
     dislikes: list[str] | None = None
     # За сколько минут до срока напоминать: 0 — не напоминать, максимум — за сутки
     remind_before_min: Literal[0, 15, 30, 60, 120, 1440] | None = None
+    theme: Literal["dawn", "lavender", "night", "mint"] | None = None
 
 
 class PhoneStartRequest(BaseModel):

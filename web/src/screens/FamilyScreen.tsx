@@ -3,50 +3,14 @@ import { api, type Family, type Member } from "../api";
 import { Avatar, Button } from "../components/ui";
 import { familyInviteText, familyInviteUrl, SHARE_ORIGIN } from "../share";
 import { plural } from "./Today";
-import { SetPin } from "./SetPin";
 
 const ROLE_LABEL: Record<Member["role"], string> = { adult: "взрослый", teen: "подросток", child: "ребёнок" };
 
-
-const REMIND_OPTIONS: [number, string][] = [
-  [15, "За 15 мин"],
-  [30, "За 30 мин"],
-  [60, "За час"],
-  [120, "За 2 часа"],
-  [1440, "За день"],
-  [0, "Не напоминать"],
-];
-
-export function FamilyScreen({
-  family,
-  me,
-  onLogout,
-}: {
-  family: Family;
-  me: Member;
-  onLogout: () => void;
-}) {
-  const [changingPin, setChangingPin] = useState(false);
-  const [pinChanged, setPinChanged] = useState(false);
-
-  if (changingPin) {
-    return (
-      <div className="fixed inset-0 z-20 overflow-y-auto bg-bg">
-        <SetPin
-          onDone={() => {
-            setChangingPin(false);
-            setPinChanged(true);
-          }}
-          onCancel={() => setChangingPin(false)}
-        />
-      </div>
-    );
-  }
-
+export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
   return (
     <div className="space-y-6 px-4 pt-6 pb-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Семья</h1>
+        <h1 className="font-display text-2xl font-bold">Семья</h1>
       </header>
 
       <section>
@@ -82,17 +46,6 @@ export function FamilyScreen({
 
       <Recommend family={family} />
 
-      <Reminders initial={family.members.find((m) => m.id === me.id)?.remind_before_min ?? 60} />
-
-      <section className="space-y-2">
-        <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Вход</h2>
-        <Button variant="soft" className="w-full" onClick={() => setChangingPin(true)}>
-          {pinChanged ? "PIN-код изменён" : "Сменить PIN-код"}
-        </Button>
-        <Button variant="ghost" className="w-full" onClick={onLogout}>
-          Выйти на этом устройстве
-        </Button>
-      </section>
     </div>
   );
 }
@@ -222,41 +175,6 @@ function ShareBlock({
         )}
       </div>
       <p className="text-xs text-ink-3">Для Max: скопируйте сообщение и вставьте в чат — ссылка будет внутри.</p>
-    </section>
-  );
-}
-
-/** Личная настройка: за сколько до срока напоминать о моих делах. */
-function Reminders({ initial }: { initial: number }) {
-  const [value, setValue] = useState(initial);
-
-  async function choose(minutes: number) {
-    const previous = value;
-    setValue(minutes);
-    try {
-      await api.updateMe({ remind_before_min: minutes });
-    } catch {
-      setValue(previous);
-    }
-  }
-
-  return (
-    <section className="space-y-2">
-      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Напоминать о моих делах</h2>
-      <div className="flex flex-wrap gap-2">
-        {REMIND_OPTIONS.map(([minutes, label]) => (
-          <button
-            key={minutes}
-            onClick={() => void choose(minutes)}
-            className={`h-9 rounded-full border px-3 text-sm ${
-              value === minutes ? "border-accent bg-accent-soft" : "border-line"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <p className="text-xs text-ink-3">Придёт уведомление с кнопками «Я помню» и «Сделано».</p>
     </section>
   );
 }

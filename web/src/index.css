@@ -1,45 +1,161 @@
 @import "tailwindcss";
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/onest";
+@import "@fontsource-variable/unbounded";
 
+/*
+ * Дизайн «B + D»: бенто-главная, цвет на человека, градиенты и стекло.
+ * Четыре темы задаются атрибутом <html data-theme="…">; по умолчанию — «Лаванда».
+ * Компоненты используют только токены (bg-surface, text-ink, bg-accent…).
+ */
 
-:root {
-  --bg: #fbf7f2;
-  --surface: #ffffff;
-  --surface-2: #f4eee6;
-  --ink: #221d18;
-  --ink-2: #6b6158;
-  --ink-3: #a1968b;
-  --line: #ebe3d9;
-  --accent: #e8663d;
+/* ---------- Лаванда (по умолчанию) ---------- */
+:root,
+[data-theme="lavender"] {
+  --page: linear-gradient(160deg, #e7e2ff 0%, #dbeaff 55%, #f3e8ff 100%);
+  --page-solid: #e9e5ff;
+  --blob-1: #8f7bff;
+  --blob-2: #6ec3ff;
+  --blob-3: #ff9ccf;
+  --bg: #f7f5ff;
+  --surface: rgba(255, 255, 255, 0.56);
+  --surface-solid: #fbfaff;
+  --surface-2: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --ink: #1d1530;
+  --ink-2: #5f5578;
+  --ink-3: #9b91b4;
+  --line: rgba(29, 21, 48, 0.1);
+  --accent: #6c4cf5;
+  --accent-grad: linear-gradient(135deg, #6c4cf5 0%, #9b6bff 100%);
+  --hero: linear-gradient(135deg, #6c4cf5 0%, #9b6bff 60%, #ff7fb6 130%);
+  --fab: linear-gradient(135deg, #ff6b9a 0%, #ff8fb8 100%);
   --accent-ink: #ffffff;
-  --accent-soft: #fde6dc;
-  --ok: #2f8f5b;
-  --ok-soft: #dcf1e4;
-  --warn: #c2410c;
-  --warn-soft: #ffedd5;
-  --tone-a: #e8663d;
-  --tone-b: #3b82c4;
-  --tone-c: #2f8f5b;
-  --tone-d: #9b5ac2;
-  --tone-e: #c79a1c;
+  --accent-soft: rgba(108, 76, 245, 0.12);
+  --ok: #1f9a5b;
+  --ok-soft: rgba(42, 160, 96, 0.14);
+  --warn: #d0365f;
+  --warn-soft: rgba(255, 107, 154, 0.16);
+  --tone-a: #e0457f;
+  --tone-b: #2aa060;
+  --tone-c: #6c4cf5;
+  --tone-d: #f08c2b;
+  --tone-e: #2b8fd6;
+  --font-text: "Onest Variable";
+  --font-head: "Unbounded Variable";
+  --theme-color: #e7e2ff;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #1a1714;
-    --surface: #25211d;
-    --surface-2: #2f2a25;
-    --ink: #f3ede6;
-    --ink-2: #b9aea3;
-    --ink-3: #7d7369;
-    --line: #3a342e;
-    --accent: #f07a52;
-    --accent-ink: #1a1714;
-    --accent-soft: #4a2a1e;
-    --ok: #5cc38a;
-    --ok-soft: #1f3a2a;
-    --warn: #fb923c;
-    --warn-soft: #43281a;
-  }
+/* ---------- Рассвет ---------- */
+[data-theme="dawn"] {
+  --page: linear-gradient(165deg, #ffe3d3 0%, #ffd0e1 48%, #f6e7ff 100%);
+  --page-solid: #ffe0dc;
+  --blob-1: #ff9a6b;
+  --blob-2: #ff6fa8;
+  --blob-3: #ffc56b;
+  --bg: #fff6f2;
+  --surface: rgba(255, 255, 255, 0.55);
+  --surface-solid: #fffaf8;
+  --surface-2: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --ink: #2b1720;
+  --ink-2: #6f5160;
+  --ink-3: #a98e9a;
+  --line: rgba(43, 23, 32, 0.1);
+  --accent: #ff5f8f;
+  --accent-grad: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
+  --hero: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
+  --fab: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(255, 95, 143, 0.13);
+  --ok: #1f9a5b;
+  --ok-soft: rgba(47, 174, 116, 0.15);
+  --warn: #d23a50;
+  --warn-soft: rgba(255, 95, 120, 0.15);
+  --tone-a: #ff5f8f;
+  --tone-b: #2fae74;
+  --tone-c: #ff8a3d;
+  --tone-d: #8f6bff;
+  --tone-e: #2b8fd6;
+  --font-text: "Manrope Variable";
+  --font-head: "Manrope Variable";
+  --theme-color: #ffe3d3;
+  color-scheme: light;
+}
+
+/* ---------- Вечер (тёмная) ---------- */
+[data-theme="night"] {
+  --page: linear-gradient(165deg, #1b1640 0%, #2c1a3d 50%, #3a1f2e 100%);
+  --page-solid: #241a3d;
+  --blob-1: #6c4cf5;
+  --blob-2: #ff5f8f;
+  --blob-3: #ff8a5b;
+  --bg: #1c1733;
+  --surface: rgba(255, 255, 255, 0.08);
+  --surface-solid: #2a2342;
+  --surface-2: rgba(255, 255, 255, 0.13);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --ink: #f7f1ff;
+  --ink-2: #c3b6da;
+  --ink-3: #8e81a8;
+  --line: rgba(255, 255, 255, 0.12);
+  --accent: #ff8a5b;
+  --accent-grad: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
+  --hero: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
+  --fab: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(255, 138, 91, 0.18);
+  --ok: #4fd99b;
+  --ok-soft: rgba(60, 207, 142, 0.16);
+  --warn: #ff7b9c;
+  --warn-soft: rgba(255, 95, 143, 0.18);
+  --tone-a: #ff5f8f;
+  --tone-b: #3ccf8e;
+  --tone-c: #9b84ff;
+  --tone-d: #ffb35b;
+  --tone-e: #4fb3ff;
+  --font-text: "Manrope Variable";
+  --font-head: "Manrope Variable";
+  --theme-color: #1b1640;
+  color-scheme: dark;
+}
+
+/* ---------- Мята и персик (стекло точечно) ---------- */
+[data-theme="mint"] {
+  --page: linear-gradient(170deg, #e3f7ef 0%, #fff3e6 60%, #ffe9dc 100%);
+  --page-solid: #eef7ef;
+  --blob-1: #7fe0b8;
+  --blob-2: #ffb27a;
+  --blob-3: #ffd36b;
+  --bg: #fbfdfb;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-solid: #ffffff;
+  --surface-2: rgba(255, 255, 255, 0.95);
+  --glass-border: #ffffff;
+  --ink: #17261f;
+  --ink-2: #4f6359;
+  --ink-3: #8fa198;
+  --line: rgba(23, 38, 31, 0.1);
+  --accent: #1fae7a;
+  --accent-grad: linear-gradient(135deg, #1fae7a 0%, #5cc99a 100%);
+  --hero: linear-gradient(135deg, #1fae7a 0%, #5cc99a 100%);
+  --fab: linear-gradient(135deg, #ff8a5b 0%, #ffb05b 100%);
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(31, 174, 122, 0.13);
+  --ok: #138a5c;
+  --ok-soft: rgba(31, 174, 122, 0.14);
+  --warn: #e0622c;
+  --warn-soft: rgba(255, 138, 91, 0.16);
+  --tone-a: #ff7a45;
+  --tone-b: #1fae7a;
+  --tone-c: #8f6bff;
+  --tone-d: #e8a91c;
+  --tone-e: #2b8fd6;
+  --font-text: "Manrope Variable";
+  --font-head: "Manrope Variable";
+  --theme-color: #e3f7ef;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -57,20 +173,99 @@
   --color-ok-soft: var(--ok-soft);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
-  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-text), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: var(--font-head), var(--font-text), system-ui, sans-serif;
 }
 
 html,
 body {
-  background: var(--bg);
   color: var(--ink);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
 }
 
+html {
+  background: var(--page-solid);
+}
+
 body {
+  background: var(--page);
+  background-attachment: fixed;
   font-family: var(--font-sans);
   min-height: 100dvh;
+}
+
+/* Цветные размытые пятна под стеклом — слой Backdrop в App */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.backdrop i {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.55;
+}
+.backdrop i:nth-child(1) { width: 60vw; height: 60vw; max-width: 340px; max-height: 340px; background: var(--blob-1); top: 8%; left: -18%; }
+.backdrop i:nth-child(2) { width: 55vw; height: 55vw; max-width: 300px; max-height: 300px; background: var(--blob-2); top: 42%; right: -16%; }
+.backdrop i:nth-child(3) { width: 50vw; height: 50vw; max-width: 280px; max-height: 280px; background: var(--blob-3); bottom: -6%; left: 10%; }
+
+/* Стекло: карточки и панели на bg-surface размывают фон */
+.bg-surface,
+.glass {
+  background-color: var(--surface);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-color: var(--glass-border);
+}
+.glass {
+  border: 1px solid var(--glass-border);
+}
+
+/* Основные кнопки — градиент */
+.bg-accent {
+  background-image: var(--accent-grad);
+}
+.bg-hero {
+  background-image: var(--hero);
+  color: #fff;
+}
+.bg-fab {
+  background-image: var(--fab);
+  color: #fff;
+}
+
+/* Слабые устройства и «уменьшить прозрачность»: плотная подложка вместо размытия */
+.lite .bg-surface,
+.lite .glass {
+  background-color: var(--surface-solid);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.lite .backdrop i {
+  filter: blur(40px);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .bg-surface,
+  .glass {
+    background-color: var(--surface-solid);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .bg-surface,
+  .glass {
+    background-color: var(--surface-solid);
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 .tone-a { background: var(--tone-a); }
@@ -84,7 +279,7 @@ body {
 
 @keyframes pulse-ring {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
-  100% { box-shadow: 0 0 0 16px transparent; }
+  100% { box-shadow: 0 0 0 18px transparent; }
 }
 .listening { animation: pulse-ring 1.2s ease-out infinite; }
 
@@ -93,3 +288,16 @@ body {
   to { transform: none; opacity: 1; }
 }
 .appear { animation: slide-up 0.2s ease-out; }
+
+@keyframes pop {
+  0% { transform: scale(0.92); opacity: 0; }
+  60% { transform: scale(1.02); opacity: 1; }
+  100% { transform: none; }
+}
+.pop { animation: pop 0.35s ease-out; }
+
+/* Заголовки — шрифтом темы (в «Лаванде» это Unbounded) */
+h1 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}

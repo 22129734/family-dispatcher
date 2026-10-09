@@ -5,7 +5,7 @@ import { InstallCard } from "../components/InstallCard";
 import { InviteSpouseCard } from "../components/InviteSpouseCard";
 import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
-import { BUCKET_TITLES, bucketOf, type Bucket } from "../format";
+import { avatarTone, BUCKET_TITLES, bucketOf, formatDue, parseLocal, type Bucket } from "../format";
 
 const ORDER: Bucket[] = ["overdue", "today", "tomorrow", "later", "undated", "done"];
 
@@ -43,7 +43,12 @@ export function Today({
   const now = new Date();
 
   const groups = useMemo(() => {
-    const visible = tasks.filter((t) => inScope(t, scope, meId));
+    const today = new Date().toDateString();
+    const visible = tasks.filter(
+      (t) =>
+        inScope(t, scope, meId) &&
+        (t.status !== "done" || (t.completed_at && parseLocal(t.completed_at).toDateString() === today)),
+    );
     const map = new Map<Bucket, Task[]>();
     for (const task of visible) {
       const bucket = bucketOf(task);
@@ -53,37 +58,131 @@ export function Today({
   }, [tasks, scope, meId]);
 
   const myOpen = tasks.filter((t) => t.assignee_id === meId && t.status !== "done").length;
-  const waiting = tasks.filter(
-    (t) => t.created_by_id === meId && t.status === "new" && t.assignee_id !== meId,
+  const waitingTasks = tasks.filter(
+    (t) => t.created_by_id === meId && t.status === "new" && t.assignee_id && t.assignee_id !== meId,
+  );
+  const askedMe = tasks.filter((t) => t.assignee_id === meId && t.status === "new").length;
+  const weekAgo = Date.now() - 7 * 86_400_000;
+  const doneWeek = tasks.filter(
+    (t) => t.status === "done" && t.completed_at && parseLocal(t.completed_at).getTime() >= weekAgo,
   ).length;
   const greeting = now.getHours() < 12 ? "Доброе утро" : now.getHours() < 18 ? "Добрый день" : "Добрый вечер";
 
+  // Самое важное сейчас: ближайшее незакрытое дело, которое касается меня
+  const hero = tasks
+    .filter((t) => t.status !== "done" && (t.assignee_id === meId || t.created_by_id === meId))
+    .sort((a, b) => (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999"))[0];
+  const shopping = tasks.find((t) => t.status !== "done" && t.items.some((i) => !i.done));
+  const waitingWho = members.find((m) => m.id === waitingTasks[0]?.assignee_id)?.name;
+
   return (
     <div className="px-4 pb-4">
-      <header className="pt-6 pb-4">
-        <h1 className="text-2xl font-bold tracking-tight">
-          {greeting}
-          {myOpen > 0 ? `, на вас ${myOpen} ${plural(myOpen, "дело", "дела", "дел")}` : ""}
-        </h1>
-        {waiting > 0 && (
-          <p className="mt-1 text-sm text-ink-2">
-            Ждут ответа {waiting} {plural(waiting, "поручение", "поручения", "поручений")}
+      <header className="flex items-start justify-between gap-3 pt-6 pb-3">
+        <div>
+          <p className="text-sm font-medium text-ink-2">
+            {now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
           </p>
+          <h1 className="font-display mt-0.5 text-2xl leading-tight font-bold">
+            {greeting}
+            {me ? `, ${me.name}` : ""}
+          </h1>
+        </div>
+        <div className="mt-1 flex shrink-0">
+          {members.slice(0, 4).map((m) => (
+            <span
+              key={m.id}
+              title={m.name}
+              className={`-ml-2 flex h-9 w-9 items-center justify-center rounded-full border-2 border-white/80 text-sm font-bold text-white first:ml-0 ${avatarTone(m.id, members)}`}
+            >
+              {m.name.slice(0, 1).toUpperCase()}
+            </span>
+          ))}
+        </div>
+      </header>
+
+      {/* Бенто: самое срочное, счётчики, покупки */}
+      <div className="grid grid-cols-2 gap-2.5">
+        {hero ? (
+          <div className="bg-hero col-span-2 rounded-[26px] p-4 shadow-lg">
+            <p className="text-[11px] font-bold tracking-wider uppercase opacity-90">
+              {hero.due_at && parseLocal(hero.due_at) < now ? "Просрочено" : "Сейчас важнее всего"}
+            </p>
+            <p className="font-display mt-1 text-xl leading-snug font-bold">{hero.title}</p>
+            <div className="mt-3 flex items-center justify-between text-sm font-semibold">
+              <span className="opacity-95">
+                {formatDue(hero.due_at)} ·{" "}
+                {hero.assignee_id === meId ? "я" : (members.find((m) => m.id === hero.assignee_id)?.name ?? "никто")}
+              </span>
+              <span className="rounded-full bg-white/25 px-2.5 py-1 text-xs">
+                {hero.status === "accepted" ? "✓ взято" : hero.assignee_id ? "ждёт ответа" : "без исполнителя"}
+              </span>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-hero col-span-2 rounded-[26px] p-4 shadow-lg">
+            <p className="font-display text-xl leading-snug font-bold">Всё спокойно</p>
+            <p className="mt-1 text-sm opacity-90">Нажмите на микрофон внизу и скажите, что нужно сделать.</p>
+          </div>
         )}
-        <div className="mt-4 inline-flex rounded-xl bg-surface-2 p-1">
+        <div className="bg-surface rounded-[22px] border p-3.5">
+          <p className="font-display text-3xl leading-none font-bold">{waitingTasks.length + askedMe}</p>
+          <p className="mt-1.5 text-xs font-semibold text-ink-2">
+            {askedMe > 0
+              ? `${plural(askedMe, "ждёт", "ждут", "ждут")} вашего ответа`
+              : waitingWho
+                ? `ждут ответа: ${waitingWho}`
+                : "ждут ответа"}
+          </p>
+        </div>
+        <div className="bg-surface rounded-[22px] border p-3.5">
+          <p className="font-display text-3xl leading-none font-bold">{doneWeek}</p>
+          <p className="mt-1.5 text-xs font-semibold text-ink-2">сделано семьёй за неделю</p>
+        </div>
+        {shopping && (
+          <div className="bg-surface col-span-2 rounded-[22px] border p-3.5">
+            <p className="text-xs font-semibold text-ink-2">
+              🛒 {shopping.title} · {shopping.items.filter((i) => i.done).length} из {shopping.items.length}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {shopping.items.map((item, index) => (
+                <button
+                  key={`${item.text}-${index}`}
+                  onClick={() =>
+                    actions.items(
+                      shopping.id,
+                      shopping.items.map((it, i) => (i === index ? { ...it, done: !it.done } : it)),
+                    )
+                  }
+                  className={`rounded-full bg-surface-2 px-3 py-1 text-sm font-medium ${item.done ? "text-ink-3 line-through" : ""}`}
+                >
+                  {item.text}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 mb-3 flex items-center justify-between">
+        <div className="glass inline-flex rounded-2xl p-1">
           {SCOPES.map(([value, label]) => (
             <button
               key={value}
               onClick={() => setScope(value)}
-              className={`h-8 rounded-lg px-3 text-sm font-medium transition ${
-                scope === value ? "bg-surface text-ink shadow-sm" : "text-ink-2"
+              className={`h-8 rounded-xl px-3 text-sm font-semibold transition ${
+                scope === value ? "bg-accent text-accent-ink shadow-sm" : "text-ink-2"
               }`}
             >
               {label}
             </button>
           ))}
         </div>
-      </header>
+        {myOpen > 0 && (
+          <span className="text-xs font-semibold text-ink-2">
+            на вас {myOpen} {plural(myOpen, "дело", "дела", "дел")}
+          </span>
+        )}
+      </div>
 
       {family && me && isAlone(family, meId) && (
         <InviteSpouseCard family={family} me={me} onMoreWays={onOpenFamily} />
@@ -151,9 +250,8 @@ function EmptyState({ hasMembers, scope }: { hasMembers: boolean; scope: Scope }
     all: "В семье пока нет дел.",
   }[scope];
   return (
-    <div className="mt-6 rounded-3xl border border-dashed border-line px-6 py-10 text-center">
-      <p className="text-4xl">🏡</p>
-      <p className="mt-3 text-lg font-semibold">Пока тихо</p>
+    <div className="glass mt-2 rounded-3xl px-6 py-8 text-center">
+      <p className="font-display text-lg font-bold">Пока тихо</p>
       <p className="mt-1 text-sm text-ink-2">
         {text} Нажмите на микрофон и скажите, что нужно сделать. Например: «завтра в 7 забрать Соню с танцев».
       </p>

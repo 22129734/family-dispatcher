@@ -1,10 +1,23 @@
 import { useState } from "react";
-import { api } from "../api";
+import { api, type Family, type Member } from "../api";
+import { Button } from "../components/ui";
+import { applyTheme, currentTheme, THEMES, type ThemeKey } from "../theme";
+import { SetPin } from "./SetPin";
 import { InstallCard } from "../components/InstallCard";
 import { platform } from "../push";
 
 const SUPPORT_EMAIL = "family-dispatcher@yandex.ru";
 const TESTERS_GROUP = "https://max.ru/join/q1xQqMBZWi_VmWKnjUzJgoQeHkbnfyuzjgYbbu9YV9Q";
+
+const REMIND_OPTIONS: [number, string][] = [
+  [15, "За 15 мин"],
+  [30, "За 30 мин"],
+  [60, "За час"],
+  [120, "За 2 часа"],
+  [1440, "За день"],
+  [0, "Не напоминать"],
+];
+
 
 interface Contact {
   name: string;
@@ -47,8 +60,32 @@ function deviceInfo(): string {
   ].join("\n");
 }
 
-export function HelpScreen() {
+export function MoreScreen({
+  family,
+  me,
+  onLogout,
+}: {
+  family: Family | null;
+  me: Member;
+  onLogout: () => void;
+}) {
   const [copied, setCopied] = useState(false);
+  const [changingPin, setChangingPin] = useState(false);
+  const [pinChanged, setPinChanged] = useState(false);
+
+  if (changingPin) {
+    return (
+      <div className="fixed inset-0 z-40 overflow-y-auto">
+        <SetPin
+          onDone={() => {
+            setChangingPin(false);
+            setPinChanged(true);
+          }}
+          onCancel={() => setChangingPin(false)}
+        />
+      </div>
+    );
+  }
 
   function mail() {
     api.track("screen_view", { screen: "help_mail" });
@@ -71,13 +108,31 @@ export function HelpScreen() {
   return (
     <div className="space-y-5 px-4 pt-6 pb-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Помощь</h1>
+        <h1 className="font-display text-2xl font-bold">Ещё</h1>
+      </header>
+
+      <ThemePicker />
+
+      <Reminders initial={family?.members.find((m) => m.id === me.id)?.remind_before_min ?? me.remind_before_min} />
+
+      <InstallCard always />
+
+      <section className="space-y-2">
+        <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Вход</h2>
+        <Button variant="soft" className="w-full" onClick={() => setChangingPin(true)}>
+          {pinChanged ? "PIN-код изменён" : "Сменить PIN-код"}
+        </Button>
+        <Button variant="ghost" className="w-full" onClick={onLogout}>
+          Выйти на этом устройстве
+        </Button>
+      </section>
+
+      <div>
+        <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Помощь</h2>
         <p className="mt-1 text-sm text-ink-2">
           Что-то не работает или есть идея? Напишите нам — отвечаем сами, без ботов.
         </p>
-      </header>
-
-      <InstallCard always />
+      </div>
 
       <section className="rounded-2xl bg-accent-soft p-4">
         <p className="font-semibold">Написать в поддержку</p>
@@ -163,5 +218,83 @@ export function HelpScreen() {
         </a>
       </p>
     </div>
+  );
+}
+
+/** Личная настройка: за сколько до срока напоминать о моих делах. */
+function Reminders({ initial }: { initial: number }) {
+  const [value, setValue] = useState(initial);
+
+  async function choose(minutes: number) {
+    const previous = value;
+    setValue(minutes);
+    try {
+      await api.updateMe({ remind_before_min: minutes });
+    } catch {
+      setValue(previous);
+    }
+  }
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Напоминать о моих делах</h2>
+      <div className="flex flex-wrap gap-2">
+        {REMIND_OPTIONS.map(([minutes, label]) => (
+          <button
+            key={minutes}
+            onClick={() => void choose(minutes)}
+            className={`h-9 rounded-full border px-3 text-sm ${
+              value === minutes ? "border-accent bg-accent-soft" : "border-line"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-ink-3">Придёт уведомление с кнопками «Я помню» и «Сделано».</p>
+    </section>
+  );
+}
+
+/** Тема оформления: применяется сразу, сохраняется в профиле и в памяти телефона. */
+function ThemePicker() {
+  const [selected, setSelected] = useState<ThemeKey>(currentTheme());
+
+  function choose(key: ThemeKey) {
+    setSelected(key);
+    applyTheme(key);
+    api.track("screen_view", { screen: "theme", theme: key });
+    void api.updateMe({ theme: key }).catch(() => undefined);
+  }
+
+  return (
+    <section className="space-y-2">
+      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Оформление</h2>
+      <div className="grid grid-cols-2 gap-3">
+        {THEMES.map((theme) => (
+          <button
+            key={theme.key}
+            onClick={() => choose(theme.key)}
+            aria-pressed={selected === theme.key}
+            className={`rounded-2xl p-1.5 text-left transition ${
+              selected === theme.key ? "ring-2 ring-accent" : "ring-1 ring-line"
+            }`}
+          >
+            <span className="block rounded-xl p-2" style={{ background: theme.page }}>
+              <span className="block h-7 rounded-lg" style={{ background: theme.hero }} />
+              <span className="mt-1.5 grid grid-cols-2 gap-1.5">
+                <span className="block h-5 rounded-md" style={{ background: theme.glass, border: `1px solid ${theme.glassBorder}` }} />
+                <span className="block h-5 rounded-md" style={{ background: theme.glass, border: `1px solid ${theme.glassBorder}` }} />
+              </span>
+            </span>
+            <span className="mt-1.5 block px-1 text-sm font-semibold">
+              {theme.title}
+              {selected === theme.key && <span className="text-accent"> ✓</span>}
+            </span>
+            <span className="block px-1 pb-1 text-xs text-ink-3">{theme.note}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

@@ -381,3 +381,14 @@ def test_team_is_excluded_from_metrics_but_flagged_in_exports(
     csv_text = client.get("/api/v1/analytics/events.csv", headers=admin).text
     assert csv_text.splitlines()[0].endswith(",team")
     assert any(line.endswith(",1") for line in csv_text.splitlines()[1:])
+
+
+def test_theme_is_saved_per_member(client: TestClient, family: dict[str, str]) -> None:
+    me = client.get("/api/v1/me", headers=auth(family["mom"])).json()["member"]
+    assert me["theme"] is None  # не выбирала — клиент покажет «Лаванду»
+    saved = client.patch("/api/v1/me", json={"theme": "night"}, headers=auth(family["mom"]))
+    assert saved.json()["theme"] == "night"
+    assert (
+        client.patch("/api/v1/me", json={"theme": "neon"}, headers=auth(family["mom"])).status_code
+        == 422
+    )

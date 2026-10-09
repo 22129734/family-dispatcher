@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#fbf7f2" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#1a1714" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#e7e2ff" />
+    <!-- Тема до загрузки приложения: без мигания чужими цветами -->
+    <script>
+      try { document.documentElement.dataset.theme = localStorage.getItem("fd.theme") || "lavender"; } catch (e) {}
+    </script>
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />

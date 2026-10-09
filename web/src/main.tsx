@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import "./theme"; // тема из памяти телефона — до первого кадра
 import "./installPrompt"; // ловим предложение установки до первого экрана
 import "./referral"; // запоминаем код рекомендации из ссылки до входа
 

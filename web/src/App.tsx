@@ -3,7 +3,9 @@ import { api, ApiError, tokenStore, type Family, type Session, type Task } from 
 import { Composer } from "./components/Composer";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
-import { HelpScreen } from "./screens/HelpScreen";
+import { MoreScreen } from "./screens/MoreScreen";
+import { applyTheme } from "./theme";
+import { useSpeech } from "./useSpeech";
 import { Join, Welcome } from "./screens/Onboarding";
 import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
@@ -13,7 +15,7 @@ import { referralCode } from "./referral";
 import { isAlone } from "./share";
 import { Today, type TaskActions } from "./screens/Today";
 
-type Tab = "today" | "calendar" | "family" | "help";
+type Tab = "today" | "calendar" | "family" | "more";
 
 const REFRESH_MS = 20_000;
 
@@ -31,9 +33,18 @@ type Stage = "booting" | "login" | "setpin" | "onboarding" | "home";
 
 export default function App() {
   const actToken = actTokenFromPath();
-  // Ссылка из уведомления работает без входа
-  if (actToken) return <ActPage token={actToken} />;
-  return <Main />;
+  return (
+    <>
+      {/* Цветные пятна под стеклом */}
+      <div className="backdrop" aria-hidden>
+        <i />
+        <i />
+        <i />
+      </div>
+      {/* Ссылка из уведомления работает без входа */}
+      {actToken ? <ActPage token={actToken} /> : <Main />}
+    </>
+  );
 }
 
 function Main() {
@@ -51,6 +62,8 @@ function Main() {
       // Сразу после первого входа звонком — PIN-код для следующих входов
       if (!account.has_pin) return setStage("setpin");
       if (account.member && account.family_id) {
+        // Тема из профиля: выбранная на другом устройстве приезжает сюда
+        applyTheme(account.member.theme);
         setSession({ token: tokenStore.get() ?? "", member: account.member, family_id: account.family_id });
         setStage("home");
       } else {
@@ -118,6 +131,9 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   const [sending, setSending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | undefined>(undefined);
+  const [celebration, setCelebration] = useState<string | null>(null);
+  // Статусы с прошлого обновления — чтобы заметить «Олег сделал!» по моим поручениям
+  const seen = useRef<Map<string, Task["status"]> | null>(null);
 
   const notify = useCallback((message: string) => {
     setToast(message);
@@ -127,7 +143,24 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
 
   const refresh = useCallback(async () => {
     try {
-      const [f, t] = await Promise.all([api.family(), api.tasks()]);
+      const [f, t] = await Promise.all([api.family(), api.tasks(7)]);
+      const previous = seen.current;
+      const justDone = previous
+        ? t.find(
+            (task) =>
+              task.status === "done" &&
+              previous.get(task.id) !== undefined &&
+              previous.get(task.id) !== "done" &&
+              task.created_by_id === me.id &&
+              task.assignee_id !== me.id,
+          )
+        : undefined;
+      if (justDone) {
+        const who = f.members.find((m) => m.id === justDone.assignee_id)?.name ?? "Близкий";
+        setCelebration(`${who} сделал(а): ${justDone.title}`);
+        window.setTimeout(() => setCelebration(null), 6000);
+      }
+      seen.current = new Map(t.map((task) => [task.id, task.status]));
       setFamily(f);
       setTasks(t);
     } catch (err) {
@@ -135,7 +168,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     } finally {
       setLoading(false);
     }
-  }, [onLogout]);
+  }, [onLogout, me.id]);
 
   useEffect(() => {
     api.track(platform().standalone ? "pwa_opened" : "app_open");
@@ -193,6 +226,14 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       }),
   };
 
+  // Голос — главная кнопка в центре меню; работает с любой вкладки
+  const speech = useSpeech((spoken) => void send(spoken, "voice"));
+  const toggleVoice = () => {
+    if (speech.listening) return speech.stop();
+    setTab("today");
+    speech.start();
+  };
+
   async function send(text: string, source: "text" | "voice") {
     setSending(true);
     try {
@@ -219,7 +260,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
 
   return (
     <div className="mx-auto flex h-dvh max-w-md flex-col">
-      <main key={tab} className="pt-safe flex-1 overflow-y-auto">
+      <main key={tab} className="pt-safe flex-1 overflow-y-auto pb-44">
         {tab === "today" ? (
           <Today
             tasks={tasks}
@@ -230,8 +271,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             family={family}
             onOpenFamily={() => setTab("family")}
           />
-        ) : tab === "help" ? (
-          <HelpScreen />
+        ) : tab === "more" ? (
+          <MoreScreen family={family} me={me} onLogout={onLogout} />
         ) : tab === "calendar" ? (
           <CalendarScreen
             tasks={tasks}
@@ -251,36 +292,71 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             }}
           />
         ) : family ? (
-          <FamilyScreen family={family} me={me} onLogout={onLogout} />
+          <FamilyScreen family={family} me={me} />
         ) : null}
       </main>
 
+      {celebration && (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-30 flex justify-center px-4 pt-[max(16px,env(safe-area-inset-top))]">
+          <div className="pop bg-hero flex max-w-sm items-center gap-3 rounded-3xl px-4 py-3 shadow-xl">
+            <span className="text-2xl" aria-hidden>
+              🎉
+            </span>
+            <p className="text-sm font-semibold">{celebration}</p>
+          </div>
+        </div>
+      )}
+
       {toast && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-40 flex justify-center px-4">
+        <div className="pointer-events-none fixed inset-x-0 bottom-44 z-30 flex justify-center px-4">
           <p className="appear max-w-sm rounded-2xl bg-ink px-4 py-2.5 text-center text-sm text-bg shadow-lg">{toast}</p>
         </div>
       )}
 
-      <div className="pb-safe shrink-0 bg-bg">
+      <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-3 pb-3">
         {tab === "today" && (
-          <Composer
-            onSend={send}
-            busy={sending}
-            note={alone ? "Запишется на вас — в семье пока никого нет" : null}
-          />
+          <div className="pointer-events-auto">
+            <Composer
+              onSend={send}
+              busy={sending}
+              speech={speech}
+              note={alone ? "Запишется на вас — в семье пока никого нет" : null}
+            />
+          </div>
         )}
-        <nav className="grid grid-cols-4 border-t border-line">
+        <nav className="glass pointer-events-auto mt-2 grid h-16 grid-cols-5 items-center rounded-[26px] px-1 shadow-lg">
           <TabButton active={tab === "today"} onClick={() => setTab("today")} label="Дела">
             <path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" />
           </TabButton>
           <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} label="Календарь">
             <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
           </TabButton>
+          <div className="flex justify-center">
+            <button
+              onClick={toggleVoice}
+              disabled={!speech.supported || sending}
+              aria-label={speech.listening ? "Остановить запись" : "Сказать дело голосом"}
+              className={`bg-fab -mt-7 flex h-14 w-14 items-center justify-center rounded-[20px] shadow-xl transition active:scale-95 disabled:opacity-50 ${
+                speech.listening ? "listening" : ""
+              }`}
+            >
+              {speech.listening ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="5" y="5" width="14" height="14" rx="3" />
+                </svg>
+              ) : (
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="9" y="2" width="6" height="12" rx="3" />
+                  <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4" />
+                </svg>
+              )}
+            </button>
+          </div>
           <TabButton active={tab === "family"} onClick={() => setTab("family")} label="Семья" dot={alone}>
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
           </TabButton>
-          <TabButton active={tab === "help"} onClick={() => setTab("help")} label="Помощь">
-            <path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.93 4.93l4.24 4.24M14.83 14.83l4.24 4.24M14.83 9.17l4.24-4.24M4.93 19.07l4.24-4.24" />
+          <TabButton active={tab === "more"} onClick={() => setTab("more")} label="Ещё">
+            <path d="M5 12h.01M12 12h.01M19 12h.01" />
           </TabButton>
         </nav>
       </div>
@@ -305,12 +381,12 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex h-14 flex-col items-center justify-center gap-0.5 text-xs font-medium ${
+      className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${
         active ? "text-accent" : "text-ink-3"
       }`}
     >
       <span className="relative">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={label === "Ещё" ? 3.2 : 2} strokeLinecap="round" strokeLinejoin="round">
           {children}
         </svg>
         {dot && <span className="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-accent" aria-label="есть важное" />}
