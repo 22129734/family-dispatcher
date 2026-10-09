@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -31,6 +31,25 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def cache_headers(request: Request, call_next) -> Response:
+    """Сборка с хэшами в именах кэшируется навсегда, всё остальное — с проверкой.
+
+    Без этого браузер держал старый index.html и показывал прошлую версию приложения.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    else:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 app.include_router(auth_routes.router)
 app.include_router(app_routes.router)
 app.include_router(push_routes.router)

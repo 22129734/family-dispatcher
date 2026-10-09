@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { enablePush, platform, pushState, type PushState } from "../push";
 
-type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
-
 /**
  * Подключение уведомлений — главный риск продукта: исполнитель должен поставить
  * приложение и разрешить уведомления. Поэтому здесь же меряем воронку.
@@ -11,7 +9,6 @@ type InstallPrompt = Event & { prompt: () => Promise<void>; userChoice: Promise<
 export function NotifyBanner() {
   const [state, setState] = useState<PushState | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
-  const [install, setInstall] = useState<InstallPrompt | null>(null);
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
 
@@ -26,14 +23,6 @@ export function NotifyBanner() {
         if (current !== "on") api.track("push_prompt_shown", { state: current });
       })
       .catch(() => undefined);
-
-    const onPrompt = (event: Event) => {
-      event.preventDefault();
-      setInstall(event as InstallPrompt);
-      api.track("install_prompt_shown");
-    };
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    return () => window.removeEventListener("beforeinstallprompt", onPrompt);
   }, []);
 
   if (hidden || !state || state === "on" || !publicKey) return null;
@@ -49,12 +38,9 @@ export function NotifyBanner() {
     }
   }
 
-  async function installApp() {
-    if (!install) return;
-    await install.prompt();
-    const choice = await install.userChoice;
-    if (choice.outcome === "accepted") api.track("install_accepted");
-    setInstall(null);
+  // После смены настроек в браузере или телефоне — проверить без перезагрузки
+  async function recheck() {
+    setState(await pushState());
   }
 
   return (
@@ -98,11 +84,6 @@ export function NotifyBanner() {
             >
               {busy ? "Подключаем…" : "Включить"}
             </button>
-            {install && platform().android && (
-              <button onClick={installApp} className="h-11 rounded-xl bg-surface px-4 text-sm font-medium active:opacity-70">
-                Установить
-              </button>
-            )}
           </div>
         </>
       )}
@@ -110,11 +91,13 @@ export function NotifyBanner() {
       {state === "denied" && (
         <>
           <p className="font-semibold">Уведомления запрещены</p>
-          <p className="mt-1 text-sm text-ink-2">
-            {platform().ios
-              ? "Откройте «Настройки» → «Уведомления» → «Диспетчер» и включите их."
-              : "Нажмите на значок замка рядом с адресом сайта → «Уведомления» → «Разрешить», затем обновите страницу."}
-          </p>
+          <DeniedSteps />
+          <button
+            onClick={() => void recheck()}
+            className="mt-3 h-10 w-full rounded-xl bg-surface text-sm font-medium active:opacity-70"
+          >
+            Я включил(а) — проверить
+          </button>
         </>
       )}
 
@@ -129,6 +112,66 @@ export function NotifyBanner() {
         Скрыть
       </button>
     </div>
+  );
+}
+
+/** Как вернуть разрешение: у Chrome на Android вместо замка теперь значок с ползунками. */
+function DeniedSteps() {
+  const p = platform();
+  if (p.ios) {
+    return (
+      <p className="mt-1 text-sm text-ink-2">
+        Откройте <B>«Настройки»</B> телефона → <B>«Уведомления»</B> → <B>«Диспетчер»</B> и включите их.
+      </p>
+    );
+  }
+  if (p.android && p.standalone) {
+    return (
+      <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink-2">
+        <li>
+          Откройте <B>«Настройки»</B> телефона → <B>«Приложения»</B> → <B>«Диспетчер»</B>
+        </li>
+        <li>
+          <B>«Уведомления»</B> → включите
+        </li>
+        <li>Закройте Диспетчер и откройте снова</li>
+      </ol>
+    );
+  }
+  if (p.android) {
+    return (
+      <>
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-ink-2">
+          <li>
+            Нажмите значок <B>слева от адреса сайта</B> — два ползунка <TuneIcon /> или замок
+          </li>
+          <li>
+            <B>«Разрешения»</B> → <B>«Уведомления»</B> → <B>«Разрешить»</B>
+          </li>
+          <li>Обновите страницу</li>
+        </ol>
+        <p className="mt-2 text-xs text-ink-2">
+          Пункта нет или не помогло? <B>«Настройки»</B> телефона → <B>«Приложения»</B> → <B>«Chrome»</B> (или ваш
+          браузер) → <B>«Уведомления»</B> → включите. На Honor и Huawei проверьте ещё{" "}
+          <B>«Настройки» → «Уведомления» → «Chrome»</B>.
+        </p>
+      </>
+    );
+  }
+  return (
+    <p className="mt-1 text-sm text-ink-2">
+      Нажмите на значок слева от адреса сайта → <B>«Уведомления»</B> → <B>«Разрешить»</B>, затем обновите страницу.
+    </p>
+  );
+}
+
+function TuneIcon() {
+  return (
+    <svg className="inline-block align-text-bottom" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-label="значок с ползунками">
+      <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+      <circle cx="16" cy="7" r="2" />
+      <circle cx="8" cy="17" r="2" />
+    </svg>
   );
 }
 

@@ -309,3 +309,8 @@ def test_component_calls_are_counted_per_dau_and_exported(
     # Идентификаторы обезличены: реальные id участников в выгрузку не попадают
     member_id = client.get("/api/v1/me", headers=auth(family["mom"])).json()["member"]["id"]
     assert member_id not in "\n".join(events)
+
+
+def test_cache_headers(client: TestClient) -> None:
+    assert client.get("/api/v1/invites/nope").headers["cache-control"] == "no-store"
+    assert client.get("/health").headers["cache-control"] == "no-cache"

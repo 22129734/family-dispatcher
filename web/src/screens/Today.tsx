@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Member, Recurrence, Task, TaskItem } from "../api";
+import { InstallCard } from "../components/InstallCard";
 import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
 import { BUCKET_TITLES, bucketOf, type Bucket } from "../format";
@@ -77,6 +78,7 @@ export function Today({
         </div>
       </header>
 
+      <InstallCard />
       <NotifyBanner />
 
       {!loading && groups.length === 0 && <EmptyState hasMembers={members.length > 1} scope={scope} />}

@@ -1,6 +1,6 @@
 // Service worker: устанавливаемое приложение, оболочка без сети и push-уведомления.
 // API-запросы всегда идут в сеть — данные семьи не кэшируем.
-const SHELL = "shell-v3";
+const SHELL = "shell-v4";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL).then((cache) => cache.addAll(["/", "/icon.svg"])));
@@ -18,7 +18,9 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.pathname.startsWith("/api/")) return;
   event.respondWith(
-    fetch(event.request)
+    // Страницу сверяем с сервером, а не с HTTP-кэшем браузера — иначе остаётся старая версия;
+    // файлы сборки с хэшем в имени не меняются и берутся из кэша
+    fetch(event.request, event.request.mode === "navigate" ? { cache: "no-cache" } : undefined)
       .then((response) => {
         if (response.ok && url.origin === self.location.origin) {
           const copy = response.clone();

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { InstallCard } from "../components/InstallCard";
 import { platform } from "../push";
 
 const SUPPORT_EMAIL = "family-dispatcher@yandex.ru";
@@ -74,6 +75,8 @@ export function HelpScreen() {
           Что-то не работает или есть идея? Напишите нам — отвечаем сами, без ботов.
         </p>
       </header>
+
+      <InstallCard always />
 
       <section className="rounded-2xl bg-accent-soft p-4">
         <p className="font-semibold">Написать в поддержку</p>
