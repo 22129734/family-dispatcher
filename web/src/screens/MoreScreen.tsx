@@ -21,6 +21,7 @@ const REMIND_OPTIONS: [number, string][] = [
 
 interface Contact {
   name: string;
+  role: string;
   tone: string;
   links: [label: string, url: string][];
 }
@@ -28,14 +29,16 @@ interface Contact {
 const TEAM: Contact[] = [
   {
     name: "Михаил",
+    role: "основатель проекта",
     tone: "tone-a",
     links: [
       ["ВК", "https://vk.ru/o987kk"],
       ["Max", "https://max.ru/u/f9LHodD0cOLul4ARUfaxPuqj_x3bL16-Ln_c5XBOZvB5t235YqF43FVY2II"],
     ],
   },
-  { name: "Ярослав", tone: "tone-b", links: [["ВК", "https://vk.com/id481065077"]] },
-  { name: "Владислав", tone: "tone-c", links: [["ВК", "https://vk.com/vladusha09"]] },
+  { name: "Ярослав", role: "сооснователь проекта", tone: "tone-b", links: [["ВК", "https://vk.com/id481065077"]] },
+  { name: "Владислав", role: "сооснователь проекта", tone: "tone-c", links: [["ВК", "https://vk.com/vladusha09"]] },
+  { name: "Илья", role: "разработчик", tone: "tone-d", links: [["Почта", "mailto:onepeople458@gmail.com"]] },
 ];
 
 const buildDate = new Date(__BUILD_TIME__);
@@ -184,7 +187,7 @@ export function MoreScreen({
               </span>
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{person.name}</p>
-                <p className="text-xs text-ink-2">сооснователь проекта</p>
+                <p className="text-xs text-ink-2">{person.role}</p>
               </div>
               {person.links.map(([label, url]) => (
                 <a
@@ -192,7 +195,7 @@ export function MoreScreen({
                   href={url}
                   target="_blank"
                   rel="noreferrer"
-                  onClick={() => api.track("screen_view", { screen: `help_${label === "ВК" ? "vk" : "max"}` })}
+                  onClick={() => api.track("screen_view", { screen: `help_${{ ВК: "vk", Max: "max", Почта: "mail" }[label] ?? "link"}` })}
                   className="flex h-9 items-center rounded-full border border-line px-3 text-sm font-medium active:bg-surface-2"
                 >
                   {label}
