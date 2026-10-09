@@ -19,6 +19,7 @@ from app.auth import DbSession
 from app.config import get_settings
 from app.models import ComponentCallRow, EventRow
 from app.schemas.api import AnalyticsOut, DailyStat
+from app.services.metrics import team_member_ids
 from app.services.telemetry import anonymize
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
@@ -55,21 +56,25 @@ def daily(
     db: DbSession,
     x_admin_token: Annotated[str | None, Header()] = None,
     days: Annotated[int, Query(ge=1, le=90)] = 14,
+    include_team: bool = False,
 ) -> AnalyticsOut:
     """DAU и обращения на DAU по дням.
 
     DAU — уникальные участники с любым событием за сутки. Обращения — вызовы
     компонентов (LLM, навыки, голос, уведомления, фоновые системы), инициированные
-    этими участниками.
+    этими участниками. Команда (участники хакатона и их семьи) по умолчанию не считается.
     """
     _require_admin(x_admin_token)
     since, until = _period(days)
+    team = set() if include_team else team_member_ids(db)
 
     active: dict[str, set[str]] = defaultdict(set)
     actions: dict[str, int] = defaultdict(int)
     for event in db.scalars(
         select(EventRow).where(EventRow.created_at >= since, EventRow.created_at < until)
     ):
+        if event.member_id in team:
+            continue
         day = event.created_at.date().isoformat()
         active[day].add(event.member_id)
         if event.name not in PASSIVE_EVENTS:
@@ -83,6 +88,8 @@ def daily(
             ComponentCallRow.created_at >= since, ComponentCallRow.created_at < until
         )
     ):
+        if call.member_id in team:
+            continue
         day = call.created_at.date().isoformat()
         calls[day] += 1
         by_kind[day][call.kind] += 1
@@ -129,6 +136,7 @@ def component_calls_csv(
     """Полный лог обращений к компонентам за период — для проверки метрик организаторами."""
     _require_admin(x_admin_token)
     since, until = _period(days)
+    team = team_member_ids(db)
     rows = [
         [
             c.created_at.isoformat(timespec="seconds"),
@@ -142,6 +150,7 @@ def component_calls_csv(
             c.model or "",
             anonymize(c.member_id) or "",
             anonymize(c.family_id) or "",
+            int(c.member_id in team),
         ]
         for c in db.scalars(
             select(ComponentCallRow)
@@ -151,7 +160,7 @@ def component_calls_csv(
     ]
     header = [
         "created_at", "kind", "operation", "status", "error_code", "latency_ms",
-        "tokens_in", "tokens_out", "model", "user_id", "family_id",
+        "tokens_in", "tokens_out", "model", "user_id", "family_id", "team",
     ]  # fmt: skip
     return _csv(rows, header, "component_calls.csv")
 
@@ -165,12 +174,14 @@ def events_csv(
     """Лог пользовательских событий — основа расчёта DAU."""
     _require_admin(x_admin_token)
     since, until = _period(days)
+    team = team_member_ids(db)
     rows = [
         [
             e.created_at.isoformat(timespec="seconds"),
             e.name,
             anonymize(e.member_id) or "",
             anonymize(e.family_id) or "",
+            int(e.member_id in team),
         ]
         for e in db.scalars(
             select(EventRow)
@@ -178,4 +189,4 @@ def events_csv(
             .order_by(EventRow.id)
         )
     ]
-    return _csv(rows, ["created_at", "event", "user_id", "family_id"], "events.csv")
+    return _csv(rows, ["created_at", "event", "user_id", "family_id", "team"], "events.csv")

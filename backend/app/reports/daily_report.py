@@ -31,6 +31,7 @@ from app.models import (
     PushSubscriptionRow,
     TaskRow,
 )
+from app.services.metrics import real_users, team_family_ids, team_member_ids
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +110,16 @@ def smsru_balance(settings: Settings, client: httpx.Client) -> float | None:
 # ---------- метрики ----------
 
 
-def _dau(db: Session, start: datetime, end: datetime) -> set[str]:
-    return set(
-        db.scalars(
-            select(EventRow.member_id).where(
-                EventRow.created_at >= start, EventRow.created_at < end
+def _dau(db: Session, start: datetime, end: datetime, team: set[str]) -> set[str]:
+    return (
+        set(
+            db.scalars(
+                select(EventRow.member_id).where(
+                    EventRow.created_at >= start, EventRow.created_at < end
+                )
             )
         )
+        - team
     )
 
 
@@ -155,28 +159,34 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
         logger.exception("SMS.RU balance")
         report.add(f"SMS.RU: не удалось получить ({type(exc).__name__})")
 
-    # Пользователи
-    dau = _dau(db, start, end)
+    # Пользователи — без команды (участники хакатона и их семьи, Положение п. 5.1.3)
+    team = team_member_ids(db)
+    team_families = team_family_ids(db)
+    dau = _dau(db, start, end, team)
     week = [
-        len(_dau(db, start - timedelta(days=d), end - timedelta(days=d))) for d in range(6, -1, -1)
+        len(_dau(db, start - timedelta(days=d), end - timedelta(days=d), team))
+        for d in range(6, -1, -1)
     ]
-    accounts_total = db.scalar(select(func.count()).select_from(AccountRow)) or 0
+    not_team = AccountRow.is_team.is_(False)
+    accounts_total = db.scalar(select(func.count()).where(not_team)) or 0
     accounts_new = (
         db.scalar(
-            select(func.count()).where(AccountRow.created_at >= start, AccountRow.created_at < end)
+            select(func.count()).where(
+                not_team, AccountRow.created_at >= start, AccountRow.created_at < end
+            )
         )
         or 0
     )
-    families_total = db.scalar(select(func.count()).select_from(FamilyRow)) or 0
-    families_new = (
-        db.scalar(
-            select(func.count()).where(FamilyRow.created_at >= start, FamilyRow.created_at < end)
-        )
-        or 0
-    )
+    family_rows = db.scalars(select(FamilyRow)).all()
+    families = [f for f in family_rows if f.id not in team_families]
+    families_total = len(families)
+    families_new = sum(1 for f in families if start <= f.created_at < end)
+    real, real_in_pairs = real_users(db)
     push_devices = db.scalar(select(func.count()).select_from(PushSubscriptionRow)) or 0
 
     report.section("Пользователи")
+    report.add(f"Реальные пользователи (выполнили сценарий): {real} из 50 к 14.10")
+    report.add(f"  из них в семьях из двух и больше: {real_in_pairs}")
     report.add(f"DAU: {len(dau)}  (7 дней: {' · '.join(map(str, week))})")
     report.add(f"Аккаунты: {accounts_total} (+{accounts_new} за день)")
     report.add(f"Семьи: {families_total} (+{families_new} за день)")
@@ -195,12 +205,15 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
     )
     report.add(f"По рекомендации: {referred_total} (+{referred_new} за день)")
     report.add(f"Устройств с push: {push_devices}")
+    report.add(f"Команда, не учитывается: {len(team)} чел.")
 
     # Сценарий «поручила — сделано»
     events = Counter(
-        db.scalars(
-            select(EventRow.name).where(EventRow.created_at >= start, EventRow.created_at < end)
+        event.name
+        for event in db.scalars(
+            select(EventRow).where(EventRow.created_at >= start, EventRow.created_at < end)
         )
+        if event.member_id not in team
     )
     actions = sum(n for name, n in events.items() if name not in PASSIVE)
     created = events["task_dispatched"] + events["task_created"]
@@ -218,11 +231,15 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
     )
 
     # Обращения к компонентам (Положение, прил. 2, п. 2.2)
-    calls = db.scalars(
-        select(ComponentCallRow).where(
-            ComponentCallRow.created_at >= start, ComponentCallRow.created_at < end
+    calls = [
+        call
+        for call in db.scalars(
+            select(ComponentCallRow).where(
+                ComponentCallRow.created_at >= start, ComponentCallRow.created_at < end
+            )
         )
-    ).all()
+        if call.member_id not in team
+    ]
     by_kind = Counter(c.kind for c in calls)
     errors = Counter(c.kind for c in calls if c.status != "ok")
     tokens = sum((c.tokens_in or 0) + (c.tokens_out or 0) for c in calls if c.kind == "llm")

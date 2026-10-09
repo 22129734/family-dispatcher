@@ -4,7 +4,7 @@ import secrets
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -33,6 +33,8 @@ class AccountRow(Base):
     pin_locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Когда человек согласился на обработку ПДн — после этого галочку больше не спрашиваем
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Участник хакатона или его семья — не учитывается в метриках (Положение, п. 5.1.3)
+    is_team: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
 
 class SessionRow(Base):

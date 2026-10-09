@@ -304,7 +304,7 @@ def test_component_calls_are_counted_per_dau_and_exported(
     assert len(lines) == 4
 
     events = client.get("/api/v1/analytics/events.csv", headers=admin).text.strip().splitlines()
-    assert events[0] == "created_at,event,user_id,family_id"
+    assert events[0] == "created_at,event,user_id,family_id,team"
     assert len(events) == 3  # family_created + family_joined
     # Идентификаторы обезличены: реальные id участников в выгрузку не попадают
     member_id = client.get("/api/v1/me", headers=auth(family["mom"])).json()["member"]["id"]
@@ -349,3 +349,35 @@ def test_referral_link_marks_new_family(client: TestClient, family: dict[str, st
         ).status_code
         == 201
     )
+
+
+def test_team_is_excluded_from_metrics_but_flagged_in_exports(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    from app.db import SessionLocal
+    from app.models import AccountRow
+    from app.services.metrics import real_users
+
+    client.post("/api/v1/tasks", json={"title": "Полить цветы"}, headers=auth(family["mom"]))
+    task = client.post(
+        "/api/v1/tasks", json={"title": "Вынести мусор"}, headers=auth(family["mom"])
+    ).json()
+    client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"]))
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"]))
+    with SessionLocal() as db:
+        assert real_users(db) == (2, 2)  # папа сделал, маме выполнили поручение
+        mom = db.query(AccountRow).filter(AccountRow.phone == "79990000001").one()
+        mom.is_team = True
+        db.commit()
+        assert real_users(db) == (1, 1)
+
+    admin = {"X-Admin-Token": "admin"}
+    today = client.get("/api/v1/analytics/daily", headers=admin, params={"days": 1}).json()
+    assert today["days"][0]["dau"] == 1
+    with_team = client.get(
+        "/api/v1/analytics/daily", headers=admin, params={"days": 1, "include_team": True}
+    ).json()
+    assert with_team["days"][0]["dau"] == 2
+    csv_text = client.get("/api/v1/analytics/events.csv", headers=admin).text
+    assert csv_text.splitlines()[0].endswith(",team")
+    assert any(line.endswith(",1") for line in csv_text.splitlines()[1:])
