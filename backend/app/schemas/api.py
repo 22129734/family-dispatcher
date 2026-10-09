@@ -49,6 +49,8 @@ class PhoneStartRequest(BaseModel):
     phone: str = Field(min_length=10, max_length=20)
     # True — войти звонком, даже если задан PIN-код (забыли PIN)
     call: bool = False
+    # Галочка согласия на обработку ПДн; нужна, только пока номер её не давал
+    consent: bool = False
 
 
 class PhoneCheckOut(BaseModel):

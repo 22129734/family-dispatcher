@@ -42,8 +42,14 @@ def start_phone_check(payload: PhoneStartRequest, request: Request, db: DbSessio
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
 
     now = datetime.now()
+    account = db.scalar(select(AccountRow).where(AccountRow.phone == phone))
+    if not payload.consent and (account is None or account.consent_at is None):
+        # Согласие даётся один раз на номер; дальше вход без галочки на любом устройстве
+        raise HTTPException(
+            status.HTTP_428_PRECONDITION_REQUIRED,
+            "Отметьте согласие на обработку персональных данных",
+        )
     if not payload.call:
-        account = db.scalar(select(AccountRow).where(AccountRow.phone == phone))
         if (
             account is not None
             and account.pin_hash
@@ -129,6 +135,8 @@ def phone_check_status(check_id: str, request: Request, db: DbSession) -> PhoneC
         db.add(account)
         db.flush()
     check.consumed_at = now
+    # Проверку по звонку создают только после согласия (см. start_phone_check)
+    account.consent_at = account.consent_at or now
     # Номер подтверждён звонком — снимаем блокировку PIN после ошибок
     account.pin_failures = 0
     account.pin_locked_until = None

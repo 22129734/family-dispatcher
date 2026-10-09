@@ -162,7 +162,8 @@ const patch = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 
 export const api = {
-  startPhoneCheck: (phone: string, call = false) => post<PhoneCheck>("/auth/phone/start", { phone, call }),
+  startPhoneCheck: (phone: string, call = false, consent = false) =>
+    post<PhoneCheck>("/auth/phone/start", { phone, call, consent }),
   pinLogin: (phone: string, pin: string) => post<{ token: string }>("/auth/pin/login", { phone, pin }),
   setPin: (pin: string) => post<void>("/auth/pin", { pin }),
   phoneCheckStatus: (checkId: string) => request<PhoneCheckStatus>(`/auth/phone/status/${checkId}`),

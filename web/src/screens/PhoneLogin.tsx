@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, type PhoneCheck } from "../api";
+import { api, ApiError, type PhoneCheck } from "../api";
 import { Button, ErrorNote } from "../components/ui";
 import { PinField } from "../components/PinField";
 
@@ -33,6 +33,9 @@ export function PhoneLogin({
 }) {
   const [phone, setPhone] = useState("+7");
   const [consent, setConsent] = useState(false);
+  // Галочку показываем, только если сервер сказал, что этот номер ещё не давал согласия:
+  // вернувшимся пользователям отмечать её заново не нужно
+  const [askConsent, setAskConsent] = useState(false);
   const [check, setCheck] = useState<PhoneCheck | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [expired, setExpired] = useState(false);
@@ -77,7 +80,7 @@ export function PhoneLogin({
     setBusy(true);
     setError(null);
     try {
-      const started = await api.startPhoneCheck(phone, call);
+      const started = await api.startPhoneCheck(phone, call, consent);
       if (started.method === "pin") {
         setPin("");
         setPinMode(started.phone_masked);
@@ -86,7 +89,12 @@ export function PhoneLogin({
         setCheck(started);
       }
     } catch (err) {
-      setError((err as Error).message);
+      if (err instanceof ApiError && err.status === 428) {
+        setAskConsent(true);
+        setError(consent ? (err as Error).message : null);
+      } else {
+        setError((err as Error).message);
+      }
     } finally {
       setBusy(false);
     }
@@ -211,23 +219,26 @@ export function PhoneLogin({
             onChange={(e) => setPhone(formatPhone(e.target.value))}
           />
         </label>
-        <label className="flex items-start gap-3 text-sm text-ink-2">
-          <input
-            type="checkbox"
-            className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-accent)]"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-          />
-          <span>
-            Соглашаюсь на обработку персональных данных по{" "}
-            <a href="/privacy.html" target="_blank" className="text-accent underline">
-              политике конфиденциальности
-            </a>
-          </span>
-        </label>
+        {askConsent && (
+          <label className="appear flex items-start gap-3 rounded-2xl bg-accent-soft p-3 text-sm text-ink">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-accent)]"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+            />
+            <span>
+              Соглашаюсь на обработку персональных данных по{" "}
+              <a href="/privacy.html" target="_blank" className="text-accent underline">
+                политике конфиденциальности
+              </a>
+              <span className="mt-1 block text-xs text-ink-2">Один раз для этого номера — дальше спрашивать не будем.</span>
+            </span>
+          </label>
+        )}
         <ErrorNote>{error}</ErrorNote>
         <div className="mt-auto pt-4">
-          <Button type="submit" className="w-full" disabled={busy || digitsCount(phone) !== 11 || !consent}>
+          <Button type="submit" className="w-full" disabled={busy || digitsCount(phone) !== 11 || (askConsent && !consent)}>
             {busy ? "Готовим…" : "Войти"}
           </Button>
         </div>

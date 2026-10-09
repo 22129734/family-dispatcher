@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.config import Settings
 from app.db import Base, SessionLocal, engine
 from app.main import app
-from app.models import ComponentCallRow, PhoneCheckRow, SessionRow
+from app.models import AccountRow, ComponentCallRow, PhoneCheckRow, SessionRow
 from app.services import phone_auth
 from app.services.phone_auth import PhoneAuthError, ProviderUnavailableError, SmsRuVerifier
 
@@ -49,7 +49,7 @@ def test_mask_phone_hides_middle_digits() -> None:
 
 
 def test_login_flow_issues_token_once_and_account_has_no_family(client: TestClient) -> None:
-    check = client.post("/api/v1/auth/phone/start", json={"phone": "+79990000010"})
+    check = client.post("/api/v1/auth/phone/start", json={"phone": "+79990000010", "consent": True})
     assert check.status_code == 201
     body = check.json()
     assert body["phone_masked"] == "+7 9** ***-00-10"
@@ -76,7 +76,9 @@ def test_login_flow_issues_token_once_and_account_has_no_family(client: TestClie
 
 def test_same_phone_logs_into_same_account_and_keeps_other_sessions(client: TestClient) -> None:
     def login() -> str:
-        check = client.post("/api/v1/auth/phone/start", json={"phone": "79990000011"}).json()
+        check = client.post(
+            "/api/v1/auth/phone/start", json={"phone": "79990000011", "consent": True}
+        ).json()
         return client.get(f"/api/v1/auth/phone/status/{check['check_id']}").json()["token"]
 
     first = login()
@@ -100,17 +102,21 @@ def test_same_phone_logs_into_same_account_and_keeps_other_sessions(client: Test
 def test_limits_per_phone(client: TestClient) -> None:
     for _ in range(phone_auth.PER_PHONE_LIMIT[0]):
         assert (
-            client.post("/api/v1/auth/phone/start", json={"phone": "79990000012"}).status_code
+            client.post(
+                "/api/v1/auth/phone/start", json={"phone": "79990000012", "consent": True}
+            ).status_code
             == 201
         )
-    blocked = client.post("/api/v1/auth/phone/start", json={"phone": "79990000012"})
+    blocked = client.post(
+        "/api/v1/auth/phone/start", json={"phone": "79990000012", "consent": True}
+    )
     assert blocked.status_code == 429
 
 
 def test_expired_check_does_not_log_in(client: TestClient) -> None:
-    check_id = client.post("/api/v1/auth/phone/start", json={"phone": "79990000013"}).json()[
-        "check_id"
-    ]
+    check_id = client.post(
+        "/api/v1/auth/phone/start", json={"phone": "79990000013", "consent": True}
+    ).json()["check_id"]
     with SessionLocal() as session:
         row = session.get(PhoneCheckRow, check_id)
         row.created_at = datetime.now() - timedelta(minutes=10)
@@ -119,7 +125,9 @@ def test_expired_check_does_not_log_in(client: TestClient) -> None:
 
 
 def call_login(client: TestClient, phone: str) -> str:
-    check = client.post("/api/v1/auth/phone/start", json={"phone": phone, "call": True}).json()
+    check = client.post(
+        "/api/v1/auth/phone/start", json={"phone": phone, "call": True, "consent": True}
+    ).json()
     return client.get(f"/api/v1/auth/phone/status/{check['check_id']}").json()["token"]
 
 
@@ -154,7 +162,9 @@ def test_pin_login_after_first_call(client: TestClient) -> None:
     assert client.get("/api/v1/account", headers=auth(token)).json()["has_pin"] is True
 
     # Теперь вход по номеру предлагает PIN, звонок не нужен
-    start = client.post("/api/v1/auth/phone/start", json={"phone": "+7 999 000-00-20"}).json()
+    start = client.post(
+        "/api/v1/auth/phone/start", json={"phone": "+7 999 000-00-20", "consent": True}
+    ).json()
     assert start == {
         "method": "pin",
         "phone_masked": "+7 9** ***-00-20",
@@ -167,7 +177,9 @@ def test_pin_login_after_first_call(client: TestClient) -> None:
     assert login.status_code == 200
     assert client.get("/api/v1/account", headers=auth(login.json()["token"])).status_code == 200
     # Забыли PIN — можно войти звонком
-    forced = client.post("/api/v1/auth/phone/start", json={"phone": "79990000020", "call": True})
+    forced = client.post(
+        "/api/v1/auth/phone/start", json={"phone": "79990000020", "call": True, "consent": True}
+    )
     assert forced.json()["method"] == "call" and forced.json()["check_id"]
 
 
@@ -183,7 +195,9 @@ def test_pin_locks_after_five_failures_until_call(client: TestClient) -> None:
         assert wrong.status_code == 401 and str(left) in wrong.json()["detail"]
     assert attempt("0000").status_code == 429
     assert attempt("1111").status_code == 429  # даже верный PIN — только звонком
-    start = client.post("/api/v1/auth/phone/start", json={"phone": "79990000021"}).json()
+    start = client.post(
+        "/api/v1/auth/phone/start", json={"phone": "79990000021", "consent": True}
+    ).json()
     assert start["method"] == "call"
 
     # Вход звонком снимает блокировку
@@ -264,3 +278,19 @@ def test_smsru_error_is_reported_as_unavailable(client: TestClient) -> None:
 def test_production_without_key_has_no_login() -> None:
     with pytest.raises(ProviderUnavailableError):
         phone_auth.get_verifier(Settings(app_env="production", smsru_api_id=""))
+
+
+def test_consent_is_asked_once_per_phone(client: TestClient) -> None:
+    def start(**extra: object):
+        return client.post("/api/v1/auth/phone/start", json={"phone": "79990000050", **extra})
+
+    # Новый номер без галочки — просим согласие, звонок не заказываем
+    assert start().status_code == 428
+    check = start(consent=True).json()
+    token = client.get(f"/api/v1/auth/phone/status/{check['check_id']}").json()["token"]
+    # Номер дал согласие — дальше галочка не нужна ни для звонка, ни для PIN
+    assert start().status_code == 201
+    client.post("/api/v1/auth/pin", json={"pin": "2468"}, headers=auth(token))
+    assert start().json()["method"] == "pin"
+    with SessionLocal() as session:
+        assert session.scalar(select(AccountRow.consent_at)) is not None

@@ -20,7 +20,7 @@ def auth(token: str) -> dict[str, str]:
 
 def login(client: TestClient, phone: str) -> str:
     """Вход по звонку через имитацию провайдера (без ключа SMS.RU номер подтверждается сразу)."""
-    check = client.post("/api/v1/auth/phone/start", json={"phone": phone}).json()
+    check = client.post("/api/v1/auth/phone/start", json={"phone": phone, "consent": True}).json()
     status = client.get(f"/api/v1/auth/phone/status/{check['check_id']}").json()
     assert status["status"] == "confirmed"
     return status["token"]

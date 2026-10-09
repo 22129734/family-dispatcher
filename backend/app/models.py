@@ -31,6 +31,8 @@ class AccountRow(Base):
     pin_hash: Mapped[str | None] = mapped_column(String(160), nullable=True)
     pin_failures: Mapped[int] = mapped_column(Integer, default=0)
     pin_locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Когда человек согласился на обработку ПДн — после этого галочку больше не спрашиваем
+    consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class SessionRow(Base):
