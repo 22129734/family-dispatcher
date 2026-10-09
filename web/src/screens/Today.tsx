@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
-import type { Member, Recurrence, Task, TaskItem } from "../api";
+import type { Family, Member, Recurrence, Task, TaskItem } from "../api";
+import { isAlone } from "../share";
 import { InstallCard } from "../components/InstallCard";
+import { InviteSpouseCard } from "../components/InviteSpouseCard";
 import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
 import { BUCKET_TITLES, bucketOf, type Bucket } from "../format";
@@ -25,13 +27,18 @@ export function Today({
   meId,
   actions,
   loading,
+  family,
+  onOpenFamily,
 }: {
   tasks: Task[];
   members: Member[];
   meId: string;
   actions: TaskActions;
   loading: boolean;
+  family: Family | null;
+  onOpenFamily: () => void;
 }) {
+  const me = members.find((m) => m.id === meId);
   const [scope, setScope] = useState<Scope>("mine");
   const now = new Date();
 
@@ -78,6 +85,9 @@ export function Today({
         </div>
       </header>
 
+      {family && me && isAlone(family, meId) && (
+        <InviteSpouseCard family={family} me={me} onMoreWays={onOpenFamily} />
+      )}
       <InstallCard />
       <NotifyBanner />
 

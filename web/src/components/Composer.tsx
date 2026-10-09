@@ -10,9 +10,12 @@ const HINTS = [
 export function Composer({
   onSend,
   busy,
+  note,
 }: {
   onSend: (text: string, source: "text" | "voice") => Promise<void>;
   busy: boolean;
+  /** Пояснение под полем — например, что дело запишется на вас */
+  note?: string | null;
 }) {
   const [text, setText] = useState("");
   const speech = useSpeech((spoken) => void onSend(spoken, "voice"));
@@ -77,6 +80,7 @@ export function Composer({
           </button>
         )}
       </form>
+      {note && <p className="mt-1.5 text-xs text-accent">{note}</p>}
     </div>
   );
 }

@@ -1,15 +1,12 @@
 import { useState } from "react";
 import { api, type Family, type Member } from "../api";
 import { Avatar, Button } from "../components/ui";
+import { familyInviteText, familyInviteUrl, SHARE_ORIGIN } from "../share";
 import { plural } from "./Today";
 import { SetPin } from "./SetPin";
 
 const ROLE_LABEL: Record<Member["role"], string> = { adult: "взрослый", teen: "подросток", child: "ребёнок" };
 
-/** Ссылки в приглашении — латиницей: кириллический адрес мессенджеры показывают как «xn--…». */
-const SHARE_ORIGIN = window.location.hostname.startsWith("xn--")
-  ? "https://semeinidispetcher.ru"
-  : window.location.origin;
 
 const REMIND_OPTIONS: [number, string][] = [
   [15, "За 15 мин"],
@@ -102,14 +99,13 @@ export function FamilyScreen({
 
 /** Приглашение в свою семью: человек присоединяется к вашим делам. */
 function Invite({ family, me }: { family: Family; me: Member }) {
-  const url = `${SHARE_ORIGIN}/join/${family.invite_code}`;
+  const url = familyInviteUrl(family);
   return (
     <ShareBlock
       kind="family"
       title="Пригласить в семью"
       url={url}
-      text={`${me.name} приглашает тебя в Семейный диспетчер — поручения будут приходить уведомлением. Открой ссылку:
-${url}`}
+      text={familyInviteText(family, me)}
       shortText={`${me.name} приглашает тебя в Семейный диспетчер`}
       copyLabel="Скопировать приглашение"
     />

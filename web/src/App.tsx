@@ -10,6 +10,7 @@ import { SetPin } from "./screens/SetPin";
 import { ActPage } from "./screens/ActPage";
 import { platform, syncPush } from "./push";
 import { referralCode } from "./referral";
+import { isAlone } from "./share";
 import { Today, type TaskActions } from "./screens/Today";
 
 type Tab = "today" | "calendar" | "family" | "help";
@@ -149,6 +150,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     };
   }, [refresh]);
 
+  const alone = isAlone(family, me.id);
+
   const memberName = (id: string | null) =>
     id === me.id ? "вам" : (family?.members.find((m) => m.id === id)?.name ?? "никому");
 
@@ -224,6 +227,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             meId={me.id}
             actions={actions}
             loading={loading}
+            family={family}
+            onOpenFamily={() => setTab("family")}
           />
         ) : tab === "help" ? (
           <HelpScreen />
@@ -257,7 +262,13 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       )}
 
       <div className="pb-safe shrink-0 bg-bg">
-        {tab === "today" && <Composer onSend={send} busy={sending} />}
+        {tab === "today" && (
+          <Composer
+            onSend={send}
+            busy={sending}
+            note={alone ? "Запишется на вас — в семье пока никого нет" : null}
+          />
+        )}
         <nav className="grid grid-cols-4 border-t border-line">
           <TabButton active={tab === "today"} onClick={() => setTab("today")} label="Дела">
             <path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" />
@@ -265,7 +276,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} label="Календарь">
             <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
           </TabButton>
-          <TabButton active={tab === "family"} onClick={() => setTab("family")} label="Семья">
+          <TabButton active={tab === "family"} onClick={() => setTab("family")} label="Семья" dot={alone}>
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
           </TabButton>
           <TabButton active={tab === "help"} onClick={() => setTab("help")} label="Помощь">
@@ -282,11 +293,14 @@ function TabButton({
   onClick,
   label,
   children,
+  dot = false,
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   children: React.ReactNode;
+  /** Точка-напоминание: на вкладке есть важное несделанное действие */
+  dot?: boolean;
 }) {
   return (
     <button
@@ -295,9 +309,12 @@ function TabButton({
         active ? "text-accent" : "text-ink-3"
       }`}
     >
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        {children}
-      </svg>
+      <span className="relative">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {children}
+        </svg>
+        {dot && <span className="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-accent" aria-label="есть важное" />}
+      </span>
       {label}
     </button>
   );

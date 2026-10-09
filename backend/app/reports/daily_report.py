@@ -182,7 +182,6 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
     families_total = len(families)
     families_new = sum(1 for f in families if start <= f.created_at < end)
     real, real_in_pairs = real_users(db)
-    push_devices = db.scalar(select(func.count()).select_from(PushSubscriptionRow)) or 0
 
     report.section("Пользователи")
     report.add(f"Реальные пользователи (выполнили сценарий): {real} из 50 к 14.10")
@@ -204,6 +203,11 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
         or 0
     )
     report.add(f"По рекомендации: {referred_total} (+{referred_new} за день)")
+    push_devices = sum(
+        1
+        for member_id in db.scalars(select(PushSubscriptionRow.member_id))
+        if member_id not in team
+    )
     report.add(f"Устройств с push: {push_devices}")
     report.add(f"Команда, не учитывается: {len(team)} чел.")
 
