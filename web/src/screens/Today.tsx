@@ -86,6 +86,11 @@ export function Today({
             {greeting}
             {me ? `, ${me.name}` : ""}
           </h1>
+          {myOpen > 0 && (
+            <p className="mt-1 text-sm font-semibold text-ink-2">
+              на вас {myOpen} {plural(myOpen, "дело", "дела", "дел")}
+            </p>
+          )}
         </div>
         <div className="mt-1 flex shrink-0">
           {members.slice(0, 4).map((m) => (
@@ -163,13 +168,14 @@ export function Today({
         )}
       </div>
 
-      <div className="mt-4 mb-3 flex items-center justify-between">
-        <div className="glass inline-flex rounded-2xl p-1">
+      <div className="mt-4 mb-3">
+        {/* Во всю ширину и в одну строку: на узких iPhone подписи переносились и вылезали за рамку */}
+        <div className="glass grid grid-cols-3 gap-1 rounded-2xl p-1">
           {SCOPES.map(([value, label]) => (
             <button
               key={value}
               onClick={() => setScope(value)}
-              className={`h-8 rounded-xl px-3 text-sm font-semibold transition ${
+              className={`h-9 min-w-0 rounded-xl px-1 text-[13px] font-semibold whitespace-nowrap transition ${
                 scope === value ? "bg-accent text-accent-ink shadow-sm" : "text-ink-2"
               }`}
             >
@@ -177,11 +183,6 @@ export function Today({
             </button>
           ))}
         </div>
-        {myOpen > 0 && (
-          <span className="text-xs font-semibold text-ink-2">
-            на вас {myOpen} {plural(myOpen, "дело", "дела", "дел")}
-          </span>
-        )}
       </div>
 
       {family && me && isAlone(family, meId) && (

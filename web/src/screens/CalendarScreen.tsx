@@ -92,12 +92,12 @@ export function CalendarScreen({
         </div>
       </header>
 
-      <div className="glass mb-3 inline-flex rounded-2xl p-1">
+      <div className="glass mb-3 grid grid-cols-3 gap-1 rounded-2xl p-1">
         {SCOPES.map(([value, label]) => (
           <button
             key={value}
             onClick={() => setScope(value)}
-            className={`h-8 rounded-xl px-3 text-sm font-semibold transition ${
+            className={`h-9 min-w-0 rounded-xl px-1 text-[13px] font-semibold whitespace-nowrap transition ${
               scope === value ? "bg-accent text-accent-ink shadow-sm" : "text-ink-2"
             }`}
           >
