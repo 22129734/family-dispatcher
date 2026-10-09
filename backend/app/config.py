@@ -12,7 +12,9 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://shared1.multitool.works:4000/v1"
     llm_api_key: str = ""
     llm_model: str = ""
-    llm_timeout_s: float = 20.0
+    # Обычно модель отвечает за 1–2 с; если шлюз завис — через 8 с разбираем правилами,
+    # а не держим человека 20 с перед экраном
+    llm_timeout_s: float = 8.0
 
     # Вход по телефону: SMS.RU, авторизация звонком (callcheck)
     smsru_api_id: str = ""
