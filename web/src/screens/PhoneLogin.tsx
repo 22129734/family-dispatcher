@@ -29,10 +29,13 @@ export function PhoneLogin({
   onToken,
   invitedBy,
   recommendedBy,
+  onBack,
 }: {
   onToken: (token: string) => void;
   invitedBy?: string | null;
   recommendedBy?: string | null;
+  /** Назад к знакомству с проектом — если человек пришёл со страницы о нём */
+  onBack?: () => void;
 }) {
   const [phone, setPhone] = useState("+7");
   const [consent, setConsent] = useState(false);
@@ -202,18 +205,20 @@ export function PhoneLogin({
 
   return (
     <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
-      <div className="pt-12 pb-8">
+      {onBack && (
+        <button onClick={onBack} className="-ml-1 mt-3 h-10 self-start px-1 text-sm font-medium text-ink-2 active:opacity-60">
+          ← О проекте
+        </button>
+      )}
+      <div className={`${onBack ? "pt-4" : "pt-12"} pb-6`}>
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
         {invitedBy && <p className="text-sm font-medium text-accent">Вас приглашает {invitedBy}</p>}
         {!invitedBy && recommendedBy && (
           <p className="text-sm font-medium text-accent">Вам рекомендует {recommendedBy}</p>
         )}
-        <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">
-          Просьбы, которые доходят и выполняются
-        </h1>
+        <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">Вход по номеру телефона</h1>
         <p className="mt-3 text-base text-ink-2">
-          Скажите, что нужно сделать, — диспетчер передаст дело, напомнит в нужный момент и покажет, что его
-          взяли. Без «я же тебе писала».
+          Без паролей и СМС: подтвердим номер бесплатным звонком — он сразу сбросится. Номер никому не передаём.
         </p>
       </div>
 

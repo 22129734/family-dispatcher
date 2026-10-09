@@ -16,6 +16,24 @@ import { platform, syncPush } from "./push";
 import { referralCode } from "./referral";
 import { isAlone } from "./share";
 import { Today, type TaskActions } from "./screens/Today";
+import { InviteIntro, Landing, RecommendIntro } from "./screens/Landing";
+
+// Уже входил на этом устройстве — знакомство не нужно, сразу вход
+const KNOWN_KEY = "fd.known";
+const rememberDevice = () => {
+  try {
+    localStorage.setItem(KNOWN_KEY, "1");
+  } catch {
+    /* приватный режим — в следующий раз снова покажем знакомство */
+  }
+};
+const knownDevice = () => {
+  try {
+    return localStorage.getItem(KNOWN_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 type Tab = "today" | "calendar" | "family" | "more";
 
@@ -54,13 +72,21 @@ function Main() {
   const [session, setSession] = useState<Session | null>(null);
   const [invitedBy, setInvitedBy] = useState<string | null>(null);
   const [recommendedBy, setRecommendedBy] = useState<string | null>(null);
+  const [inviter, setInviter] = useState<string | null>(null);
+  // Имя пригласившего ещё грузится — не мелькаем «Близкий приглашает» и чужой страницей
+  const [linkChecked, setLinkChecked] = useState(false);
   const inviteCode = inviteCodeFromPath();
+  // Знакомство до входа: «full» — страница о проекте, «short» — личный экран приглашения или рекомендации
+  const [intro, setIntro] = useState<"full" | "short" | null>(() =>
+    platform().standalone || knownDevice() ? null : inviteCode || referralCode() ? "short" : "full",
+  );
 
   // Есть сессия → смотрим, состоит ли человек в семье; нет → вход по телефону
   const resolve = useCallback(async () => {
     if (!tokenStore.get()) return setStage("login");
     try {
       const account = await api.account();
+      rememberDevice();
       // Сразу после первого входа звонком — PIN-код для следующих входов
       if (!account.has_pin) return setStage("setpin");
       if (account.member && account.family_id) {
@@ -82,20 +108,26 @@ function Main() {
     const ref = referralCode();
     if (inviteCode) {
       api.inviteInfo(inviteCode).then(
-        (info) => setInvitedBy(info.members.join(", ") || null),
+        (info) => {
+          setInvitedBy(info.members.join(", ") || null);
+          setInviter(info.members[0] ?? null);
+        },
         () => undefined,
-      );
+      ).finally(() => setLinkChecked(true));
     } else if (ref) {
       api.referralInfo(ref).then(
         (info) => setRecommendedBy(info.from_name),
         () => undefined,
-      );
+      ).finally(() => setLinkChecked(true));
+    } else {
+      setLinkChecked(true);
     }
   }, [resolve, inviteCode]);
 
   const onToken = useCallback(
     (token: string) => {
       tokenStore.set(token);
+      rememberDevice();
       void resolve();
     },
     [resolve],
@@ -116,7 +148,34 @@ function Main() {
   }, []);
 
   if (stage === "booting") return <div className="min-h-dvh" />;
-  if (stage === "login") return <PhoneLogin onToken={onToken} invitedBy={invitedBy} recommendedBy={recommendedBy} />;
+  if (stage === "login" && intro === "short" && !linkChecked) return <div className="min-h-dvh" />;
+  if (stage === "login" && intro === "short" && inviteCode) {
+    return <InviteIntro inviter={inviter} onJoin={() => setIntro(null)} />;
+  }
+  if (stage === "login" && intro === "short" && recommendedBy) {
+    return (
+      <RecommendIntro
+        from={recommendedBy}
+        onTry={() => setIntro(null)}
+        onMore={() => setIntro("full")}
+        onLogin={() => setIntro(null)}
+      />
+    );
+  }
+  if (stage === "login" && (intro === "full" || (intro === "short" && !inviteCode))) {
+    // Рекомендация ещё грузится или код не нашёлся — показываем страницу о проекте
+    return <Landing onTry={() => setIntro(null)} onLogin={() => setIntro(null)} />;
+  }
+  if (stage === "login") {
+    return (
+      <PhoneLogin
+        onToken={onToken}
+        invitedBy={invitedBy}
+        recommendedBy={recommendedBy}
+        onBack={knownDevice() ? undefined : () => setIntro(inviteCode ? "short" : "full")}
+      />
+    );
+  }
   if (stage === "setpin") return <SetPin onDone={() => void resolve()} />;
   if (stage === "onboarding" || !session) {
     return inviteCode ? <Join code={inviteCode} onSession={start} /> : <Welcome onSession={start} />;

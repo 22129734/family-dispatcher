@@ -3,12 +3,13 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import analytics, app_routes, auth_routes, push_routes, support_routes
 from app.config import get_settings
-from app.db import init_db
+from app.db import SessionLocal, init_db
+from app.services.link_preview import personalize
 
 
 @asynccontextmanager
@@ -68,8 +69,14 @@ if (_dist / "index.html").is_file():
     app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)
-    def spa(path: str) -> FileResponse:
+    def spa(path: str, request: Request) -> Response:
         candidate = (_dist / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(_dist):
             return FileResponse(candidate)
+        ref = request.query_params.get("from")
+        if path.startswith("join/") or ref:
+            # Ссылка-приглашение: имя пригласившего — в карточку ссылки в мессенджере
+            html = (_dist / "index.html").read_text(encoding="utf-8")
+            with SessionLocal() as db:
+                return HTMLResponse(personalize(html, path, ref, db))
         return FileResponse(_dist / "index.html")
