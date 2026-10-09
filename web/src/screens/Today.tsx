@@ -270,7 +270,7 @@ function EmptyState({ hasMembers, scope }: { hasMembers: boolean; scope: Scope }
       </p>
       {!hasMembers && (
         <p className="mt-4 text-sm text-ink-2">
-          Просьбы уходят близким — пригласите мужа или жену во вкладке «Семья».
+          Просьбы уходят близким — пригласите близких во вкладке «Семья».
         </p>
       )}
     </div>

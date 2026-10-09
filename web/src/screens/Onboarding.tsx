@@ -27,7 +27,7 @@ export function Welcome({ onSession }: { onSession: (s: Session) => void }) {
         <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
         <h1 className="text-3xl leading-tight font-bold tracking-tight">Как вас зовут?</h1>
         <p className="mt-3 text-base text-ink-2">
-          Так вас увидят близкие. Потом пригласите мужа или жену по ссылке — просьбы будут
+          Так вас увидят близкие. Потом пригласите близких по ссылке — просьбы будут
           приходить им сами.
         </p>
       </div>
