@@ -165,7 +165,7 @@ export function Today({
             <button
               onClick={() => setShowDone(!showDone)}
               aria-expanded={showDone}
-              className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase"
+              className="mb-2 text-[13px] font-bold tracking-wide text-ink-2 uppercase"
             >
               Сделано сегодня · {doneToday.length} {showDone ? "▴" : "▾"}
             </button>
@@ -190,7 +190,7 @@ function Section({
 }) {
   return (
     <section>
-      <h2 className={`mb-2 text-xs font-semibold tracking-wide uppercase ${accent ? "text-accent" : "text-ink-3"}`}>
+      <h2 className={`mb-2 text-[13px] font-bold tracking-wide uppercase ${accent ? "text-accent" : "text-ink-2"}`}>
         {title} · {count}
       </h2>
       <ul className="space-y-2">{children}</ul>

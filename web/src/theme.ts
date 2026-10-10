@@ -3,7 +3,7 @@
  * и в памяти телефона — чтобы при запуске сразу рисовать нужную тему, без мигания.
  * Кто тему не выбирал — получает «Лаванду».
  */
-export type ThemeKey = "lavender" | "dawn" | "night" | "mint";
+export type ThemeKey = "lavender" | "dawn" | "night" | "graphite" | "mint";
 
 export const DEFAULT_THEME: ThemeKey = "lavender";
 
@@ -50,6 +50,16 @@ export const THEMES: ThemeInfo[] = [
     ink: "#f7f1ff",
   },
   {
+    key: "graphite",
+    title: "Графит",
+    note: "самая тёмная, без ярких цветов",
+    page: "linear-gradient(180deg,#101114,#0c0d10)",
+    hero: "linear-gradient(135deg,#2c2a44,#36324f)",
+    glass: "rgba(255,255,255,.07)",
+    glassBorder: "rgba(255,255,255,.12)",
+    ink: "#e8e8ec",
+  },
+  {
     key: "mint",
     title: "Мята и персик",
     note: "свежая, лучше читается",
@@ -66,6 +76,7 @@ const THEME_COLORS: Record<ThemeKey, string> = {
   lavender: "#e7e2ff",
   dawn: "#ffe3d3",
   night: "#1b1640",
+  graphite: "#0e0f12",
   mint: "#e3f7ef",
 };
 

@@ -5,7 +5,7 @@
 
 /*
  * Дизайн «B + D»: бенто-главная, цвет на человека, градиенты и стекло.
- * Четыре темы задаются атрибутом <html data-theme="…">; по умолчанию — «Лаванда».
+ * Пять тем задаются атрибутом <html data-theme="…">; по умолчанию — «Лаванда».
  * Компоненты используют только токены (bg-surface, text-ink, bg-accent…).
  */
 
@@ -92,14 +92,14 @@
   --blob-2: #ff5f8f;
   --blob-3: #ff8a5b;
   --bg: #1c1733;
-  --surface: rgba(255, 255, 255, 0.08);
+  --surface: rgba(255, 255, 255, 0.11);
   --surface-solid: #2a2342;
-  --surface-2: rgba(255, 255, 255, 0.13);
-  --glass-border: rgba(255, 255, 255, 0.14);
+  --surface-2: rgba(255, 255, 255, 0.17);
+  --glass-border: rgba(255, 255, 255, 0.22);
   --ink: #f7f1ff;
-  --ink-2: #c3b6da;
-  --ink-3: #8e81a8;
-  --line: rgba(255, 255, 255, 0.12);
+  --ink-2: #d4c9e8;
+  --ink-3: #b3a7cc;
+  --line: rgba(255, 255, 255, 0.18);
   --accent: #ff8a5b;
   --accent-grad: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
   --hero: linear-gradient(135deg, #ff8a5b 0%, #ff5f8f 100%);
@@ -118,6 +118,44 @@
   --font-text: "Manrope Variable";
   --font-head: "Manrope Variable";
   --theme-color: #1b1640;
+  color-scheme: dark;
+}
+
+/* ---------- Графит: самая тёмная, приглушённая — без ярких пятен и градиентов ---------- */
+[data-theme="graphite"] {
+  --page: linear-gradient(180deg, #101114 0%, #0c0d10 100%);
+  --page-solid: #0e0f12;
+  --blob-1: #3a3560;
+  --blob-2: #2a3a4a;
+  --blob-3: #3a2a3a;
+  --blob-opacity: 0.18;
+  --bg: #111216;
+  --surface: rgba(255, 255, 255, 0.06);
+  --surface-solid: #1a1b20;
+  --surface-2: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --ink: #e8e8ec;
+  --ink-2: #b4b6c0;
+  --ink-3: #9092a0;
+  --line: rgba(255, 255, 255, 0.12);
+  --accent: #9d93f0;
+  --accent-grad: linear-gradient(135deg, #6f64cf 0%, #7a6fd8 100%);
+  --hero: linear-gradient(135deg, #2c2a44 0%, #36324f 100%);
+  --fab: linear-gradient(135deg, #6f64cf 0%, #7a6fd8 100%);
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(157, 147, 240, 0.15);
+  --ok: #5cc493;
+  --ok-soft: rgba(92, 196, 147, 0.14);
+  --warn: #e88a9e;
+  --warn-soft: rgba(232, 138, 158, 0.14);
+  --tone-a: #b8607e;
+  --tone-b: #4f9a76;
+  --tone-c: #7469c4;
+  --tone-d: #b9884a;
+  --tone-e: #4e86b8;
+  --font-text: "Manrope Variable";
+  --font-head: "Manrope Variable";
+  --theme-color: #0e0f12;
   color-scheme: dark;
 }
 
@@ -207,7 +245,7 @@ body {
   position: absolute;
   border-radius: 50%;
   filter: blur(60px);
-  opacity: 0.55;
+  opacity: var(--blob-opacity, 0.55);
 }
 .backdrop i:nth-child(1) { width: 60vw; height: 60vw; max-width: 340px; max-height: 340px; background: var(--blob-1); top: 8%; left: -18%; }
 .backdrop i:nth-child(2) { width: 55vw; height: 55vw; max-width: 300px; max-height: 300px; background: var(--blob-2); top: 42%; right: -16%; }

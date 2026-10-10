@@ -253,7 +253,7 @@ export function CalendarScreen({
       )}
 
       <section className="mt-4">
-        <h2 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">
+        <h2 className="mb-2 text-[13px] font-bold tracking-wide text-ink-2 uppercase">
           {selectedDate.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}
           {entries.length > 0 && ` · ${entries.length}`}
         </h2>

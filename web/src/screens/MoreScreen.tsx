@@ -263,7 +263,7 @@ export function MoreScreen({
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h2 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">{title}</h2>
+      <h2 className="mb-2 text-[13px] font-bold tracking-wide text-ink-2 uppercase">{title}</h2>
       <div className="glass divide-y divide-line overflow-hidden rounded-2xl">{children}</div>
     </section>
   );

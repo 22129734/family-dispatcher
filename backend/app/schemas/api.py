@@ -48,7 +48,7 @@ class UpdateMemberRequest(BaseModel):
     dislikes: list[str] | None = None
     # За сколько минут до срока напоминать: 0 — не напоминать, максимум — за сутки
     remind_before_min: Literal[0, 15, 30, 60, 120, 1440] | None = None
-    theme: Literal["dawn", "lavender", "night", "mint"] | None = None
+    theme: Literal["dawn", "lavender", "night", "graphite", "mint"] | None = None
     confirm_mode: Literal["auto", "always", "never"] | None = None
     allow_participants: bool | None = None
 
