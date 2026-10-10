@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 CHECK_TTL = timedelta(minutes=5)  # столько SMS.RU ждёт звонка
 POLL_INTERVAL = timedelta(seconds=2)  # не дёргаем провайдера чаще
-PER_PHONE_LIMIT = (3, timedelta(minutes=10))
+# 3 звонка на номер за 3 минуты — потом подождать; на адрес — свой лимит в час
+PER_PHONE_LIMIT = (3, timedelta(minutes=3))
 PER_IP_LIMIT = (10, timedelta(hours=1))
 
 # PIN-код для быстрого входа без звонка
@@ -138,7 +139,8 @@ def get_verifier(settings: Settings | None = None) -> SmsRuVerifier | FakeVerifi
 
 def check_limits(recent_for_phone: int, recent_for_ip: int) -> None:
     if recent_for_phone >= PER_PHONE_LIMIT[0]:
-        raise PhoneAuthError("Слишком много попыток для этого номера. Подождите 10 минут")
+        minutes = int(PER_PHONE_LIMIT[1].total_seconds() // 60)
+        raise PhoneAuthError(f"Слишком много попыток для этого номера. Подождите {minutes} минуты")
     if recent_for_ip >= PER_IP_LIMIT[0]:
         raise PhoneAuthError("Слишком много попыток. Попробуйте через час")
 
