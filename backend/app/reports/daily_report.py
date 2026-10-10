@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 # Предупреждаем заранее, пока есть время пополнить
 LLM_WARN_SHARE = 0.8
-SMSRU_WARN_RUB = 300.0
+# Вход звонком на SMS.RU бесплатный — баланс не тратится; тревожимся, только если он почти ушёл
+SMSRU_WARN_RUB = 50.0
 PASSIVE = {
     "app_open",
     "screen_view",

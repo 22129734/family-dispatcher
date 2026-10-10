@@ -104,3 +104,30 @@ def test_anonymize_is_stable_and_hides_id() -> None:
     assert first != telemetry.anonymize("member-2")
     assert "member" not in first
     assert telemetry.anonymize(None) is None
+
+
+def test_connect_failure_is_retried_once() -> None:
+    attempts = {"n": 0}
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise httpx.ConnectTimeout("сеть моргнула", request=request)
+        return tool_response({"title": "Купить хлеб"})
+
+    result = make_client(flaky).extract_task("купи хлеб", "2026-10-10T10:00:00")
+    assert result["title"] == "Купить хлеб"
+    assert attempts["n"] == 2
+    llm = [c for c in calls() if c.kind == "llm"]
+    assert [(c.status, c.error_code) for c in llm] == [("error", "ConnectTimeout"), ("ok", None)]
+
+
+def test_read_timeout_is_not_retried() -> None:
+    attempts = {"n": 0}
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        attempts["n"] += 1
+        raise httpx.ReadTimeout("модель думает", request=request)
+
+    assert make_client(slow).extract_task("купи хлеб", "2026-10-10T10:00:00") is None
+    assert attempts["n"] == 1

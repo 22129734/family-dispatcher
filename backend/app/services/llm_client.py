@@ -114,6 +114,15 @@ class LLMError(Exception):
     """Ответ модели не удалось получить или разобрать."""
 
 
+class _RetryableLLMError(LLMError):
+    """Не удалось подключиться или шлюз временно недоступен — стоит попробовать ещё раз."""
+
+
+# Подключение к шлюзу — быстро; сам ответ модели — до llm_timeout_s
+CONNECT_TIMEOUT_S = 2.0
+LLM_ATTEMPTS = 2
+
+
 class LLMClient:
     def __init__(self, transport: httpx.BaseTransport | None = None) -> None:
         self._settings = get_settings()
@@ -124,34 +133,57 @@ class LLMClient:
         return self._settings.llm_enabled
 
     def _chat(self, skill: str, body: dict) -> dict:
-        """Один запрос к модели с учётом двух обращений: модель + навык."""
-        settings = self._settings
-        body = {"model": settings.llm_model, **body}
+        """Запрос к модели: одна повторная попытка, если не удалось подключиться.
+
+        Подключение ждём недолго (CONNECT_TIMEOUT_S): сеть моргнула — сразу пробуем ещё раз,
+        а не держим человека 8 секунд. Каждая попытка — отдельное обращение к LLM в телеметрии.
+        """
+        body = {"model": self._settings.llm_model, **body}
         with telemetry.track_call(Kind.SKILL, skill):
-            with telemetry.track_call(Kind.LLM, "chat.completions") as call:
-                call.model = settings.llm_model
+            for attempt in range(1, LLM_ATTEMPTS + 1):
                 try:
-                    with httpx.Client(
-                        base_url=settings.llm_base_url,
-                        timeout=settings.llm_timeout_s,
-                        transport=self._transport,
-                    ) as client:
-                        response = client.post(
-                            "/chat/completions",
-                            headers={"Authorization": f"Bearer {settings.llm_api_key}"},
-                            json=body,
-                        )
-                except httpx.HTTPError as exc:
-                    call.error_code = type(exc).__name__
-                    raise LLMError(str(exc)) from exc
-                if response.status_code != 200:
-                    call.error_code = f"http_{response.status_code}"
-                    raise LLMError(f"LLM ответил {response.status_code}: {response.text[:200]}")
-                data = response.json()
-                usage = data.get("usage") or {}
-                call.tokens_in = usage.get("prompt_tokens")
-                call.tokens_out = usage.get("completion_tokens")
-                return data
+                    return self._attempt(body)
+                except _RetryableLLMError as exc:
+                    if attempt == LLM_ATTEMPTS:
+                        raise LLMError(str(exc)) from exc
+                    logger.info("LLM: повторная попытка после %s", exc)
+            raise LLMError(
+                "LLM недоступен"
+            )  # pragma: no cover — цикл всегда возвращает или бросает
+
+    def _attempt(self, body: dict) -> dict:
+        settings = self._settings
+        with telemetry.track_call(Kind.LLM, "chat.completions") as call:
+            call.model = settings.llm_model
+            try:
+                with httpx.Client(
+                    base_url=settings.llm_base_url,
+                    timeout=httpx.Timeout(settings.llm_timeout_s, connect=CONNECT_TIMEOUT_S),
+                    transport=self._transport,
+                ) as client:
+                    response = client.post(
+                        "/chat/completions",
+                        headers={"Authorization": f"Bearer {settings.llm_api_key}"},
+                        json=body,
+                    )
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                call.error_code = type(exc).__name__
+                raise _RetryableLLMError(str(exc)) from exc
+            except httpx.HTTPError as exc:
+                # Модель долго думает (ReadTimeout) — второй раз ждать столько же не будем
+                call.error_code = type(exc).__name__
+                raise LLMError(str(exc)) from exc
+            if response.status_code in (502, 503, 504):
+                call.error_code = f"http_{response.status_code}"
+                raise _RetryableLLMError(f"LLM ответил {response.status_code}")
+            if response.status_code != 200:
+                call.error_code = f"http_{response.status_code}"
+                raise LLMError(f"LLM ответил {response.status_code}: {response.text[:200]}")
+            data = response.json()
+            usage = data.get("usage") or {}
+            call.tokens_in = usage.get("prompt_tokens")
+            call.tokens_out = usage.get("completion_tokens")
+            return data
 
     def extract_task(
         self,

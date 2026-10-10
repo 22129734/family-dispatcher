@@ -76,7 +76,7 @@ def test_report_has_budgets_and_metrics(db_with_day: None) -> None:
 
 
 def test_low_balances_raise_warnings(db_with_day: None) -> None:
-    report = daily_report.build(DAY, SETTINGS, http(45000, 120))
+    report = daily_report.build(DAY, SETTINGS, http(45000, 30))
     assert report.subject.startswith("⚠")
     assert any("LLM" in w for w in report.warnings)
     assert any("SMS.RU" in w for w in report.warnings)
@@ -94,3 +94,9 @@ def test_unavailable_source_does_not_break_report(db_with_day: None) -> None:
 def test_send_requires_smtp_credentials() -> None:
     with pytest.raises(RuntimeError):
         daily_report.send(daily_report.Report(day=DAY), Settings(smtp_user="", smtp_password=""))
+
+
+def test_untouched_smsru_balance_is_not_a_warning(db_with_day: None) -> None:
+    # Вход звонком бесплатный: 250 ₽ лежат нетронутыми — тревожиться не о чем
+    report = daily_report.build(DAY, SETTINGS, http(100, 250))
+    assert not any("SMS.RU" in w for w in report.warnings)
