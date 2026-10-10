@@ -288,6 +288,7 @@ export function CalendarScreen({
                 onCopy={() => actions.copy(entry.task)}
                 pending={actions.isPending(entry.task.id)}
                 onUndo={() => actions.undo(entry.task.id)}
+                onThank={() => actions.thank(entry.task.id)}
               />
             ) : (
               <DayRow

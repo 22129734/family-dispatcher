@@ -37,6 +37,17 @@ export interface Draft {
   unclear: boolean;
 }
 
+/** «Итоги недели» во вкладке «Семья». */
+export interface WeekStats {
+  total: number;
+  /** Сделано по дням: пн … вс */
+  by_day: number[];
+  members: { member_id: string; done: number; thanks: number }[];
+  thanks: number;
+  praise: string;
+  show: boolean;
+}
+
 /** Частое дело: очищенное название и последняя такая задача — образец для шторки. */
 export interface Frequent {
   title: string;
@@ -149,6 +160,8 @@ export interface Task {
   /** «Не выполнено»: что не так, по словам автора */
   feedback: string | null;
   feedback_at: string | null;
+  /** Автор сказал «спасибо» за сделанное */
+  thanked_at: string | null;
   /** Окончание, если его назвали («с 9 до 10»); null — дело без продолжительности */
   ends_at: string | null;
   /** Заметка: кабинет, адрес, что взять — подробности, которые не влезают в название */
@@ -255,6 +268,8 @@ export const api = {
   tasks: (doneDays = 1) => request<Task[]>(`/tasks?include_done_days=${doneDays}`),
   createTask: (task: NewTask) => post<Task>("/tasks", task),
   frequent: () => request<Frequent[]>("/tasks/frequent"),
+  thank: (id: string) => post<Task>(`/tasks/${id}/thanks`),
+  familyWeek: () => request<WeekStats>("/family/week"),
   parseTask: (message: string, source: "text" | "voice") => post<Draft>("/tasks/parse", { message, source }),
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>

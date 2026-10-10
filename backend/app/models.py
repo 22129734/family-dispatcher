@@ -169,6 +169,8 @@ class TaskRow(Base):
     # Заметка: подробности, которые не влезают в название (кабинет, адрес, что взять)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     feedback_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Автор сказал «спасибо» за сделанное — плюсик в карму исполнителю
+    thanked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

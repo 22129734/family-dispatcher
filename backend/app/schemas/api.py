@@ -177,6 +177,7 @@ class TaskOut(BaseModel):
     feedback: str | None = None
     note: str | None = None
     feedback_at: datetime | None = None
+    thanked_at: datetime | None = None
     created_at: datetime
     accepted_at: datetime | None
     completed_at: datetime | None
@@ -188,6 +189,25 @@ class FrequentOut(BaseModel):
     title: str
     count: int
     task: TaskOut
+
+
+class WeekMemberOut(BaseModel):
+    member_id: str
+    done: int
+    thanks: int
+
+
+class WeekOut(BaseModel):
+    """«Итоги недели» во вкладке «Семья»: сколько сделали вместе — без мест и рейтинга."""
+
+    total: int
+    # Сделано по дням недели: пн … вс
+    by_day: list[int]
+    members: list[WeekMemberOut]
+    thanks: int
+    praise: str
+    # Мало дел — карточку не показываем, чтобы не стыдить
+    show: bool
 
 
 class DispatchRequest(BaseModel):

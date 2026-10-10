@@ -23,6 +23,8 @@ export interface TaskActions {
   participants: (id: string, ids: string[]) => void;
   /** «Готово» нажато, но ещё 5 секунд можно вернуть */
   isPending: (id: string) => boolean;
+  /** «Спасибо» близкому за сделанное */
+  thank: (id: string) => void;
   undo: (id: string) => void;
   repeat: (id: string, recurrence: Recurrence) => void;
   items: (id: string, items: TaskItem[]) => void;
@@ -108,6 +110,7 @@ export function Today({
       onCopy={() => actions.copy(task)}
       pending={actions.isPending(task.id)}
       onUndo={() => actions.undo(task.id)}
+      onThank={() => actions.thank(task.id)}
     />
   );
 

@@ -29,6 +29,7 @@ from app.schemas.api import (
     TrackRequest,
     UpdateMemberRequest,
     UpdateTaskRequest,
+    WeekOut,
 )
 from app.services import family_service as fs
 from app.services import files, notifications
@@ -499,6 +500,31 @@ def reject_task(
         notifications.deliver, task.assignee_id, notifications.rejected_message(task, member)
     )
     return task
+
+
+@router.post("/tasks/{task_id}/thanks", response_model=TaskOut, tags=["tasks"])
+def thank_task(
+    task_id: str, member: CurrentMember, db: DbSession, background: BackgroundTasks
+) -> TaskRow:
+    """«Спасибо» за сделанное дело — исполнителю уведомление, в «Итогах недели» плюсик."""
+    task = _family_task(db, member, task_id)
+    try:
+        first = fs.thank(task, member)
+    except TaskActionError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    if first:
+        fs.track(db, member, "task_thanked")
+        db.commit()
+        background.add_task(
+            notifications.deliver, task.assignee_id, notifications.thanks_message(task, member)
+        )
+    return task
+
+
+@router.get("/family/week", response_model=WeekOut, tags=["family"])
+def family_week(member: CurrentMember, db: DbSession) -> WeekOut:
+    """«Итоги недели» для вкладки «Семья»."""
+    return WeekOut(**fs.week_stats(db, member.family))
 
 
 @router.put("/tasks/{task_id}/items", response_model=TaskOut, tags=["tasks"])

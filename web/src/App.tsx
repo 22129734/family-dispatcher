@@ -308,6 +308,12 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       setUndo({ id, title });
     },
     isPending: (id) => pendingIds.includes(id),
+    thank: (id) =>
+      run(async () => {
+        const task = await api.thank(id);
+        replace(task);
+        notify(`${memberName(task.assignee_id)} получит ваше спасибо 💜`);
+      }),
     undo: (id) => undoDone(id),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
     rename: (id, title) => run(async () => replace(await api.updateTask(id, { title }))),

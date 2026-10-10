@@ -547,3 +547,51 @@ def test_participants_saved_notified_and_kept_on_repeat(
         f"/api/v1/tasks/{nxt['id']}", json={"participants": [mom_id]}, headers=auth(family["mom"])
     ).json()
     assert cleared["participants"] == [mom_id]
+
+
+def test_thanks_only_from_author_for_done_task(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    task = client.post(
+        "/api/v1/tasks",
+        json={"title": "Забрать посылку", "assignee_id": family["dad_id"]},
+        headers=auth(family["mom"]),
+    ).json()
+    early = client.post(f"/api/v1/tasks/{task['id']}/thanks", headers=auth(family["mom"]))
+    assert early.status_code == 409  # ещё не сделано
+
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"]))
+    not_author = client.post(f"/api/v1/tasks/{task['id']}/thanks", headers=auth(family["dad"]))
+    assert not_author.status_code == 403
+
+    sent.clear()
+    thanked = client.post(f"/api/v1/tasks/{task['id']}/thanks", headers=auth(family["mom"])).json()
+    assert thanked["thanked_at"]
+    assert [(m, msg.title) for m, msg in sent] == [(family["dad_id"], "Мама говорит спасибо 💜")]
+    client.post(f"/api/v1/tasks/{task['id']}/thanks", headers=auth(family["mom"]))
+    assert len(sent) == 1  # второй раз не уведомляем
+
+
+def test_week_stats_hidden_when_few_and_counts_people(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    week = client.get("/api/v1/family/week", headers=auth(family["mom"])).json()
+    assert (week["total"], week["show"]) == (0, False)
+
+    ids = []
+    for title in ("Хлеб", "Молоко", "Аптека"):
+        task = client.post(
+            "/api/v1/tasks",
+            json={"title": title, "assignee_id": family["dad_id"]},
+            headers=auth(family["mom"]),
+        ).json()
+        client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"]))
+        ids.append(task["id"])
+    client.post(f"/api/v1/tasks/{ids[0]}/thanks", headers=auth(family["mom"]))
+
+    week = client.get("/api/v1/family/week", headers=auth(family["dad"])).json()
+    assert week["total"] == 3 and week["show"] is True
+    assert sum(week["by_day"]) == 3
+    dad = next(m for m in week["members"] if m["member_id"] == family["dad_id"])
+    assert (dad["done"], dad["thanks"]) == (3, 1)
+    assert week["praise"]

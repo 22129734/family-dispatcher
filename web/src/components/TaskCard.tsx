@@ -29,6 +29,7 @@ interface Props {
   /** «Готово» нажато, 5 секунд можно вернуть */
   pending?: boolean;
   onUndo?: () => void;
+  onThank?: () => void;
 }
 
 const REPEAT_OPTIONS: [Recurrence, string][] = [
@@ -206,8 +207,22 @@ export function TaskCard(props: Props) {
       )}
 
 
+      {done && mine && !author && task.thanked_at && (
+        <p className="mx-3.5 mb-3 text-sm font-semibold text-accent">💜 {authorName} говорит спасибо</p>
+      )}
       {done && !rejecting && !open && (
-        <div className="flex gap-2 px-3.5 pb-3">
+        <div className="flex flex-wrap gap-2 px-3.5 pb-3">
+          {author && !mine && task.assignee_id && (
+            <button
+              onClick={props.onThank}
+              disabled={!!task.thanked_at}
+              className={`h-9 rounded-xl px-3 text-sm font-semibold transition active:scale-95 ${
+                task.thanked_at ? "bg-accent-soft text-accent" : "bg-fab shadow-sm"
+              }`}
+            >
+              {task.thanked_at ? "💜 Вы сказали спасибо" : "Спасибо 💜"}
+            </button>
+          )}
           {canReject && (
             <button
               onClick={() => setRejecting(true)}

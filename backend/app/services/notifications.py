@@ -110,6 +110,16 @@ def new_task_message(task: TaskRow, author: MemberRow) -> PushMessage:
     )
 
 
+def thanks_message(task: TaskRow, author: MemberRow) -> PushMessage:
+    """Исполнителю: автор сказал «спасибо» за сделанное дело."""
+    return PushMessage(
+        title=f"{author.name} говорит спасибо 💜",
+        body=task.title,
+        url="/",
+        tag=f"task-{task.id}-thanks",
+    )
+
+
 def participant_message(task: TaskRow, author: MemberRow) -> PushMessage:
     """Участнику совместного дела: отвечать не нужно — просто знать, что вы заняты."""
     when = _when(task.due_at, datetime.now()) if task.due_at else "без срока"

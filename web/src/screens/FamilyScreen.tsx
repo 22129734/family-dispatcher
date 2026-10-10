@@ -1,8 +1,9 @@
 import { Hint } from "../components/Hint";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { api, type Family, type Member } from "../api";
+import { api, type Family, type Member, type WeekStats } from "../api";
 import { Avatar, Button } from "../components/ui";
+import { plural } from "./Today";
 import { familyInviteText, familyInviteUrl, SHARE_ORIGIN } from "../share";
 
 const ROLE_LABEL: Record<Member["role"], string> = { adult: "взрослый", teen: "подросток", child: "ребёнок" };
@@ -12,6 +13,10 @@ type Sheet = "invite" | "recommend" | null;
 export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const alone = family.members.length < 2;
+  const [week, setWeek] = useState<WeekStats | null>(null);
+  useEffect(() => {
+    api.familyWeek().then(setWeek, () => undefined);
+  }, []);
   return (
     <div className="space-y-5 px-4 pt-6 pb-6">
       <header>
@@ -20,6 +25,8 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
       <Hint id="family">
         Здесь ваша семья. Пригласите близких по ссылке — просьбы будут уходить им, а вы увидите «Беру» и «Сделано».
       </Hint>
+
+      {week?.show && <WeekCard week={week} family={family} me={me} />}
 
       {alone && (
         <section className="bg-hero rounded-[24px] p-5 text-white shadow-lg">
@@ -76,6 +83,55 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
         </BottomSheet>
       )}
     </div>
+  );
+}
+
+const DAYS = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
+
+/** «Итоги недели»: сколько сделали вместе — без мест и рейтинга, с похвалой. */
+function WeekCard({ week, family, me }: { week: WeekStats; family: Family; me: Member }) {
+  const max = Math.max(1, ...week.by_day);
+  const today = (new Date().getDay() + 6) % 7;
+  const people = week.members
+    .map((row) => ({ ...row, member: family.members.find((m) => m.id === row.member_id) }))
+    .filter((row) => row.member && (row.done > 0 || row.thanks > 0));
+  return (
+    <section className="bg-hero appear rounded-[24px] p-4 text-white shadow-lg">
+      <p className="text-[11px] font-bold tracking-wider uppercase opacity-90">Итоги недели</p>
+      <p className="font-display mt-1 text-xl leading-snug font-bold">
+        Семья сделала {week.total} {plural(week.total, "дело", "дела", "дел")}
+      </p>
+      <div className="mt-3 flex h-12 items-end gap-1.5" aria-hidden>
+        {week.by_day.map((count, i) => (
+          <span
+            key={i}
+            className={`flex-1 rounded-md ${i === today ? "bg-white" : "bg-white/60"}`}
+            style={{ height: `${Math.max(8, (count / max) * 100)}%`, opacity: i > today ? 0.35 : 1 }}
+          />
+        ))}
+      </div>
+      <div className="mt-1 flex gap-1.5 text-center text-[10px] opacity-85" aria-hidden>
+        {DAYS.map((d) => (
+          <span key={d} className="flex-1">
+            {d}
+          </span>
+        ))}
+      </div>
+      {people.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {people.map(({ member, done, thanks }) => (
+            <span key={member!.id} className="flex items-center gap-1.5 rounded-full bg-white/20 py-1 pr-3 pl-1 text-sm font-semibold">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs font-bold text-accent">
+                {member!.name.slice(0, 1).toUpperCase()}
+              </span>
+              {member!.id === me.id ? "Вы" : member!.name} · {done}
+              {thanks > 0 && <span className="opacity-90"> · 💜 {thanks}</span>}
+            </span>
+          ))}
+        </div>
+      )}
+      <p className="mt-3 rounded-xl bg-white/20 px-3 py-2 text-sm font-semibold">{week.praise}</p>
+    </section>
   );
 }
 

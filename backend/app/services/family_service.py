@@ -12,7 +12,7 @@
 from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import EventRow, FamilyRow, MemberRow, TaskRow
@@ -29,6 +29,102 @@ _RECURRENCE_STEP = {
 }
 # Повтор без срока: следующий раз — в 18:00
 _DEFAULT_HOUR = 18
+
+
+MIN_WEEK_TO_SHOW = 3
+
+
+def week_stats(db: Session, family: FamilyRow, now: datetime | None = None) -> dict:
+    """Итоги текущей недели (с понедельника): всего, по дням, по людям, «спасибо» и похвала."""
+    now = now or datetime.now()
+    monday = (now - timedelta(days=now.weekday())).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    month_ago = monday - timedelta(weeks=4)
+    done = db.scalars(
+        select(TaskRow).where(
+            TaskRow.family_id == family.id,
+            TaskRow.status == "done",
+            TaskRow.completed_at >= month_ago,
+        )
+    ).all()
+    week = [t for t in done if t.completed_at >= monday]
+    by_day = [0] * 7
+    for task in week:
+        by_day[task.completed_at.weekday()] += 1
+    thanked = db.scalars(
+        select(TaskRow).where(TaskRow.family_id == family.id, TaskRow.thanked_at >= monday)
+    ).all()
+    members = [
+        {
+            "member_id": m.id,
+            "done": sum(1 for t in week if t.assignee_id == m.id),
+            "thanks": sum(1 for t in thanked if t.assignee_id == m.id),
+        }
+        for m in family.members
+    ]
+
+    # Похвала — первая подходящая; без сравнения людей между собой
+    previous = [
+        sum(
+            1
+            for t in done
+            if monday - timedelta(weeks=k) <= t.completed_at < monday - timedelta(weeks=k - 1)
+        )
+        for k in range(1, 5)
+    ]
+    overdue = db.scalar(
+        select(func.count()).where(
+            TaskRow.family_id == family.id,
+            TaskRow.status != "done",
+            TaskRow.due_at < now,
+        )
+    )
+    days_with_done = {t.completed_at.date() for t in done}
+    streak = 0
+    day = now.date() if now.date() in days_with_done else now.date() - timedelta(days=1)
+    while day in days_with_done:
+        streak += 1
+        day -= timedelta(days=1)
+    total = len(week)
+    if total and any(previous) and total > max(previous):
+        praise = "Лучшая неделя за месяц — можно и мороженку 🍦"
+    elif streak >= 3:
+        praise = f"{streak} {_days(streak)} подряд — каждый день что-то сделано"
+    elif total and not overdue:
+        praise = "Ни одного просроченного дела — так держать"
+    elif len(thanked) >= 2:
+        praise = f"{len(thanked)} «спасибо» за неделю 💜"
+    else:
+        praise = "Каждое сделанное дело — минус забота для семьи"
+    return {
+        "total": total,
+        "by_day": by_day,
+        "members": members,
+        "thanks": len(thanked),
+        "praise": praise,
+        "show": total >= MIN_WEEK_TO_SHOW,
+    }
+
+
+def _days(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return "день"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return "дня"
+    return "дней"
+
+
+def thank(task: TaskRow, member: MemberRow) -> bool:
+    """«Спасибо» за сделанное: только автор и только чужое выполненное дело. True — впервые."""
+    if task.status != "done":
+        raise TaskActionError(409, "Спасибо можно сказать за сделанное дело")
+    if task.created_by_id != member.id or task.assignee_id in (None, member.id):
+        raise TaskActionError(403, "Спасибо говорит тот, кто просил, — тому, кто сделал")
+    if task.thanked_at:
+        return False
+    task.thanked_at = datetime.now()
+    return True
 
 
 def frequent(db: Session, member: MemberRow, days: int = 90, limit: int = 5):
