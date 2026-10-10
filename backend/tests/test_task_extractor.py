@@ -181,3 +181,12 @@ def test_single_item_from_llm_is_not_a_list() -> None:
     llm = TaskExtractor(client=StubLLM({"title": "Купить продукты", "items": ["хлеб"]}))
     draft = llm.extract("купить хлеб", now=NOW)
     assert (draft.title, draft.items) == ("Купить хлеб", [])
+
+
+def test_participants_from_rules() -> None:
+    extractor = TaskExtractor(client=OfflineClient())
+    together = extractor.extract("мы с мужем идём в кино в субботу", members=["Олег"])
+    assert together.participants == ["self", "муж"]
+    named = extractor.extract("Олег с сыном идут в баню в воскресенье", members=["Олег", "Миша"])
+    assert named.participants == ["Олег", "сын"]
+    assert extractor.extract("Олег, забери посылку", members=["Олег"]).participants == []

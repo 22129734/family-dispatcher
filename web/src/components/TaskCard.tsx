@@ -21,6 +21,7 @@ interface Props {
   onAssign: (memberId: string) => void;
   onDue: (iso: string | null) => void;
   onEnd: (iso: string | null) => void;
+  onParticipants: (ids: string[]) => void;
   onRepeat: (recurrence: Recurrence) => void;
   onItems: (items: TaskItem[]) => void;
   onDelete: () => void;
@@ -81,6 +82,12 @@ export function TaskCard(props: Props) {
   }, [note, task.note]);
   const [firstItem, setFirstItem] = useState("");
   const [showEnd, setShowEnd] = useState(false);
+  const withNames = task.participants
+    .map((id) => (id === meId ? "я" : members.find((m) => m.id === id)?.name))
+    .filter(Boolean)
+    .join(", ");
+  // «Кто ещё участвует» — если человек включил настройку или участники уже есть
+  const canAddParticipants = !!members.find((m) => m.id === meId)?.allow_participants || task.participants.length > 0;
   // Редкие поля правки — под «Ещё»; раскрыты сразу, если в них уже что-то есть
   const [more, setMore] = useState(task.recurrence !== "none" || !!task.note);
   // Посылка с маркетплейса без кода получения — подскажем прикрепить
@@ -117,6 +124,7 @@ export function TaskCard(props: Props) {
             <span className={overdue ? "font-medium text-warn" : ""}>{formatSpan(task.due_at, task.ends_at)}</span>
             {recurrence && <span>· {recurrence}</span>}
             {task.priority === "high" && !done && <span className="font-medium text-warn">· срочно</span>}
+            {withNames && <span>· вместе: {withNames}</span>}
           </p>
           {status && <p className={`mt-1 text-sm font-medium ${status.tone}`}>{status.text}</p>}
           {task.note && !open && (
@@ -354,6 +362,36 @@ export function TaskCard(props: Props) {
                   ))}
                 </div>
               </div>
+              {canAddParticipants && (
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-ink-3">Кто ещё участвует</span>
+                  <div className="flex flex-wrap gap-2">
+                    {members
+                      .filter((m) => m.id !== task.assignee_id)
+                      .map((m) => {
+                        const on = task.participants.includes(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            onClick={() =>
+                              props.onParticipants(
+                                on ? task.participants.filter((id) => id !== m.id) : [...task.participants, m.id],
+                              )
+                            }
+                            className={`flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-sm ${
+                              on ? "border-accent bg-accent-soft" : "border-line"
+                            }`}
+                          >
+                            <Avatar member={m} members={members} size={26} />
+                            {m.id === meId ? "Я" : m.name}
+                            {on && " ✓"}
+                          </button>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
               {more ? (
                 <>
               <div>

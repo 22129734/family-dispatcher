@@ -44,7 +44,7 @@ const TEAM: Contact[] = [
   { name: "Илья", role: "разработчик", tone: "tone-d", links: [["Почта", "mailto:onepeople458@gmail.com"]] },
 ];
 
-type Sub = "reminders" | "theme" | "confirm" | "install" | "account" | "voice" | "team" | null;
+type Sub = "reminders" | "theme" | "confirm" | "participants" | "install" | "account" | "voice" | "team" | null;
 
 const buildDate = new Date(__BUILD_TIME__);
 const VERSION = buildDate.toLocaleString("ru-RU", {
@@ -72,10 +72,13 @@ export function MoreScreen({
   family,
   me,
   onLogout,
+  onProfileChange,
 }: {
   family: Family | null;
   me: Member;
   onLogout: () => void;
+  /** Настройка поменялась — перечитать семью, чтобы её увидели карточки и шторка */
+  onProfileChange: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const [changingPin, setChangingPin] = useState(false);
@@ -86,6 +89,7 @@ export function MoreScreen({
   const meRow = family?.members.find((m) => m.id === me.id);
   const [remind, setRemind] = useState(meRow?.remind_before_min ?? me.remind_before_min);
   const [confirmMode, setConfirmMode] = useState<ConfirmMode>(meRow?.confirm_mode ?? "auto");
+  const [allowParticipants, setAllowParticipants] = useState(meRow?.allow_participants ?? false);
 
   if (changingPin) {
     return (
@@ -129,6 +133,7 @@ export function MoreScreen({
       reminders: "Напоминания",
       theme: "Оформление",
       confirm: "Перед отправкой просьбы",
+      participants: "Несколько участников",
       install: "Установить на экран",
       account: "Вход и PIN-код",
       voice: "Надиктовать отзыв",
@@ -146,6 +151,9 @@ export function MoreScreen({
         {sub === "reminders" && <Reminders initial={remind} onChange={setRemind} />}
         {sub === "theme" && <ThemePicker />}
         {sub === "confirm" && <ConfirmModeSetting initial={confirmMode} onChange={setConfirmMode} />}
+        {sub === "participants" && (
+          <ParticipantsSetting value={allowParticipants} onChange={setAllowParticipants} onSaved={onProfileChange} />
+        )}
         {sub === "install" && <InstallCard always />}
         {sub === "account" && (
           <section className="space-y-2">
@@ -211,6 +219,11 @@ export function MoreScreen({
         <Row label="Напоминания" value={remindLabel} onClick={() => setSub("reminders")} />
         <Row label="Оформление" value={themeLabel} onClick={() => setSub("theme")} />
         <Row label="Перед отправкой просьбы" value={confirmLabel} onClick={() => setSub("confirm")} />
+        <Row
+          label="Несколько участников"
+          value={allowParticipants ? "вкл" : "выкл"}
+          onClick={() => setSub("participants")}
+        />
         {!platform().standalone && <Row label="Установить на экран" onClick={() => setSub("install")} />}
         <Row label="Вход и PIN-код" onClick={() => setSub("account")} />
       </Group>
@@ -276,6 +289,56 @@ function Row({ label, value = "", onClick, href }: { label: string; value?: stri
     <button onClick={onClick} className={cls}>
       {inner}
     </button>
+  );
+}
+
+/** Несколько участников в деле: «мы с мужем в кино». По умолчанию — один исполнитель. */
+function ParticipantsSetting({
+  value,
+  onChange,
+  onSaved,
+}: {
+  value: boolean;
+  onChange: (on: boolean) => void;
+  onSaved: () => void;
+}) {
+  async function toggle() {
+    const next = !value;
+    onChange(next);
+    try {
+      await api.updateMe({ allow_participants: next });
+      onSaved();
+    } catch {
+      onChange(!next);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <p className="text-sm text-ink-2">
+        По умолчанию у дела один исполнитель: он отвечает «Беру» и отмечает «Сделано». Так дела не теряются — когда
+        дело «на всех», его не делает никто.
+      </p>
+      <p className="text-sm text-ink-2">
+        Включите, если бывают совместные дела: «мы с мужем идём в кино», «муж с сыном в баню». Тогда в деле можно
+        отметить, кто ещё участвует, — им придёт уведомление, а в календаре будет видно, что они заняты.
+      </p>
+      <button
+        onClick={() => void toggle()}
+        aria-pressed={value}
+        className={`flex w-full items-center justify-between rounded-2xl border p-4 text-left transition ${
+          value ? "border-accent bg-accent-soft" : "border-line bg-surface"
+        }`}
+      >
+        <span className="font-semibold">Несколько участников в деле</span>
+        <span
+          className={`relative h-7 w-12 shrink-0 rounded-full transition ${value ? "bg-accent" : "bg-ink-3/40"}`}
+          aria-hidden
+        >
+          <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${value ? "left-6" : "left-1"}`} />
+        </span>
+      </button>
+    </section>
   );
 }
 

@@ -20,6 +20,7 @@ export interface TaskActions {
   assign: (id: string, memberId: string) => void;
   due: (id: string, iso: string | null) => void;
   end: (id: string, iso: string | null) => void;
+  participants: (id: string, ids: string[]) => void;
   repeat: (id: string, recurrence: Recurrence) => void;
   items: (id: string, items: TaskItem[]) => void;
   remove: (id: string) => void;
@@ -51,7 +52,7 @@ export function Today({
   const now = new Date();
 
   // Три списка по смыслу: ответить, сделать самому, проследить за тем, о чём попросил(а)
-  const { askMe, mine, asked, doneToday } = useMemo(() => {
+  const { askMe, mine, asked, together, doneToday } = useMemo(() => {
     const byDue = (a: Task, b: Task) => (a.due_at ?? "9999").localeCompare(b.due_at ?? "9999");
     const todayKey = new Date().toDateString();
     const open = tasks.filter((t) => t.status !== "done");
@@ -60,6 +61,10 @@ export function Today({
       askMe: askMe.sort(byDue),
       mine: open.filter((t) => t.assignee_id === meId && !askMe.includes(t)).sort(byDue),
       asked: open.filter((t) => t.created_by_id === meId && t.assignee_id !== meId).sort(byDue),
+      // Совместные дела, где я не исполнитель и не автор: «муж зовёт в кино»
+      together: open
+        .filter((t) => t.participants.includes(meId) && t.assignee_id !== meId && t.created_by_id !== meId)
+        .sort(byDue),
       doneToday: tasks.filter(
         (t) =>
           t.status === "done" &&
@@ -72,7 +77,7 @@ export function Today({
 
   const myOpen = askMe.length + mine.length;
   const greeting = now.getHours() < 12 ? "Доброе утро" : now.getHours() < 18 ? "Добрый день" : "Добрый вечер";
-  const empty = askMe.length + mine.length + asked.length + doneToday.length === 0;
+  const empty = askMe.length + mine.length + asked.length + together.length + doneToday.length === 0;
 
   const card = (task: Task) => (
     <TaskCard
@@ -93,6 +98,7 @@ export function Today({
       onAssign={(memberId) => actions.assign(task.id, memberId)}
       onDue={(iso) => actions.due(task.id, iso)}
       onEnd={(iso) => actions.end(task.id, iso)}
+      onParticipants={(ids) => actions.participants(task.id, ids)}
       onRepeat={(value) => actions.repeat(task.id, value)}
       onItems={(items) => actions.items(task.id, items)}
       onDelete={() => actions.remove(task.id)}
@@ -139,6 +145,12 @@ export function Today({
         {mine.length > 0 && (
           <Section title="Мои дела" count={mine.length}>
             {mine.map(card)}
+          </Section>
+        )}
+
+        {together.length > 0 && (
+          <Section title="Я участвую" count={together.length}>
+            {together.map(card)}
           </Section>
         )}
 

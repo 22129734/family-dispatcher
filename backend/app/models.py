@@ -120,6 +120,8 @@ class MemberRow(Base):
     theme: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Проверка просьбы перед отправкой: auto — если что-то неясно, always, never; пусто — auto
     confirm_mode: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # Несколько участников в деле («мы с мужем в кино»); по умолчанию — один исполнитель
+    allow_participants: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     family: Mapped[FamilyRow] = relationship(back_populates="members")
@@ -156,6 +158,9 @@ class TaskRow(Base):
     decline_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     # Список покупок и других пунктов: [{"text": "молоко", "done": false}, ...]
     items: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    # Кто ещё участвует, кроме исполнителя: id членов семьи. Отвечает и отмечает «Сделано»
+    # по-прежнему один исполнитель — остальные видят, что заняты в это время
+    participants: Mapped[list[str]] = mapped_column(JSON, default=list)
     # Напоминание перед сроком отправлено; исполнитель ответил «Я помню»
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     remembered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

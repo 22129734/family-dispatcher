@@ -487,3 +487,63 @@ def test_frequent_tasks_group_by_plain_title(client: TestClient, family: dict[st
     ]
     assert frequent[0]["task"]["items"][0]["text"] == "батон"  # образец — последняя такая задача
     assert client.get("/api/v1/tasks/frequent", headers=auth(family["dad"])).json() == []
+
+
+def test_participants_off_by_default_and_on_in_settings(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    phrase = {"message": "мы с мужем идём в кино в субботу с 19 до 21"}
+    draft = client.post("/api/v1/tasks/parse", json=phrase, headers=auth(family["mom"])).json()
+    assert draft["participant_ids"] == []  # по умолчанию — один исполнитель
+
+    me = client.patch(
+        "/api/v1/me", json={"allow_participants": True}, headers=auth(family["mom"])
+    ).json()
+    assert me["allow_participants"] is True
+    draft = client.post("/api/v1/tasks/parse", json=phrase, headers=auth(family["mom"])).json()
+    mom_id = me["id"]
+    assert draft["assignee_id"] == family["dad_id"]
+    assert draft["participant_ids"] == [mom_id]  # «мы» — автор участвует вместе с мужем
+
+
+def test_participants_saved_notified_and_kept_on_repeat(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    mom_id = client.get("/api/v1/account", headers=auth(family["mom"])).json()["member"]["id"]
+    task = client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Баня",
+            "assignee_id": mom_id,
+            "participants": [family["dad_id"], family["dad_id"], mom_id],
+            "recurrence": "weekly",
+            "due_at": (datetime.now() + timedelta(days=1)).replace(microsecond=0).isoformat(),
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    assert task["participants"] == [family["dad_id"]]  # без исполнителя и повторов
+    assert [m for m, msg in sent if msg.title == "Мама: вы участвуете"] == [family["dad_id"]]
+
+    bad = client.post(
+        "/api/v1/tasks",
+        json={"title": "Х", "participants": ["чужой"]},
+        headers=auth(family["mom"]),
+    )
+    assert bad.status_code == 400
+
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["mom"]))
+    tasks = client.get("/api/v1/tasks", headers=auth(family["dad"])).json()
+    nxt = next(t for t in tasks if t["status"] != "done" and t["title"] == "Баня")
+    assert nxt["participants"] == [family["dad_id"]]
+
+    # Участника сделали исполнителем — из участников он уходит
+    moved = client.patch(
+        f"/api/v1/tasks/{nxt['id']}",
+        json={"assignee_id": family["dad_id"]},
+        headers=auth(family["mom"]),
+    ).json()
+    assert moved["participants"] == []
+    cleared = client.patch(
+        f"/api/v1/tasks/{nxt['id']}", json={"participants": [mom_id]}, headers=auth(family["mom"])
+    ).json()
+    assert cleared["participants"] == [mom_id]

@@ -14,6 +14,8 @@ export interface Member {
   confirm_mode: ConfirmMode | null;
   /** Есть устройство с push — иначе поручения до человека сами не дойдут */
   notifications: boolean;
+  /** Несколько участников в деле; по умолчанию выключено — один исполнитель */
+  allow_participants: boolean;
 }
 
 export type ConfirmMode = "auto" | "always" | "never";
@@ -29,6 +31,7 @@ export interface Draft {
   note: string | null;
   ends_at: string | null;
   assignee_id: string | null;
+  participant_ids: string[];
   rationale: string | null;
   clarifying_question: string | null;
   unclear: boolean;
@@ -53,6 +56,7 @@ export interface NewTask {
   source_text?: string | null;
   note?: string | null;
   ends_at?: string | null;
+  participants?: string[];
   defer_notify?: boolean;
 }
 
@@ -138,6 +142,8 @@ export interface Task {
   rationale: string | null;
   decline_reason: string | null;
   items: TaskItem[];
+  /** Кто ещё участвует, кроме исполнителя: «мы с мужем в кино» */
+  participants: string[];
   reminded_at: string | null;
   remembered_at: string | null;
   /** «Не выполнено»: что не так, по словам автора */
@@ -242,7 +248,7 @@ export const api = {
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),
-  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme" | "confirm_mode">>) =>
+  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme" | "confirm_mode" | "allow_participants">>) =>
     patch<Member>("/me", changes),
   family: () => request<Family>("/family"),
 
@@ -253,7 +259,7 @@ export const api = {
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
-  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "note">>) =>
+  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "note" | "participants">>) =>
     patch<Task>(`/tasks/${id}`, changes),
   setItems: (id: string, items: TaskItem[]) => request<Task>(`/tasks/${id}/items`, { method: "PUT", body: JSON.stringify({ items }) }),
   accept: (id: string) => post<Task>(`/tasks/${id}/accept`),

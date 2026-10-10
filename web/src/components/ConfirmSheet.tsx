@@ -75,6 +75,8 @@ export function ConfirmSheet({
 }) {
   const [title, setTitle] = useState(draft.title);
   const [assignee, setAssignee] = useState<string | null>(draft.assignee_id);
+  const [participants, setParticipants] = useState<string[]>(draft.participant_ids ?? []);
+  const canAddParticipants = !!members.find((m) => m.id === meId)?.allow_participants || participants.length > 0;
   const [date, setDate] = useState(draft.due_at ? draft.due_at.slice(0, 10) : "");
   const [time, setTime] = useState(draft.due_at ? draft.due_at.slice(11, 16) : (initialTime ?? ""));
   const [end, setEnd] = useState(
@@ -116,6 +118,7 @@ export function ConfirmSheet({
         due_at: dueAt,
         ends_at: endsAt,
         assignee_id: assignee,
+        participants: participants.filter((id) => id !== assignee),
         recurrence: repeat,
         priority: urgent ? "high" : "normal",
         items,
@@ -173,6 +176,35 @@ export function ConfirmSheet({
             </button>
           ))}
         </div>
+
+        {canAddParticipants && (
+          <>
+            <Label>Кто ещё участвует</Label>
+            <div className="flex flex-wrap gap-2">
+              {members
+                .filter((m) => m.id !== assignee)
+                .map((m) => {
+                  const on = participants.includes(m.id);
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() =>
+                        setParticipants(on ? participants.filter((id) => id !== m.id) : [...participants, m.id])
+                      }
+                      className={`flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-sm font-medium ${
+                        on ? "border-accent bg-accent-soft" : "border-line bg-surface-2"
+                      }`}
+                    >
+                      <Avatar member={m} members={members} size={26} />
+                      {m.id === meId ? "Я" : m.name}
+                      {on && " ✓"}
+                    </button>
+                  );
+                })}
+            </div>
+          </>
+        )}
 
         <Label>День</Label>
         <div className="flex flex-wrap gap-2">

@@ -85,7 +85,7 @@ export function CalendarScreen({
   const byDay = useMemo(() => {
     const live = new Map(tasks.map((t) => [t.id, t]));
     const all = [...tasks, ...history.filter((t) => !live.has(t.id))].filter(
-      (t) => person === null || t.assignee_id === person,
+      (t) => person === null || t.assignee_id === person || t.participants.includes(person),
     );
     const from = days[0];
     const to = addDays(days[days.length - 1], 1);
@@ -281,6 +281,7 @@ export function CalendarScreen({
                 onAssign={(memberId) => actions.assign(entry.task.id, memberId)}
                 onDue={(iso) => actions.due(entry.task.id, iso)}
                 onEnd={(iso) => actions.end(entry.task.id, iso)}
+                onParticipants={(ids) => actions.participants(entry.task.id, ids)}
                 onRepeat={(value) => actions.repeat(entry.task.id, value)}
                 onItems={(items) => actions.items(entry.task.id, items)}
                 onDelete={() => actions.remove(entry.task.id)}
@@ -332,6 +333,10 @@ function DayRow({
 }) {
   const { task } = entry;
   const assignee = members.find((m) => m.id === task.assignee_id);
+  // Совместное дело: аватары всех, кто занят в это время
+  const together = task.participants
+    .map((id) => members.find((m) => m.id === id))
+    .filter((m): m is Member => !!m);
   const done = task.status === "done";
   const body = (
     <>
@@ -347,11 +352,16 @@ function DayRow({
         <span className="shrink-0 rounded-full bg-[var(--warn-soft)] px-2 py-0.5 text-[11px] font-semibold text-warn">ждёт</span>
       )}
       {assignee ? (
-        <span
-          title={assignee.id === meId ? "я" : assignee.name}
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${avatarTone(assignee.id, members)}`}
-        >
-          {assignee.name.slice(0, 1).toUpperCase()}
+        <span className="flex shrink-0">
+          {[assignee, ...together].slice(0, 3).map((m) => (
+            <span
+              key={m.id}
+              title={m.id === meId ? "я" : m.name}
+              className={`-ml-2 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white/80 text-xs font-bold text-white first:ml-0 ${avatarTone(m.id, members)}`}
+            >
+              {m.name.slice(0, 1).toUpperCase()}
+            </span>
+          ))}
         </span>
       ) : (
         <span className="h-7 w-7 shrink-0 rounded-full border border-dashed border-ink-3" title="никто" />

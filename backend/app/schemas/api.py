@@ -36,6 +36,7 @@ class MemberOut(BaseModel):
     remind_before_min: int = 60
     theme: str | None = None
     confirm_mode: str | None = None
+    allow_participants: bool = False
     # Есть ли у человека устройство с push — второй супруг должен видеть, что уведомления не дойдут
     notifications: bool = False
 
@@ -49,6 +50,7 @@ class UpdateMemberRequest(BaseModel):
     remind_before_min: Literal[0, 15, 30, 60, 120, 1440] | None = None
     theme: Literal["dawn", "lavender", "night", "mint"] | None = None
     confirm_mode: Literal["auto", "always", "never"] | None = None
+    allow_participants: bool | None = None
 
 
 class PhoneStartRequest(BaseModel):
@@ -168,6 +170,7 @@ class TaskOut(BaseModel):
     rationale: str | None
     decline_reason: str | None
     items: list[TaskItem] = []
+    participants: list[str] = []
     files: list[TaskFileOut] = []
     reminded_at: datetime | None = None
     remembered_at: datetime | None = None
@@ -203,6 +206,7 @@ class CreateTaskRequest(BaseModel):
     recurrence: Recurrence = Recurrence.NONE
     priority: Literal["low", "normal", "high"] = "normal"
     items: list[str] = Field(default_factory=list, max_length=60)
+    participants: list[str] = Field(default_factory=list, max_length=10)
     # copy — «Повторить» или «Частые дела»: по образцу прежней задачи
     source: Literal["text", "voice", "manual", "copy"] = "manual"
     source_text: str | None = Field(default=None, max_length=1000)
@@ -223,6 +227,7 @@ class DraftOut(BaseModel):
     requires_car: bool
     note: str | None
     assignee_id: str | None
+    participant_ids: list[str] = []
     rationale: str | None
     clarifying_question: str | None
     # Срок или исполнитель не поняты — в режиме «если неясно» показываем шторку
@@ -238,6 +243,7 @@ class UpdateTaskRequest(BaseModel):
     assignee_id: str | None = None
     recurrence: Recurrence | None = None
     note: str | None = Field(default=None, max_length=2000)
+    participants: list[str] | None = Field(default=None, max_length=10)
 
 
 class RejectRequest(BaseModel):

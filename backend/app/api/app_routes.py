@@ -71,6 +71,29 @@ def _notify_assignee(background: BackgroundTasks, task: TaskRow, author: MemberR
         )
 
 
+def _notify_participants(
+    background: BackgroundTasks, task: TaskRow, author: MemberRow, ids: list[str]
+) -> None:
+    """Совместное дело: участникам — «вы участвуете», отвечать не нужно."""
+    for member_id in ids:
+        if member_id != author.id:
+            background.add_task(
+                notifications.deliver, member_id, notifications.participant_message(task, author)
+            )
+
+
+def _clean_participants(member: MemberRow, ids: list[str], assignee_id: str | None) -> list[str]:
+    """Только члены этой семьи, без исполнителя и повторов."""
+    family_ids = {m.id for m in member.family.members}
+    clean: list[str] = []
+    for member_id in ids:
+        if member_id not in family_ids:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Участник не из вашей семьи")
+        if member_id != assignee_id and member_id not in clean:
+            clean.append(member_id)
+    return clean
+
+
 def _notify_author(background: BackgroundTasks, task: TaskRow, who: MemberRow, kind: str) -> None:
     if task.created_by_id != who.id:
         background.add_task(
@@ -226,11 +249,16 @@ def dispatch(
     task.source = payload.source
     assignee, why = fs.assignee_for(member.family, member, draft)
     fs.assign(task, assignee, member, why)
+    if member.allow_participants:
+        task.participants = fs.resolve_participants(
+            member.family, member, draft.participants, task.assignee_id
+        )
     db.add(task)
     db.flush()
     fs.track(db, member, "task_dispatched", source=payload.source, assigned=bool(task.assignee_id))
     db.commit()
     _notify_assignee(background, task, member)
+    _notify_participants(background, task, member, task.participants)
     return task
 
 
@@ -261,6 +289,13 @@ def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
         requires_car=draft.requires_car,
         note=draft.note,
         assignee_id=assignee.id if assignee else None,
+        participant_ids=(
+            fs.resolve_participants(
+                member.family, member, draft.participants, assignee.id if assignee else None
+            )
+            if member.allow_participants
+            else []
+        ),
         rationale=why,
         clarifying_question=draft.clarifying_question,
         unclear=draft.due_at is None or assignee is None or bool(draft.clarifying_question),
@@ -296,6 +331,7 @@ def create_task(
     else:
         assignee, why = fs.default_assignee(member.family, member, payload.requires_car)
         fs.assign(task, assignee, member, why)
+    task.participants = _clean_participants(member, payload.participants, task.assignee_id)
     db.add(task)
     db.flush()
     if payload.source == "manual":
@@ -306,6 +342,7 @@ def create_task(
     db.commit()
     if not payload.defer_notify:
         _notify_assignee(background, task, member)
+        _notify_participants(background, task, member, task.participants)
     return task
 
 
@@ -318,6 +355,7 @@ def notify_task(
     if task.created_by_id != member.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Уведомить может только тот, кто просит")
     _notify_assignee(background, task, member)
+    _notify_participants(background, task, member, task.participants or [])
 
 
 @router.patch("/tasks/{task_id}", response_model=TaskOut, tags=["tasks"])
@@ -346,6 +384,16 @@ def update_task(
         assignee = next((m for m in member.family.members if m.id == new_id), None)
         # Новый исполнитель — поручение снова ждёт его ответа
         fs.assign(task, assignee, member, None)
+    added: list[str] = []
+    if "participants" in changes:
+        before = set(task.participants or [])
+        changes["participants"] = _clean_participants(
+            member, changes["participants"] or [], task.assignee_id
+        )
+        added = [i for i in changes["participants"] if i not in before]
+    elif task.participants and task.assignee_id in task.participants:
+        # Новый исполнитель был участником — теперь он исполнитель
+        task.participants = [i for i in task.participants if i != task.assignee_id]
     for field, value in changes.items():
         if field == "title" and value is None:
             continue
@@ -364,6 +412,7 @@ def update_task(
     db.commit()
     if "assignee_id" in payload.model_dump(exclude_unset=True):
         _notify_assignee(background, task, member)
+    _notify_participants(background, task, member, added)
     return task
 
 

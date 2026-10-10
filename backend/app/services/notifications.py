@@ -110,6 +110,17 @@ def new_task_message(task: TaskRow, author: MemberRow) -> PushMessage:
     )
 
 
+def participant_message(task: TaskRow, author: MemberRow) -> PushMessage:
+    """Участнику совместного дела: отвечать не нужно — просто знать, что вы заняты."""
+    when = _when(task.due_at, datetime.now()) if task.due_at else "без срока"
+    return PushMessage(
+        title=f"{author.name}: вы участвуете",
+        body=f"{task.title} · {when}",
+        url="/",
+        tag=f"task-{task.id}-with",
+    )
+
+
 def _when(due: datetime, now: datetime) -> str:
     minutes = max(0, round((due - now).total_seconds() / 60))
     if minutes < 60:

@@ -61,6 +61,12 @@ _NOTE_RE = re.compile(
     r"\s*[^,;]+)",
     re.IGNORECASE,
 )
+# Совместное дело: «мы с мужем», «вместе», «муж с сыном идут»
+_TOGETHER_RE = re.compile(
+    r"\bмы\s+с\b|\bвместе\b|\bя\s+и\b|\bи\s+я\b|\bс\s+мной\b"
+    r"|\b(?:идут|пойдут|поедут|едут|сходят|идём|идем|пойдём|пойдем|поедем|едем)\b.*\bс\s+\w+"
+    r"|\b\w+\s+с\s+\w+\s+(?:идут|пойдут|поедут|едут|сходят)\b"
+)
 MAX_ITEMS = 60
 
 # Автор берёт дело на себя: «напомни мне», «себе», «я заберу», «сама схожу»
@@ -117,6 +123,8 @@ class TaskExtractor:
             updates["items"] = rules.items
         if not llm.note and rules.note:
             updates["note"] = rules.note
+        if not llm.participants and rules.participants:
+            updates["participants"] = rules.participants
         if rules.ends_at and rules.due_at and not llm.ends_at:
             # «с 9 до 10»: модель могла принять «до 10» за срок — начало берём у правил
             due = updates.get("due_at") or llm.due_at
@@ -169,6 +177,9 @@ class TaskExtractor:
             assignee=(payload.get("assignee") or "").strip() or None,
             items=items,
             note=(str(payload.get("note") or "").strip() or None),
+            participants=[
+                str(p).strip() for p in payload.get("participants") or [] if str(p).strip()
+            ][:10],
         )
 
     def _from_rules(self, message: str, now: datetime, members: list[str]) -> TaskDraft:
@@ -196,6 +207,7 @@ class TaskExtractor:
             assignee=self._assignee_from_text(lowered, members),
             items=self._items_from_text(message),
             note=self._note_from_text(message),
+            participants=self._participants_from_text(lowered, members),
         )
 
     @staticmethod
@@ -223,6 +235,31 @@ class TaskExtractor:
         """Подробности для заметки: «кабинет 214», «подъезд 3», «адрес …»."""
         found = [m.group(0).strip(" ,.") for m in _NOTE_RE.finditer(message)]
         return "; ".join(found) or None
+
+    @staticmethod
+    def _participants_from_text(lowered: str, members: list[str]) -> list[str]:
+        """«Мы с мужем идём в кино» → ["self", "муж"]; без слов «вместе» — пусто."""
+        if not _TOGETHER_RE.search(lowered):
+            return []
+        words = re.findall(r"[а-яёa-z]+", lowered)
+        found: list[str] = []
+        if re.search(r"\bмы\b|\bя\s+и\b|\bи\s+я\b|\bс\s+мной\b", lowered):
+            found.append("self")
+        for name in members:
+            base = name.strip().lower()
+            stem = base[:-1] if len(base) > 3 else base
+            if base and any(w == base or (len(base) > 3 and w.startswith(stem)) for w in words):
+                found.append(name)
+        for w in words:
+            if re.fullmatch(r"(муж|жен|супруг|сын|доч|дочк)[а-яё]*", w) and not w.startswith(
+                "женщин"
+            ):
+                root = re.match(r"муж|жен|супруг|сын|дочк|доч", w).group(0)
+                ref = {"жен": "жена", "доч": "дочь", "дочк": "дочь"}.get(root, root)
+                if ref not in found:
+                    found.append(ref)
+        # Совместное — это минимум двое
+        return found if len(found) >= 2 else []
 
     @staticmethod
     def _assignee_from_text(lowered: str, members: list[str]) -> str | None:

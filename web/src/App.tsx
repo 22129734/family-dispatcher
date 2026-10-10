@@ -293,6 +293,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     assign: (id, memberId) => run(async () => replace(await api.updateTask(id, { assignee_id: memberId }))),
     due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
     end: (id, iso) => run(async () => replace(await api.updateTask(id, { ends_at: iso }))),
+    participants: (id, ids) => run(async () => replace(await api.updateTask(id, { participants: ids }))),
     repeat: (id, recurrence) => run(async () => replace(await api.updateTask(id, { recurrence }))),
     items: (id, items) => {
       // Отметка в списке — сразу на экране, сервер догонит
@@ -349,6 +350,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         requires_car: task.requires_car,
         note: task.note,
         assignee_id: task.assignee_id,
+        participant_ids: task.participants,
         rationale: null,
         clarifying_question: null,
         unclear: true,
@@ -396,6 +398,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             due_at: draft.due_at,
             ends_at: draft.ends_at,
             assignee_id: draft.assignee_id,
+            participants: draft.participant_ids,
             recurrence: draft.recurrence,
             priority: draft.priority,
             items: draft.items,
@@ -442,7 +445,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             onOpenFamily={() => setTab("family")}
           />
         ) : tab === "more" ? (
-          <MoreScreen family={family} me={me} onLogout={onLogout} />
+          <MoreScreen family={family} me={me} onLogout={onLogout} onProfileChange={() => void refresh()} />
         ) : tab === "calendar" ? (
           <CalendarScreen
             tasks={tasks}

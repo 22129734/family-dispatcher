@@ -115,6 +115,45 @@ def assignee_for(
     return default_assignee(family, author, draft.requires_car)
 
 
+_RELATIONS = {
+    "spouse": ("муж", "жена", "супруг", "супруга"),
+    "child": ("сын", "дочь", "дочка", "ребёнок", "ребенок"),
+}
+
+
+def resolve_participants(
+    family: FamilyRow, author: MemberRow, refs: list[str], assignee_id: str | None
+) -> list[str]:
+    """«self», имя или «муж» / «сын» → id членов семьи; без исполнителя и повторов.
+
+    Родство угадываем, только когда оно однозначно: один второй взрослый — «муж»,
+    один ребёнок или подросток — «сын».
+    """
+    others = [m for m in family.members if m.id != author.id]
+    adults = [m for m in others if m.role == "adult"]
+    kids = [m for m in others if m.role in ("child", "teen")]
+    ids: list[str] = []
+    for ref in refs:
+        word = ref.strip().lower()
+        found: MemberRow | None = None
+        if word == "self":
+            found = author
+        elif any(word.startswith(r) for r in _RELATIONS["spouse"]):
+            found = adults[0] if len(adults) == 1 else None
+        elif any(word.startswith(r) for r in _RELATIONS["child"]):
+            found = kids[0] if len(kids) == 1 else None
+        else:
+            for m in family.members:
+                name = m.name.strip().lower()
+                stem = name[:-1] if len(name) > 3 else name
+                if word == name or (len(name) > 3 and word.startswith(stem)):
+                    found = m
+                    break
+        if found and found.id != assignee_id and found.id not in ids:
+            ids.append(found.id)
+    return ids
+
+
 def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> TaskRow:
     return TaskRow(
         family_id=family.id,
@@ -131,6 +170,7 @@ def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> T
         clarifying_question=draft.clarifying_question,
         items=[{"text": text, "done": False} for text in draft.items],
         note=draft.note,
+        participants=[],
     )
 
 
@@ -223,6 +263,7 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             # Тот же список покупок — снова не отмеченный
             items=[{"text": item["text"], "done": False} for item in task.items or []],
             note=task.note,
+            participants=list(task.participants or []),
         )
         assign(
             next_task, members.get(task.assignee_id), members[task.created_by_id], task.rationale
