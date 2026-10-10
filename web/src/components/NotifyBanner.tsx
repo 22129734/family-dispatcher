@@ -11,6 +11,8 @@ export function NotifyBanner() {
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
+  // Одной строкой, инструкция — по нажатию: баннер не должен отодвигать дела вниз
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     api
@@ -43,6 +45,38 @@ export function NotifyBanner() {
     setState(await pushState());
   }
 
+  if (state === "ask") {
+    return (
+      <div className="appear mb-4 flex items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-2.5">
+        <p className="min-w-0 flex-1 text-sm">
+          <span className="font-semibold">Включите уведомления</span>
+          <span className="block text-xs text-ink-2">просьбы будут приходить сами</span>
+        </p>
+        <button
+          onClick={turnOn}
+          disabled={busy}
+          className="h-9 shrink-0 rounded-xl bg-accent px-4 text-sm font-semibold text-accent-ink active:opacity-80 disabled:opacity-50"
+        >
+          {busy ? "Подключаем…" : "Включить"}
+        </button>
+      </div>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <button
+        onClick={() => setExpanded(true)}
+        className="appear mb-4 flex w-full items-center gap-3 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-left"
+      >
+        <span className="min-w-0 flex-1 text-sm font-semibold">
+          {state === "unsupported" ? "Этот браузер не умеет уведомления" : "Уведомления выключены"}
+        </span>
+        <span className="shrink-0 text-sm font-semibold text-accent">Как включить ›</span>
+      </button>
+    );
+  }
+
   return (
     <div className="appear mb-4 rounded-2xl border border-accent/40 bg-accent-soft p-4">
       {state === "ios-install" && (
@@ -70,24 +104,6 @@ export function NotifyBanner() {
         </>
       )}
 
-      {state === "ask" && (
-        <>
-          <p className="font-semibold">Включите уведомления</p>
-          <p className="mt-1 text-sm text-ink-2">
-            Просьбы будут приходить сами — с кнопками «Беру» и «Не могу». Открывать приложение не нужно.
-          </p>
-          <div className="mt-3 flex gap-2">
-            <button
-              onClick={turnOn}
-              disabled={busy}
-              className="h-11 flex-1 rounded-xl bg-accent font-semibold text-accent-ink active:opacity-80 disabled:opacity-50"
-            >
-              {busy ? "Подключаем…" : "Включить"}
-            </button>
-          </div>
-        </>
-      )}
-
       {state === "denied" && (
         <>
           <p className="font-semibold">Уведомления запрещены</p>
@@ -108,8 +124,11 @@ export function NotifyBanner() {
         </>
       )}
 
-      <button onClick={() => setHidden(true)} className="mt-2 text-xs text-ink-3">
+      <button onClick={() => setHidden(true)} className="mt-2 mr-4 text-xs text-ink-3">
         Скрыть
+      </button>
+      <button onClick={() => setExpanded(false)} className="mt-2 text-xs text-ink-3">
+        Свернуть
       </button>
     </div>
   );

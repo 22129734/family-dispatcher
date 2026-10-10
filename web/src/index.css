@@ -316,3 +316,15 @@ h1 {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Календарь листается смахиванием: новый месяц въезжает снизу или сверху */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-18px); }
+  to { opacity: 1; transform: none; }
+}
+.slide-up { animation: slide-up 0.22s ease-out; }
+.slide-down { animation: slide-down 0.22s ease-out; }

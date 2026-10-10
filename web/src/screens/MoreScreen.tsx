@@ -1,5 +1,5 @@
 import { Hint, resetHints } from "../components/Hint";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { api, type Family, type Member } from "../api";
 import { Button } from "../components/ui";
 import { applyTheme, currentTheme, THEMES, type ThemeKey } from "../theme";
@@ -44,6 +44,8 @@ const TEAM: Contact[] = [
   { name: "Илья", role: "разработчик", tone: "tone-d", links: [["Почта", "mailto:onepeople458@gmail.com"]] },
 ];
 
+type Sub = "reminders" | "theme" | "confirm" | "install" | "account" | "voice" | "team" | null;
+
 const buildDate = new Date(__BUILD_TIME__);
 const VERSION = buildDate.toLocaleString("ru-RU", {
   day: "numeric",
@@ -79,6 +81,11 @@ export function MoreScreen({
   const [changingPin, setChangingPin] = useState(false);
   const [pinChanged, setPinChanged] = useState(false);
   const [hintsReset, setHintsReset] = useState(false);
+  // Экран второго уровня: строки «Ещё» открывают каждая свой
+  const [sub, setSub] = useState<Sub>(null);
+  const meRow = family?.members.find((m) => m.id === me.id);
+  const [remind, setRemind] = useState(meRow?.remind_before_min ?? me.remind_before_min);
+  const [confirmMode, setConfirmMode] = useState<ConfirmMode>(meRow?.confirm_mode ?? "auto");
 
   if (changingPin) {
     return (
@@ -113,127 +120,122 @@ export function MoreScreen({
     }
   }
 
+  const remindLabel = REMIND_OPTIONS.find(([minutes]) => minutes === remind)?.[1] ?? "";
+  const themeLabel = THEMES.find((theme) => theme.key === currentTheme())?.title ?? "";
+  const confirmLabel = { never: "сразу", auto: "если неясно", always: "всегда" }[confirmMode];
+
+  if (sub) {
+    const titles: Record<Exclude<Sub, null>, string> = {
+      reminders: "Напоминания",
+      theme: "Оформление",
+      confirm: "Перед отправкой просьбы",
+      install: "Установить на экран",
+      account: "Вход и PIN-код",
+      voice: "Надиктовать отзыв",
+      team: "Команда и контакты",
+    };
+    return (
+      <div className="space-y-5 px-4 pt-6 pb-6">
+        <header>
+          <button onClick={() => setSub(null)} className="-ml-1 h-9 px-1 text-sm font-medium text-accent active:opacity-60">
+            ‹ Ещё
+          </button>
+          <h1 className="font-display mt-1 text-2xl font-bold">{titles[sub]}</h1>
+        </header>
+
+        {sub === "reminders" && <Reminders initial={remind} onChange={setRemind} />}
+        {sub === "theme" && <ThemePicker />}
+        {sub === "confirm" && <ConfirmModeSetting initial={confirmMode} onChange={setConfirmMode} />}
+        {sub === "install" && <InstallCard always />}
+        {sub === "account" && (
+          <section className="space-y-2">
+            <Button variant="soft" className="w-full" onClick={() => setChangingPin(true)}>
+              {pinChanged ? "PIN-код изменён" : "Сменить PIN-код"}
+            </Button>
+            <Button variant="ghost" className="w-full" onClick={onLogout}>
+              Выйти на этом устройстве
+            </Button>
+          </section>
+        )}
+        {sub === "voice" && <VoiceFeedback deviceInfo={deviceInfo} />}
+        {sub === "team" && (
+          <>
+            <p className="text-sm text-ink-2">
+              Мы участвуем в акселераторе Sber500 × Disrupt. Пишите напрямую — отвечаем сами, без ботов.
+            </p>
+            <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+              {TEAM.map((person) => (
+                <li key={person.name} className="flex items-center gap-3 px-4 py-3">
+                  <span
+                    className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${person.tone}`}
+                    aria-hidden
+                  >
+                    {person.name[0]}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{person.name}</p>
+                    <p className="text-xs text-ink-2">{person.role}</p>
+                  </div>
+                  {person.links.map(([label, url]) => (
+                    <a
+                      key={label}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => api.track("screen_view", { screen: `help_${{ ВК: "vk", Max: "max", Почта: "mail" }[label] ?? "link"}` })}
+                      className="flex h-9 items-center rounded-full border border-line px-3 text-sm font-medium active:bg-surface-2"
+                    >
+                      {label}
+                    </a>
+                  ))}
+                </li>
+              ))}
+            </ul>
+            <button onClick={copy} className="flex items-center gap-2 text-sm text-ink-2 active:opacity-70">
+              {copied ? "Скопировано — вставьте в сообщение" : "Скопировать данные устройства для разбора ошибки"}
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5 px-4 pt-6 pb-6">
       <header>
         <h1 className="font-display text-2xl font-bold">Ещё</h1>
       </header>
-      <Hint id="more">
-        Здесь тема оформления, напоминания, PIN-код и помощь: почта поддержки, контакты команды и голосовой отзыв.
-      </Hint>
+      <Hint id="more">Настройки, помощь и контакты команды. Нажмите на строку, чтобы открыть.</Hint>
 
-      <ThemePicker />
+      <Group title="Настройки">
+        <Row label="Напоминания" value={remindLabel} onClick={() => setSub("reminders")} />
+        <Row label="Оформление" value={themeLabel} onClick={() => setSub("theme")} />
+        <Row label="Перед отправкой просьбы" value={confirmLabel} onClick={() => setSub("confirm")} />
+        {!platform().standalone && <Row label="Установить на экран" onClick={() => setSub("install")} />}
+        <Row label="Вход и PIN-код" onClick={() => setSub("account")} />
+      </Group>
 
-      <ConfirmModeSetting initial={family?.members.find((m) => m.id === me.id)?.confirm_mode ?? null} />
-
-      <Reminders initial={family?.members.find((m) => m.id === me.id)?.remind_before_min ?? me.remind_before_min} />
-
-      <InstallCard always />
-
-      <section className="space-y-2">
-        <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Вход</h2>
-        <Button variant="soft" className="w-full" onClick={() => setChangingPin(true)}>
-          {pinChanged ? "PIN-код изменён" : "Сменить PIN-код"}
-        </Button>
-        <Button variant="ghost" className="w-full" onClick={onLogout}>
-          Выйти на этом устройстве
-        </Button>
-      </section>
-
-      <div>
-        <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Помощь</h2>
-        <p className="mt-1 text-sm text-ink-2">
-          Что-то не работает или есть идея? Напишите нам — отвечаем сами, без ботов.
-        </p>
-        <button
+      <Group title="Помощь">
+        <Row label="Надиктовать отзыв" value="голосом" onClick={() => setSub("voice")} />
+        <Row label="Написать в поддержку" value="письмо" onClick={mail} />
+        <Row
+          label="Группа тестировщиков в Max"
+          href={TESTERS_GROUP}
+          onClick={() => api.track("screen_view", { screen: "help_testers" })}
+        />
+        <Row
+          label="Показать подсказки заново"
+          value={hintsReset ? "готово" : ""}
           onClick={() => {
             resetHints();
             setHintsReset(true);
           }}
-          className="mt-2 text-sm font-medium text-accent active:opacity-60"
-        >
-          {hintsReset ? "Подсказки снова появятся на экранах" : "Показать подсказки заново"}
-        </button>
-      </div>
+        />
+      </Group>
 
-      <VoiceFeedback deviceInfo={deviceInfo} />
-
-      <section className="rounded-2xl bg-accent-soft p-4">
-        <p className="font-semibold">Написать в поддержку</p>
-        <p className="mt-0.5 text-sm text-ink-2 select-all">{SUPPORT_EMAIL}</p>
-        <button
-          onClick={mail}
-          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent font-semibold text-accent-ink active:opacity-80"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
-            <path d="M22 6l-10 7L2 6" />
-          </svg>
-          Написать письмо
-        </button>
-        <p className="mt-2 text-xs text-ink-2">
-          В письмо сами подставятся модель телефона, браузер и версия приложения. Добавьте, что делали, и скриншот.
-        </p>
-      </section>
-
-      <a
-        href={TESTERS_GROUP}
-        target="_blank"
-        rel="noreferrer"
-        onClick={() => api.track("screen_view", { screen: "help_testers" })}
-        className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 active:bg-surface-2"
-      >
-        <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent" aria-hidden>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg>
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block font-medium">Группа тестировщиков в Max</span>
-          <span className="block text-xs text-ink-2">Новости, вопросы и ошибки — вместе с командой и другими семьями</span>
-        </span>
-        <span className="text-sm font-medium text-accent">Вступить</span>
-      </a>
-
-      <section>
-        <h2 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">Или напрямую команде</h2>
-        <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
-          {TEAM.map((person) => (
-            <li key={person.name} className="flex items-center gap-3 px-4 py-3">
-              <span
-                className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ${person.tone}`}
-                aria-hidden
-              >
-                {person.name[0]}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{person.name}</p>
-                <p className="text-xs text-ink-2">{person.role}</p>
-              </div>
-              {person.links.map(([label, url]) => (
-                <a
-                  key={label}
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={() => api.track("screen_view", { screen: `help_${{ ВК: "vk", Max: "max", Почта: "mail" }[label] ?? "link"}` })}
-                  className="flex h-9 items-center rounded-full border border-line px-3 text-sm font-medium active:bg-surface-2"
-                >
-                  {label}
-                </a>
-              ))}
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <button onClick={copy} className="flex items-center gap-2 text-sm text-ink-2 active:opacity-70">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <rect x="9" y="9" width="13" height="13" rx="2" />
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-        </svg>
-        {copied ? "Скопировано — вставьте в сообщение" : "Скопировать данные устройства"}
-      </button>
+      <Group title="О нас">
+        <Row label="Команда и контакты" onClick={() => setSub("team")} />
+      </Group>
 
       <p className="text-xs text-ink-3">
         Версия от {VERSION} ·{" "}
@@ -245,23 +247,56 @@ export function MoreScreen({
   );
 }
 
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section>
+      <h2 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">{title}</h2>
+      <div className="glass divide-y divide-line overflow-hidden rounded-2xl">{children}</div>
+    </section>
+  );
+}
+
+/** Строка настроек: название, текущее значение и стрелка; ссылка — во внешнее приложение. */
+function Row({ label, value = "", onClick, href }: { label: string; value?: string; onClick?: () => void; href?: string }) {
+  const inner = (
+    <>
+      <span className="min-w-0 flex-1 font-medium">{label}</span>
+      {value && <span className="shrink-0 text-sm text-ink-3">{value}</span>}
+      <span className="shrink-0 text-ink-3" aria-hidden>
+        ›
+      </span>
+    </>
+  );
+  const cls = "flex min-h-12 w-full items-center gap-3 px-4 py-3 text-left active:bg-surface-2";
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" onClick={onClick} className={cls}>
+      {inner}
+    </a>
+  ) : (
+    <button onClick={onClick} className={cls}>
+      {inner}
+    </button>
+  );
+}
+
 /** Личная настройка: за сколько до срока напоминать о моих делах. */
-function Reminders({ initial }: { initial: number }) {
+function Reminders({ initial, onChange }: { initial: number; onChange: (minutes: number) => void }) {
   const [value, setValue] = useState(initial);
 
   async function choose(minutes: number) {
     const previous = value;
     setValue(minutes);
+    onChange(minutes);
     try {
       await api.updateMe({ remind_before_min: minutes });
     } catch {
       setValue(previous);
+      onChange(previous);
     }
   }
 
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Напоминать о моих делах</h2>
       <div className="flex flex-wrap gap-2">
         {REMIND_OPTIONS.map(([minutes, label]) => (
           <button
@@ -293,7 +328,6 @@ function ThemePicker() {
 
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Оформление</h2>
       <div className="grid grid-cols-2 gap-3">
         {THEMES.map((theme) => (
           <button
@@ -330,22 +364,23 @@ const CONFIRM_OPTIONS: [ConfirmMode, string, string][] = [
 ];
 
 /** Проверка просьбы перед отправкой — для тех, кто хочет всё уточнять сам. */
-function ConfirmModeSetting({ initial }: { initial: ConfirmMode | null }) {
-  const [mode, setMode] = useState<ConfirmMode>(initial ?? "auto");
+function ConfirmModeSetting({ initial, onChange }: { initial: ConfirmMode; onChange: (mode: ConfirmMode) => void }) {
+  const [mode, setMode] = useState<ConfirmMode>(initial);
 
   async function choose(value: ConfirmMode) {
     const previous = mode;
     setMode(value);
+    onChange(value);
     try {
       await api.updateMe({ confirm_mode: value });
     } catch {
       setMode(previous);
+      onChange(previous);
     }
   }
 
   return (
     <section className="space-y-2">
-      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">Перед отправкой просьбы</h2>
       {CONFIRM_OPTIONS.map(([value, title, note]) => (
         <button
           key={value}
