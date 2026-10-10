@@ -21,6 +21,9 @@ export interface TaskActions {
   due: (id: string, iso: string | null) => void;
   end: (id: string, iso: string | null) => void;
   participants: (id: string, ids: string[]) => void;
+  /** «Готово» нажато, но ещё 5 секунд можно вернуть */
+  isPending: (id: string) => boolean;
+  undo: (id: string) => void;
   repeat: (id: string, recurrence: Recurrence) => void;
   items: (id: string, items: TaskItem[]) => void;
   remove: (id: string) => void;
@@ -103,6 +106,8 @@ export function Today({
       onItems={(items) => actions.items(task.id, items)}
       onDelete={() => actions.remove(task.id)}
       onCopy={() => actions.copy(task)}
+      pending={actions.isPending(task.id)}
+      onUndo={() => actions.undo(task.id)}
     />
   );
 
@@ -129,7 +134,7 @@ export function Today({
 
       {!empty && !hintMic && (
         <Hint id="card" className="mb-4">
-          Нажмите на дело, чтобы поменять время, исполнителя или добавить заметку. Кружок слева — отметить «Сделано».
+          Нажмите на дело или ✎, чтобы поменять время, исполнителя или добавить заметку. Сделали — нажмите «Готово» справа внизу.
         </Hint>
       )}
 

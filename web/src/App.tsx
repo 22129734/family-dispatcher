@@ -39,6 +39,8 @@ const knownDevice = () => {
 type Tab = "today" | "calendar" | "family" | "more";
 
 const REFRESH_MS = 20_000;
+// Сколько секунд можно «Вернуть» после «Готово»
+const UNDO_MS = 5_000;
 
 function actTokenFromPath(): string | null {
   const match = window.location.pathname.match(/^\/t\/([\w.-]+)/);
@@ -261,6 +263,35 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     void refresh();
   }
 
+  // «Готово» с отменой: дело зеленеет сразу, на сервер уходит через 5 секунд
+  const pending = useRef(new Map<string, number>());
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
+
+  function forget(id: string) {
+    window.clearTimeout(pending.current.get(id));
+    pending.current.delete(id);
+    setPendingIds([...pending.current.keys()]);
+    setUndo((current) => (current?.id === id ? null : current));
+  }
+
+  function commitDone(id: string) {
+    if (!pending.current.has(id)) return;
+    forget(id);
+    void run(async () => replace(await api.done(id)));
+  }
+
+  const undoDone = (id: string) => forget(id);
+
+  // Свернули приложение до истечения 5 секунд — отправляем отмеченное сразу, чтобы не потерять
+  useEffect(() => {
+    const flush = () => {
+      if (document.visibilityState === "hidden") for (const id of [...pending.current.keys()]) commitDone(id);
+    };
+    document.addEventListener("visibilitychange", flush);
+    return () => document.removeEventListener("visibilitychange", flush);
+  });
+
   const actions: TaskActions = {
     accept: (id) => run(async () => replace(await api.accept(id))),
     decline: (id, reason) =>
@@ -268,10 +299,16 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         replace(await api.decline(id, reason));
         notify("Вернули автору");
       }),
-    done: (id) =>
-      run(async () => {
-        replace(await api.done(id));
-      }),
+    // «Готово»: на сервер — через 5 секунд, до этого можно «Вернуть»
+    done: (id) => {
+      if (pending.current.has(id)) return;
+      const title = tasks.find((t) => t.id === id)?.title ?? "";
+      pending.current.set(id, window.setTimeout(() => commitDone(id), UNDO_MS));
+      setPendingIds([...pending.current.keys()]);
+      setUndo({ id, title });
+    },
+    isPending: (id) => pendingIds.includes(id),
+    undo: (id) => undoDone(id),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
     rename: (id, title) => run(async () => replace(await api.updateTask(id, { title }))),
     note: (id, note) => run(async () => replace(await api.updateTask(id, { note }))),
@@ -499,7 +536,21 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         </div>
       )}
 
-      {toast && (
+      {undo && (
+        <div className="fixed inset-x-0 bottom-44 z-30 flex justify-center px-4">
+          <div className="appear flex w-full max-w-sm items-center gap-3 rounded-2xl bg-ink py-2 pr-2 pl-4 text-sm text-bg shadow-lg">
+            <span className="min-w-0 flex-1 truncate">Готово: {undo.title}</span>
+            <button
+              onClick={() => undoDone(undo.id)}
+              className="h-9 shrink-0 rounded-xl bg-white/15 px-3 font-semibold active:opacity-70"
+            >
+              Вернуть
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && !undo && (
         <div className="pointer-events-none fixed inset-x-0 bottom-44 z-30 flex justify-center px-4">
           <p className="appear max-w-sm rounded-2xl bg-ink px-4 py-2.5 text-center text-sm text-bg shadow-lg">{toast}</p>
         </div>

@@ -26,6 +26,9 @@ interface Props {
   onItems: (items: TaskItem[]) => void;
   onDelete: () => void;
   onCopy: () => void;
+  /** «Готово» нажато, 5 секунд можно вернуть */
+  pending?: boolean;
+  onUndo?: () => void;
 }
 
 const REPEAT_OPTIONS: [Recurrence, string][] = [
@@ -62,7 +65,6 @@ export function TaskCard(props: Props) {
   const done = task.status === "done";
   const mine = task.assignee_id === meId;
   const author = task.created_by_id === meId;
-  const canFinish = mine || author || !task.assignee_id;
   // «Не выполнено» — у автора на деле, которое сделал другой человек
   const canReject = done && author && !!task.assignee_id && !mine;
   const [rejecting, setRejecting] = useState(false);
@@ -95,59 +97,94 @@ export function TaskCard(props: Props) {
   const recurrence = RECURRENCE_LABEL[task.recurrence];
   const status = statusLabel(task, assignee, meId);
   const needsMyAnswer = mine && task.status === "new";
+  // «Сделано» уже нажали, но ещё можно вернуть — карточка зелёная
+  const finished = done || !!props.pending;
+  // «Готово» — у своих дел; у сделанного — чтобы вернуть в работу
+  const showDone = !needsMyAnswer && (done ? mine || author : mine || (!task.assignee_id && author));
 
   return (
     <li
-      className={`appear rounded-2xl border bg-surface transition ${
-        needsMyAnswer ? "border-accent" : mine && !done ? "border-accent/40" : "border-line"
-      } ${done ? "opacity-60" : ""}`}
+      className={`appear rounded-2xl border transition ${
+        props.pending
+          ? "border-ok/40 bg-ok-soft"
+          : `bg-surface ${needsMyAnswer ? "border-accent" : mine && !done ? "border-accent/40" : "border-line"}`
+      } ${done ? "opacity-70" : ""}`}
     >
-      <div className="flex items-start gap-3 p-3.5">
-        <button
-          onClick={done ? props.onReopen : props.onDone}
-          disabled={!canFinish}
-          aria-label={done ? "Вернуть в работу" : "Отметить сделанным"}
-          className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 transition disabled:opacity-30 ${
-            done ? "border-ok bg-ok text-white" : "border-ink-3 active:bg-ok-soft"
-          }`}
-        >
-          {done && (
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M5 12l5 5L20 7" />
-            </svg>
-          )}
-        </button>
+      <div className="flex gap-2 p-3.5">
+        <div className="min-w-0 flex-1">
+          <button className="w-full text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
+            <p className={`text-base leading-snug ${finished ? "text-ink-2 line-through" : ""}`}>{task.title}</p>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
+              {props.pending ? (
+                <span className="font-semibold text-ok">Сделано</span>
+              ) : (
+                <span className={overdue ? "font-medium text-warn" : ""}>{formatSpan(task.due_at, task.ends_at)}</span>
+              )}
+              {recurrence && <span>· {recurrence}</span>}
+              {task.priority === "high" && !finished && <span className="font-medium text-warn">· срочно</span>}
+              {withNames && <span>· вместе: {withNames}</span>}
+            </p>
+            {status && !props.pending && <p className={`mt-1 text-sm font-medium ${status.tone}`}>{status.text}</p>}
+            {task.note && !open && (
+              <p className="mt-1.5 line-clamp-2 w-fit rounded-lg bg-surface-2 px-2 py-1 text-sm text-ink-2">📝 {task.note}</p>
+            )}
+          </button>
 
-        <button className="min-w-0 flex-1 text-left" onClick={() => setOpen(!open)} aria-expanded={open}>
-          <p className={`text-base leading-snug ${done ? "line-through" : ""}`}>{task.title}</p>
-          <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-2">
-            <span className={overdue ? "font-medium text-warn" : ""}>{formatSpan(task.due_at, task.ends_at)}</span>
-            {recurrence && <span>· {recurrence}</span>}
-            {task.priority === "high" && !done && <span className="font-medium text-warn">· срочно</span>}
-            {withNames && <span>· вместе: {withNames}</span>}
-          </p>
-          {status && <p className={`mt-1 text-sm font-medium ${status.tone}`}>{status.text}</p>}
-          {task.note && !open && (
-            <p className="mt-1.5 line-clamp-2 rounded-lg bg-surface-2 px-2 py-1 text-sm text-ink-2">📝 {task.note}</p>
+          {task.files.length > 0 && (
+            <div className="mt-2">
+              <FileStrip
+                files={task.files}
+                canRemove={(file) => file.uploaded_by_id === meId || author}
+                onRemove={(file) => props.onDetach(file.id)}
+              />
+            </div>
           )}
-        </button>
-
-        <div className="flex shrink-0 flex-col items-center gap-0.5 pt-0.5">
-          <Avatar member={assignee} members={members} />
-          <span className="max-w-16 truncate text-[11px] text-ink-3">{mine ? "я" : (assignee?.name ?? "никто")}</span>
+          {askForCode && (
+            <div className="mt-2">
+              <AttachButton onFile={props.onAttach} label="Прикрепить код получения" />
+            </div>
+          )}
+          {task.items.length > 0 && <Items task={task} canEdit={!finished} onItems={props.onItems} />}
         </div>
-        <button
-          onClick={() => setOpen(!open)}
-          aria-label={open ? "Свернуть" : "Изменить"}
-          aria-expanded={open}
-          className={`-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
-            open ? "bg-accent text-accent-ink" : "text-ink-3 active:bg-surface-2"
-          }`}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
-          </svg>
-        </button>
+
+        {/* Справа: кто делает и карандаш сверху, «Готово» — снизу, в строке с последней информацией */}
+        <div className="flex shrink-0 flex-col items-end justify-between gap-2">
+          <div className="flex items-center gap-1">
+            {!mine && <Avatar member={assignee} members={members} size={26} />}
+            {!props.pending && (
+              <button
+                onClick={() => setOpen(!open)}
+                aria-label={open ? "Свернуть" : "Изменить"}
+                aria-expanded={open}
+                className={`-mt-1 -mr-1.5 flex h-8 w-8 items-center justify-center rounded-full transition ${
+                  open ? "bg-accent text-accent-ink" : "text-ink-3 active:bg-surface-2"
+                }`}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+                </svg>
+              </button>
+            )}
+          </div>
+          {showDone && (
+            <button
+              onClick={props.pending ? props.onUndo : done ? props.onReopen : props.onDone}
+              aria-label={finished ? "Вернуть в работу" : "Отметить: готово"}
+              className={`flex h-9 items-center gap-2 rounded-full pr-3.5 pl-2.5 text-sm font-semibold transition active:scale-95 ${
+                finished ? "bg-ok text-white" : "bg-accent text-accent-ink shadow-sm"
+              }`}
+            >
+              {finished ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M5 12l5 5 9-10" />
+                </svg>
+              ) : (
+                <span className="h-4 w-4 rounded-[5px] border-2 border-current opacity-90" aria-hidden />
+              )}
+              Готово
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Ответ исполнителя — прямо в карточке, без раскрытия */}
@@ -168,22 +205,6 @@ export function TaskCard(props: Props) {
         </p>
       )}
 
-      {task.files.length > 0 && (
-        <div className="px-3.5 pb-3">
-          <FileStrip
-            files={task.files}
-            canRemove={(file) => file.uploaded_by_id === meId || author}
-            onRemove={(file) => props.onDetach(file.id)}
-          />
-        </div>
-      )}
-      {askForCode && (
-        <div className="px-3.5 pb-3">
-          <AttachButton onFile={props.onAttach} label="Прикрепить код получения" />
-        </div>
-      )}
-
-      {task.items.length > 0 && <Items task={task} canEdit={!done} onItems={props.onItems} />}
 
       {done && !rejecting && !open && (
         <div className="flex gap-2 px-3.5 pb-3">
@@ -233,18 +254,6 @@ export function TaskCard(props: Props) {
         </form>
       )}
 
-      {mine && task.status === "accepted" && (
-        <div className="px-3.5 pb-3.5">
-          {/* Кнопка-действие, а не отметка: пустой кружок и контур, зелёная заливка — только у сделанного */}
-          <button
-            onClick={props.onDone}
-            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border-2 border-ok font-semibold text-ok active:bg-ok-soft"
-          >
-            <span className="h-4 w-4 rounded-full border-2 border-current" aria-hidden />
-            Отметить «Сделано»
-          </button>
-        </div>
-      )}
       {declining && (
         <form
           className="space-y-2 px-3.5 pb-3.5"
@@ -462,6 +471,14 @@ export function TaskCard(props: Props) {
           )}
 
           <div className="flex flex-wrap gap-2 pt-1">
+            {author && !mine && task.assignee_id && !done && (
+              <button
+                onClick={props.onDone}
+                className="h-10 rounded-xl bg-ok-soft px-4 text-sm font-medium text-ok active:opacity-70"
+              >
+                ✓ Уже сделано
+              </button>
+            )}
             <button
               onClick={props.onCopy}
               className="h-10 rounded-xl bg-surface-2 px-4 text-sm font-medium active:opacity-70"
@@ -497,7 +514,7 @@ function Items({ task, canEdit, onItems }: { task: Task; canEdit: boolean; onIte
     onItems(task.items.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
 
   return (
-    <div className="px-3.5 pb-3">
+    <div className="mt-2">
       <p className="mb-1 text-xs font-medium text-ink-3">
         {left ? `Осталось ${left} из ${task.items.length}` : "Всё куплено"}
       </p>

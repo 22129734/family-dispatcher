@@ -286,6 +286,8 @@ export function CalendarScreen({
                 onItems={(items) => actions.items(entry.task.id, items)}
                 onDelete={() => actions.remove(entry.task.id)}
                 onCopy={() => actions.copy(entry.task)}
+                pending={actions.isPending(entry.task.id)}
+                onUndo={() => actions.undo(entry.task.id)}
               />
             ) : (
               <DayRow
