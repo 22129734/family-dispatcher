@@ -41,3 +41,15 @@ def test_invite_and_referral_titles(client) -> None:  # noqa: ARG001 — фик�
         assert 'content="Анна &lt;3 советует «Семейный диспетчер»"' in referral
 
         assert personalize(INDEX, "join/nope", None, db) == INDEX
+
+
+def test_missing_files_are_404_but_app_links_are_not(client) -> None:
+    from app.main import _FILE_SUFFIXES
+    from app.main import app as fastapi_app
+
+    paths = {getattr(route, "path", "") for route in fastapi_app.routes}
+    if "/{path:path}" not in paths:  # без собранного web/dist раздача фронта не подключена
+        return
+    assert client.get("/nope.ico").status_code == 404
+    assert client.get("/t/abc.def").status_code == 200
+    assert ".ico" in _FILE_SUFFIXES

@@ -65,6 +65,27 @@ def health() -> dict[str, object]:
 
 # Собранный веб-клиент (web/dist) отдаётся тем же сервером: один процесс на деплой.
 _dist = Path(settings.web_dist_dir).resolve()
+# Расширения настоящих файлов: их нет — отвечаем 404. Ссылки /t/<токен.подпись> сюда не попадают
+_FILE_SUFFIXES = {
+    ".ico",
+    ".png",
+    ".svg",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".txt",
+    ".xml",
+    ".json",
+    ".js",
+    ".css",
+    ".map",
+    ".html",
+    ".webmanifest",
+    ".woff",
+    ".woff2",
+}
+
 if (_dist / "index.html").is_file():
     app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
 
@@ -73,6 +94,10 @@ if (_dist / "index.html").is_file():
         candidate = (_dist / path).resolve()
         if path and candidate.is_file() and candidate.is_relative_to(_dist):
             return FileResponse(candidate)
+        if Path(path).suffix.lower() in _FILE_SUFFIXES:
+            # Нет такого файла — честный 404, а не главная страница: иначе поисковик
+            # получает HTML вместо /favicon.ico или /robots.txt
+            return Response(status_code=404)
         ref = request.query_params.get("from")
         if path.startswith("join/") or ref:
             # Ссылка-приглашение: имя пригласившего — в карточку ссылки в мессенджере
