@@ -87,6 +87,10 @@ export function ConfirmSheet({
   const [newItem, setNewItem] = useState("");
   const [note, setNote] = useState(draft.note ?? "");
   const [files, setFiles] = useState<File[]>([]);
+  // Сразу видно главное: что, кому, когда. Остальное раскрыто, только если разбор его уже заполнил
+  const [more, setMore] = useState(
+    draft.recurrence !== "none" || draft.priority === "high" || !!draft.note || draft.items.length > 0,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -263,82 +267,91 @@ export function ConfirmSheet({
           </>
         )}
 
-        <Label>Повтор</Label>
-        <div className="flex flex-wrap gap-2">
-          {REPEATS.map(([value, label]) => (
-            <Chip key={value} on={repeat === value} onClick={() => setRepeat(value)}>
-              {label}
+        {more ? (
+          <>
+          <Label>Повтор</Label>
+          <div className="flex flex-wrap gap-2">
+            {REPEATS.map(([value, label]) => (
+              <Chip key={value} on={repeat === value} onClick={() => setRepeat(value)}>
+                {label}
+              </Chip>
+            ))}
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Chip on={urgent} onClick={() => setUrgent(!urgent)}>
+              {urgent ? "✓ Срочно" : "Срочно"}
             </Chip>
-          ))}
-        </div>
+          </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Chip on={urgent} onClick={() => setUrgent(!urgent)}>
-            {urgent ? "✓ Срочно" : "Срочно"}
-          </Chip>
-        </div>
+          <Label>Заметка</Label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={2000}
+            rows={2}
+            placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
+            className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
+          />
 
-        <Label>Заметка</Label>
-        <textarea
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          maxLength={2000}
-          rows={2}
-          placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
-          className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
-        />
+          <Label>Список с галочками — покупки, вопросы врачу, что взять</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {items.map((item, i) => (
+              <span key={`${item}-${i}`} className="flex h-8 items-center gap-1 rounded-full bg-surface-2 pr-1 pl-3 text-sm">
+                {item}
+                <button
+                  type="button"
+                  onClick={() => setItems(items.filter((_, j) => j !== i))}
+                  aria-label={`Убрать ${item}`}
+                  className="flex h-6 w-6 items-center justify-center rounded-full text-ink-3"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (newItem.trim()) setItems([...items, newItem.trim()]);
+                setNewItem("");
+              }}
+            >
+              <input
+                value={newItem}
+                onChange={(e) => setNewItem(e.target.value)}
+                placeholder="+ пункт"
+                maxLength={120}
+                className="h-8 w-28 rounded-full border border-dashed border-line bg-transparent px-3 text-sm outline-none focus:border-accent"
+              />
+            </form>
+          </div>
 
-        <Label>Список с галочками — покупки, вопросы врачу, что взять</Label>
-        <div className="flex flex-wrap gap-1.5">
-          {items.map((item, i) => (
-            <span key={`${item}-${i}`} className="flex h-8 items-center gap-1 rounded-full bg-surface-2 pr-1 pl-3 text-sm">
-              {item}
-              <button
-                type="button"
-                onClick={() => setItems(items.filter((_, j) => j !== i))}
-                aria-label={`Убрать ${item}`}
-                className="flex h-6 w-6 items-center justify-center rounded-full text-ink-3"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (newItem.trim()) setItems([...items, newItem.trim()]);
-              setNewItem("");
-            }}
-          >
-            <input
-              value={newItem}
-              onChange={(e) => setNewItem(e.target.value)}
-              placeholder="+ пункт"
-              maxLength={120}
-              className="h-8 w-28 rounded-full border border-dashed border-line bg-transparent px-3 text-sm outline-none focus:border-accent"
-            />
-          </form>
-        </div>
+          <Label>Файлы — код получения, фото, PDF</Label>
+          <div className="flex flex-wrap items-center gap-2">
+            {files.map((file, i) => (
+              <span key={`${file.name}-${i}`} className="flex h-9 max-w-44 items-center gap-1 rounded-xl bg-surface-2 pr-1 pl-3 text-sm">
+                <span className="truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                  aria-label="Убрать файл"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-3"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {files.length < 5 && (
+              <AttachButton onFile={async (file) => setFiles((list) => [...list, file])} label="Прикрепить" />
+            )}
+          </div>
 
-        <Label>Файлы — код получения, фото, PDF</Label>
-        <div className="flex flex-wrap items-center gap-2">
-          {files.map((file, i) => (
-            <span key={`${file.name}-${i}`} className="flex h-9 max-w-44 items-center gap-1 rounded-xl bg-surface-2 pr-1 pl-3 text-sm">
-              <span className="truncate">{file.name}</span>
-              <button
-                type="button"
-                onClick={() => setFiles(files.filter((_, j) => j !== i))}
-                aria-label="Убрать файл"
-                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-3"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-          {files.length < 5 && (
-            <AttachButton onFile={async (file) => setFiles((list) => [...list, file])} label="Прикрепить" />
-          )}
-        </div>
+          </>
+        ) : (
+          <button type="button" onClick={() => setMore(true)} className="mt-4 text-sm font-medium text-accent">
+            Ещё параметры: повтор, срочно, заметка, список, файлы
+          </button>
+        )}
 
         {error && <p className="mt-3 text-sm text-warn">{error}</p>}
 

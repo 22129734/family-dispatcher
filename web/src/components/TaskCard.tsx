@@ -81,6 +81,8 @@ export function TaskCard(props: Props) {
   }, [note, task.note]);
   const [firstItem, setFirstItem] = useState("");
   const [showEnd, setShowEnd] = useState(false);
+  // Редкие поля правки — под «Ещё»; раскрыты сразу, если в них уже что-то есть
+  const [more, setMore] = useState(task.recurrence !== "none" || !!task.note);
   // Посылка с маркетплейса без кода получения — подскажем прикрепить
   const askForCode = !done && task.files.length === 0 && PICKUP_RE.test(task.title);
   const recurrence = RECURRENCE_LABEL[task.recurrence];
@@ -290,43 +292,6 @@ export function TaskCard(props: Props) {
                 />
               </label>
 
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-ink-3">Заметка</span>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  maxLength={2000}
-                  rows={3}
-                  placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
-                  className="w-full resize-y rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
-                />
-              </label>
-
-              {task.items.length === 0 && (
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!firstItem.trim()) return;
-                    props.onItems([{ text: firstItem.trim(), done: false }]);
-                    setFirstItem("");
-                  }}
-                >
-                  <span className="mb-1 block text-xs font-medium text-ink-3">Список с галочками</span>
-                  <input
-                    value={firstItem}
-                    onChange={(e) => setFirstItem(e.target.value)}
-                    maxLength={120}
-                    placeholder="+ пункт: покупка, вопрос врачу, что взять"
-                    className="h-11 w-full rounded-xl border border-dashed border-line bg-bg px-3 text-base outline-none focus:border-accent"
-                  />
-                </form>
-              )}
-
-              <div>
-                <span className="mb-1 block text-xs font-medium text-ink-3">Файлы</span>
-                <AttachButton onFile={props.onAttach} label="Фото, скриншот или PDF" />
-              </div>
-
               <div>
                 <label className="block">
                   <span className="mb-1 block text-xs font-medium text-ink-3">Когда</span>
@@ -373,23 +338,6 @@ export function TaskCard(props: Props) {
               </div>
 
               <div>
-                <span className="mb-1 block text-xs font-medium text-ink-3">Повторять</span>
-                <div className="flex flex-wrap gap-2">
-                  {REPEAT_OPTIONS.map(([value, label]) => (
-                    <button
-                      key={value}
-                      onClick={() => props.onRepeat(value)}
-                      className={`h-9 rounded-full border px-3 text-sm ${
-                        task.recurrence === value ? "border-accent bg-accent-soft" : "border-line"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
                 <span className="mb-1 block text-xs font-medium text-ink-3">Кто делает</span>
                 <div className="flex flex-wrap gap-2">
                   {members.map((m) => (
@@ -406,6 +354,72 @@ export function TaskCard(props: Props) {
                   ))}
                 </div>
               </div>
+              {more ? (
+                <>
+              <div>
+                <span className="mb-1 block text-xs font-medium text-ink-3">Повторять</span>
+                <div className="flex flex-wrap gap-2">
+                  {REPEAT_OPTIONS.map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => props.onRepeat(value)}
+                      className={`h-9 rounded-full border px-3 text-sm ${
+                        task.recurrence === value ? "border-accent bg-accent-soft" : "border-line"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-ink-3">Заметка</span>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
+                  className="w-full resize-y rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
+                />
+              </label>
+
+              {task.items.length === 0 && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!firstItem.trim()) return;
+                    props.onItems([{ text: firstItem.trim(), done: false }]);
+                    setFirstItem("");
+                  }}
+                >
+                  <span className="mb-1 block text-xs font-medium text-ink-3">Список с галочками</span>
+                  <input
+                    value={firstItem}
+                    onChange={(e) => setFirstItem(e.target.value)}
+                    maxLength={120}
+                    placeholder="+ пункт: покупка, вопрос врачу, что взять"
+                    className="h-11 w-full rounded-xl border border-dashed border-line bg-bg px-3 text-base outline-none focus:border-accent"
+                  />
+                </form>
+              )}
+
+              <div>
+                <span className="mb-1 block text-xs font-medium text-ink-3">Файлы</span>
+                <AttachButton onFile={props.onAttach} label="Фото, скриншот или PDF" />
+              </div>
+
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMore(true)}
+                  className="text-sm font-medium text-accent"
+                >
+                  Ещё: повтор, заметка, список, файлы
+                </button>
+              )}
             </>
           )}
 

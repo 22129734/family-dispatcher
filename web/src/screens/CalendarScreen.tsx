@@ -1,3 +1,4 @@
+import { Hint } from "../components/Hint";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { api, type Member, type Task } from "../api";
 import { TaskCard } from "../components/TaskCard";
@@ -75,6 +76,9 @@ export function CalendarScreen({
 
   return (
     <div className="px-4 pb-6">
+      <Hint id="calendar" className="mt-4">
+        Здесь все дела семьи по дням. Точки под датой — есть дела. Нажмите на день, чтобы увидеть их или добавить новое.
+      </Hint>
       <header className="flex items-center justify-between pt-6 pb-3">
         <h1 className="text-2xl font-bold tracking-tight">{monthTitle}</h1>
         <div className="flex gap-1">

@@ -1,3 +1,4 @@
+import { Hint, resetHints } from "../components/Hint";
 import { useState } from "react";
 import { api, type Family, type Member } from "../api";
 import { Button } from "../components/ui";
@@ -77,6 +78,7 @@ export function MoreScreen({
   const [copied, setCopied] = useState(false);
   const [changingPin, setChangingPin] = useState(false);
   const [pinChanged, setPinChanged] = useState(false);
+  const [hintsReset, setHintsReset] = useState(false);
 
   if (changingPin) {
     return (
@@ -100,6 +102,7 @@ export function MoreScreen({
     )}&body=${encodeURIComponent(body)}`;
   }
 
+
   async function copy() {
     try {
       await navigator.clipboard.writeText(deviceInfo());
@@ -115,6 +118,9 @@ export function MoreScreen({
       <header>
         <h1 className="font-display text-2xl font-bold">Ещё</h1>
       </header>
+      <Hint id="more">
+        Здесь тема оформления, напоминания, PIN-код и помощь: почта поддержки, контакты команды и голосовой отзыв.
+      </Hint>
 
       <ThemePicker />
 
@@ -139,6 +145,15 @@ export function MoreScreen({
         <p className="mt-1 text-sm text-ink-2">
           Что-то не работает или есть идея? Напишите нам — отвечаем сами, без ботов.
         </p>
+        <button
+          onClick={() => {
+            resetHints();
+            setHintsReset(true);
+          }}
+          className="mt-2 text-sm font-medium text-accent active:opacity-60"
+        >
+          {hintsReset ? "Подсказки снова появятся на экранах" : "Показать подсказки заново"}
+        </button>
       </div>
 
       <VoiceFeedback deviceInfo={deviceInfo} />

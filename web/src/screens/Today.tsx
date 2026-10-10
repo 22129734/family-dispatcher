@@ -1,3 +1,4 @@
+import { Hint, useHint } from "../components/Hint";
 import { useMemo, useState } from "react";
 import type { Family, Member, Recurrence, Task, TaskItem } from "../api";
 import { isAlone } from "../share";
@@ -47,7 +48,12 @@ export function Today({
   onOpenFamily: () => void;
 }) {
   const me = members.find((m) => m.id === meId);
-  const [scope, setScope] = useState<Scope>("mine");
+  // Подсказку о карточке — после подсказки о микрофоне, не обе сразу
+  const hintMic = useHint("mic");
+  const [scopeChoice, setScope] = useState<Scope>("mine");
+  // Переключатель нужен, только когда в семье больше одного человека и есть дела
+  const showScopes = members.length > 1 && tasks.length > 0;
+  const scope: Scope = showScopes ? scopeChoice : "all";
   const now = new Date();
 
   const groups = useMemo(() => {
@@ -176,6 +182,7 @@ export function Today({
         )}
       </div>
 
+      {showScopes && (
       <div className="mt-4 mb-3">
         {/* Во всю ширину и в одну строку: на узких iPhone подписи переносились и вылезали за рамку */}
         <div className="glass grid grid-cols-3 gap-1 rounded-2xl p-1">
@@ -192,6 +199,7 @@ export function Today({
           ))}
         </div>
       </div>
+      )}
 
       {family && me && isAlone(family, meId) && (
         <InviteSpouseCard family={family} me={me} onMoreWays={onOpenFamily} />
@@ -200,6 +208,12 @@ export function Today({
       <NotifyBanner />
 
       {!loading && groups.length === 0 && <EmptyState hasMembers={members.length > 1} scope={scope} />}
+
+      {groups.length > 0 && !hintMic && (
+        <Hint id="card" className="mb-4">
+          Нажмите на дело, чтобы поменять время, исполнителя или добавить заметку. Кружок слева — отметить «Сделано».
+        </Hint>
+      )}
 
       <div className="space-y-6">
         {groups.map(([bucket, items]) => (

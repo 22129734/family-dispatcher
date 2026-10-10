@@ -3,6 +3,7 @@ import { api, ApiError, tokenStore, type Draft, type Family, type Frequent, type
 import { parseLocal, plainTitle } from "./format";
 import { ConfirmSheet } from "./components/ConfirmSheet";
 import { Composer } from "./components/Composer";
+import { dismissHint, Hint } from "./components/Hint";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
 import { MoreScreen } from "./screens/MoreScreen";
@@ -361,6 +362,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   }
 
   function announce(task: Task) {
+    dismissHint("mic");
     loadFrequent();
     setTasks((list) => [task, ...list.filter((t) => t.id !== task.id)]);
     setTab("today");
@@ -503,6 +505,9 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-3 pb-3">
         {tab === "today" && (
           <div className="pointer-events-auto">
+            <Hint id="mic" className="mb-2">
+              Нажмите на микрофон внизу и скажите, что нужно сделать. Или напишите в поле — например, «Олег, купи хлеб».
+            </Hint>
             <Composer
               onSend={send}
               busy={sending}

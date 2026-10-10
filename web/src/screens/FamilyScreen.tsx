@@ -1,3 +1,4 @@
+import { Hint } from "../components/Hint";
 import { useState } from "react";
 import { api, type Family, type Member } from "../api";
 import { Avatar, Button } from "../components/ui";
@@ -12,6 +13,9 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
       <header>
         <h1 className="font-display text-2xl font-bold">Семья</h1>
       </header>
+      <Hint id="family">
+        Здесь ваша семья. Пригласите близких по ссылке — просьбы будут уходить им, а вы увидите «Беру» и «Сделано».
+      </Hint>
 
       <section>
         <h2 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">
