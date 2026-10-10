@@ -22,7 +22,7 @@ from app.schemas.api import (
     SetPinRequest,
     TokenOut,
 )
-from app.services import phone_auth, telemetry
+from app.services import account_deletion, phone_auth, telemetry
 from app.services.phone_auth import PhoneAuthError, ProviderUnavailableError
 from app.services.telemetry import Kind
 
@@ -224,6 +224,12 @@ def get_account(account: CurrentAccount, db: DbSession) -> AccountOut:
         member=MemberOut.model_validate(member) if member else None,
         family_id=member.family_id if member else None,
     )
+
+
+@router.delete("/account", status_code=204)
+def delete_my_account(account: CurrentAccount, db: DbSession) -> None:
+    """Удалить аккаунт и данные человека — по его просьбе, без письма в поддержку."""
+    account_deletion.delete_account(db, account)
 
 
 @router.post("/auth/logout", status_code=204)

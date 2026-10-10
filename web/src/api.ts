@@ -252,6 +252,7 @@ export const api = {
   phoneCheckStatus: (checkId: string) => request<PhoneCheckStatus>(`/auth/phone/status/${checkId}`),
   account: () => request<Account>("/account"),
   logout: () => post<void>("/auth/logout").catch(() => undefined),
+  deleteAccount: () => request<void>("/account", { method: "DELETE" }),
 
   createFamily: (member_name: string, ref: string | null = null) =>
     post<Session>("/families", { member_name, ref }),

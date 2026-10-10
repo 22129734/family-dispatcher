@@ -595,3 +595,44 @@ def test_week_stats_hidden_when_few_and_counts_people(
     dad = next(m for m in week["members"] if m["member_id"] == family["dad_id"])
     assert (dad["done"], dad["thanks"]) == (3, 1)
     assert week["praise"]
+
+
+def test_delete_account_returns_tasks_and_keeps_family(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    mom_id = client.get("/api/v1/account", headers=auth(family["mom"])).json()["member"]["id"]
+    to_dad = client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Забрать посылку",
+            "assignee_id": family["dad_id"],
+            "participants": [mom_id],
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    by_dad = client.post(
+        "/api/v1/tasks", json={"title": "Купить хлеб"}, headers=auth(family["dad"])
+    ).json()
+    client.post("/api/v1/events", json={"name": "app_open"}, headers=auth(family["dad"]))
+
+    assert client.delete("/api/v1/account", headers=auth(family["dad"])).status_code == 204
+    assert client.get("/api/v1/account", headers=auth(family["dad"])).status_code == 401
+
+    tasks = {t["id"]: t for t in client.get("/api/v1/tasks", headers=auth(family["mom"])).json()}
+    assert by_dad["id"] not in tasks  # его просьбы удалены
+    returned = tasks[to_dad["id"]]
+    assert (returned["assignee_id"], returned["status"]) == (None, "new")
+    assert returned["decline_reason"] == "Папа удалил(а) аккаунт"
+    members = client.get("/api/v1/family", headers=auth(family["mom"])).json()["members"]
+    assert [m["name"] for m in members] == ["Мама"]
+
+
+def test_delete_last_account_removes_family(client: TestClient, family: dict[str, str]) -> None:
+    client.post("/api/v1/tasks", json={"title": "Хлеб"}, headers=auth(family["mom"]))
+    client.delete("/api/v1/account", headers=auth(family["dad"]))
+    assert client.delete("/api/v1/account", headers=auth(family["mom"])).status_code == 204
+    with SessionLocal() as db:
+        assert db.scalar(select(TaskRow)) is None
+    # Тот же номер может войти заново — как новый человек
+    again = login(client, "79990002001")
+    assert client.get("/api/v1/account", headers=auth(again)).json()["member"] is None

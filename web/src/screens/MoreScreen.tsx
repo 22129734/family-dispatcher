@@ -1,6 +1,6 @@
 import { Hint, resetHints } from "../components/Hint";
 import { useState, type ReactNode } from "react";
-import { api, type Family, type Member } from "../api";
+import { api, tokenStore, type Family, type Member } from "../api";
 import { Button } from "../components/ui";
 import { applyTheme, currentTheme, THEMES, type ThemeKey } from "../theme";
 import type { ConfirmMode } from "../api";
@@ -163,6 +163,7 @@ export function MoreScreen({
             <Button variant="ghost" className="w-full" onClick={onLogout}>
               Выйти на этом устройстве
             </Button>
+            <DeleteAccount />
           </section>
         )}
         {sub === "voice" && <VoiceFeedback deviceInfo={deviceInfo} />}
@@ -289,6 +290,61 @@ function Row({ label, value = "", onClick, href }: { label: string; value?: stri
     <button onClick={onClick} className={cls}>
       {inner}
     </button>
+  );
+}
+
+/** Удаление аккаунта: с подтверждением — отменить нельзя. */
+function DeleteAccount() {
+  const [asking, setAsking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function remove() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.deleteAccount();
+      tokenStore.set(null);
+      try {
+        localStorage.removeItem("fd.known");
+      } catch {
+        /* нечего чистить */
+      }
+      window.location.replace("/");
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  if (!asking) {
+    return (
+      <button onClick={() => setAsking(true)} className="mt-6 h-11 w-full text-sm font-medium text-warn active:opacity-60">
+        Удалить аккаунт
+      </button>
+    );
+  }
+  return (
+    <div className="appear mt-6 rounded-2xl border border-warn/40 bg-warn-soft p-4">
+      <p className="font-semibold">Удалить аккаунт и ваши данные?</p>
+      <p className="mt-1 text-sm text-ink-2">
+        Удалим номер телефона, PIN-код и ваши просьбы с файлами. Дела, которые вам поручили, вернутся тем, кто
+        просил. Если в семье больше никого нет — удалится вся семья. Отменить это нельзя.
+      </p>
+      {error && <p className="mt-2 text-sm text-warn">{error}</p>}
+      <div className="mt-3 flex gap-2">
+        <button
+          onClick={() => void remove()}
+          disabled={busy}
+          className="h-11 flex-1 rounded-xl bg-warn font-semibold text-white active:opacity-80 disabled:opacity-50"
+        >
+          {busy ? "Удаляем…" : "Удалить навсегда"}
+        </button>
+        <button onClick={() => setAsking(false)} className="h-11 flex-1 rounded-xl bg-surface font-medium active:opacity-70">
+          Отмена
+        </button>
+      </div>
+    </div>
   );
 }
 
