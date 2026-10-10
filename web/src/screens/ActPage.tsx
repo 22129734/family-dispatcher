@@ -11,6 +11,8 @@ export function ActPage({ token }: { token: string }) {
   const [declining, setDeclining] = useState(() => new URLSearchParams(window.location.search).has("decline"));
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  // Ответили — коротко подтверждаем и уходим с этого экрана сами
+  const [answered, setAnswered] = useState<string | null>(null);
 
   useEffect(() => {
     api.actInfo(token).then(setInfo, (err) => setError((err as Error).message));
@@ -19,8 +21,23 @@ export function ActPage({ token }: { token: string }) {
   async function act(action: "accept" | "decline" | "done" | "remember") {
     setBusy(true);
     try {
-      setInfo(await api.act(token, action, action === "decline" ? reason.trim() || null : null));
+      const next = await api.act(token, action, action === "decline" ? reason.trim() || null : null);
+      setInfo(next);
       setDeclining(false);
+      const author = next.author_name;
+      setAnswered(
+        {
+          accept: `Вы берёте. ${author} увидит`,
+          decline: `${author} узнает, что не получится`,
+          done: `Сделано! ${author} увидит`,
+          remember: "Хорошо, вы помните",
+        }[action],
+      );
+      // Окно из уведомления закрываем; если браузер не даёт — открываем все дела
+      window.setTimeout(() => {
+        window.close();
+        window.setTimeout(() => window.location.replace("/"), 300);
+      }, 1400);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -30,6 +47,23 @@ export function ActPage({ token }: { token: string }) {
 
   const task = info?.task;
   const mine = task && info.assignee_name === info.member_name;
+
+  if (answered) {
+    return (
+      <main className="pt-safe appear mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center px-5 text-center">
+        <span className="flex h-20 w-20 items-center justify-center rounded-full bg-ok text-white shadow-lg">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M5 12l5 5 9-10" />
+          </svg>
+        </span>
+        <p className="font-display mt-5 text-2xl font-bold">{answered}</p>
+        {task && <p className="mt-2 text-ink-2">{task.title}</p>}
+        <button onClick={() => window.location.replace("/")} className="mt-8 text-sm font-medium text-accent">
+          Открыть все дела
+        </button>
+      </main>
+    );
+  }
 
   return (
     <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
