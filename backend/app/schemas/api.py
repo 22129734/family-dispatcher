@@ -109,6 +109,7 @@ class ReferralInfo(BaseModel):
 
 
 class InviteInfo(BaseModel):
+    family_id: str
     family_name: str
     members: list[str]
 

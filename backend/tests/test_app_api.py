@@ -56,7 +56,10 @@ def test_requires_auth(client: TestClient) -> None:
 
 def test_invite_shows_family(client: TestClient, family: dict[str, str]) -> None:
     info = client.get(f"/api/v1/invites/{family['code']}").json()
-    assert info == {"family_name": "Ивановы", "members": ["Мама", "Папа"]}
+    assert {k: info[k] for k in ("family_name", "members")} == {
+        "family_name": "Ивановы",
+        "members": ["Мама", "Папа"],
+    }
     assert client.get("/api/v1/invites/nope").status_code == 404
 
 

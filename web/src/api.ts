@@ -37,6 +37,12 @@ export interface Draft {
   unclear: boolean;
 }
 
+export interface InviteInfo {
+  family_id: string;
+  family_name: string;
+  members: string[];
+}
+
 /** «Итоги недели» во вкладке «Семья». */
 export interface WeekStats {
   total: number;
@@ -257,8 +263,8 @@ export const api = {
   createFamily: (member_name: string, ref: string | null = null) =>
     post<Session>("/families", { member_name, ref }),
   referralInfo: (code: string) => request<{ from_name: string }>(`/referrals/${code}`),
-  inviteInfo: (code: string) =>
-    request<{ family_name: string; members: string[] }>(`/invites/${code}`),
+  inviteInfo: (code: string) => request<InviteInfo>(`/invites/${code}`),
+  moveToFamily: (code: string) => post<Session>(`/invites/${code}/move`),
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),

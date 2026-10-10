@@ -636,3 +636,43 @@ def test_delete_last_account_removes_family(client: TestClient, family: dict[str
     # Тот же номер может войти заново — как новый человек
     again = login(client, "79990002001")
     assert client.get("/api/v1/account", headers=auth(again)).json()["member"] is None
+
+
+def test_member_with_own_solo_family_moves_by_invite(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    # Муж зарегистрировался сам, до приглашения: у него своя семья из одного человека
+    solo = client.post(
+        "/api/v1/families", json={"member_name": "Олег"}, headers=auth(login(client, "79990002003"))
+    ).json()
+    own_task = client.post(
+        "/api/v1/tasks", json={"title": "Своё дело"}, headers=auth(solo["token"])
+    ).json()
+    code = client.get("/api/v1/family", headers=auth(family["mom"])).json()["invite_code"]
+    info = client.get(f"/api/v1/invites/{code}").json()
+    assert info["family_id"] != solo["family_id"]
+
+    moved = client.post(f"/api/v1/invites/{code}/move", headers=auth(solo["token"])).json()
+    assert moved["family_id"] == info["family_id"]
+    names = [
+        m["name"]
+        for m in client.get("/api/v1/family", headers=auth(family["mom"])).json()["members"]
+    ]
+    assert names == ["Мама", "Папа", "Олег"]
+    tasks = client.get("/api/v1/tasks", headers=auth(solo["token"])).json()
+    assert own_task["id"] in [t["id"] for t in tasks]  # дела переехали вместе с ним
+    again = client.post(f"/api/v1/invites/{code}/move", headers=auth(solo["token"]))
+    assert again.status_code == 200  # повторное открытие ссылки — ничего не ломает
+
+
+def test_move_refused_when_own_family_has_others(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    other = client.post(
+        "/api/v1/families",
+        json={"member_name": "Соседка"},
+        headers=auth(login(client, "79990002004")),
+    ).json()
+    code = client.get("/api/v1/family", headers=auth(other["token"])).json()["invite_code"]
+    refused = client.post(f"/api/v1/invites/{code}/move", headers=auth(family["mom"]))
+    assert refused.status_code == 409

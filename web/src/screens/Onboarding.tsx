@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { api, type Role, type Session } from "../api";
+import { api, type InviteInfo, type Role, type Session } from "../api";
+import { clearInvite } from "../invite";
 import { clearReferral, referralCode } from "../referral";
 import { Button, ErrorNote, Field } from "../components/ui";
 
@@ -62,6 +63,79 @@ const ROLES: { value: Role; label: string }[] = [
   { value: "child", label: "Ребёнок" },
 ];
 
+/**
+ * Позвали в другую семью, а своя уже есть («муж зашёл не по той ссылке»).
+ * Один в своей семье — переходим одной кнопкой, дела переезжают; не один — объясняем.
+ */
+export function MoveToFamily({
+  code,
+  info,
+  onMoved,
+  onStay,
+}: {
+  code: string;
+  info: InviteInfo;
+  onMoved: (s: Session) => void;
+  onStay: () => void;
+}) {
+  const [mine, setMine] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.family().then((f) => setMine(f.members.map((m) => m.name)), () => setMine([]));
+  }, []);
+
+  const alone = mine !== null && mine.length <= 1;
+
+  async function move() {
+    setBusy(true);
+    setError(null);
+    try {
+      onMoved(await api.moveToFamily(code));
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="pt-safe mx-auto flex min-h-dvh max-w-md flex-col px-5 pb-8">
+      <div className="pt-12">
+        <img src="/icon.svg" alt="" className="mb-6 h-14 w-14" />
+        <p className="text-sm font-medium text-accent">Приглашение</p>
+        <h1 className="mt-1 text-3xl leading-tight font-bold tracking-tight">
+          {info.members.join(", ")} {info.members.length > 1 ? "приглашают" : "приглашает"} вас в свою семью
+        </h1>
+        {mine === null ? (
+          <p className="mt-3 text-ink-2">…</p>
+        ) : alone ? (
+          <p className="mt-3 text-ink-2">
+            Сейчас вы в своей семье один. Перейдите — и просьбы будут приходить вам, а вы увидите общие дела семьи.
+            Ваши дела переедут вместе с вами.
+          </p>
+        ) : (
+          <p className="mt-3 text-ink-2">
+            В вашей семье уже есть: {mine.join(", ")}. Чтобы не разделить её, переход мы не делаем сами — напишите нам
+            во вкладке «Ещё» → «Помощь», поможем.
+          </p>
+        )}
+        {error && <p className="mt-3 text-sm text-warn">{error}</p>}
+      </div>
+      <div className="mt-auto flex flex-col gap-2 pt-8">
+        {alone && (
+          <Button onClick={() => void move()} disabled={busy}>
+            {busy ? "Переходим…" : `Перейти в семью`}
+          </Button>
+        )}
+        <Button variant="ghost" onClick={onStay} disabled={busy}>
+          Остаться в своей семье
+        </Button>
+      </div>
+    </main>
+  );
+}
+
 export function Join({ code, onSession }: { code: string; onSession: (s: Session) => void }) {
   const [info, setInfo] = useState<{ family_name: string; members: string[] } | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -91,7 +165,14 @@ export function Join({ code, onSession }: { code: string; onSession: (s: Session
       <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-5 text-center">
         <h1 className="text-2xl font-bold">Приглашение не найдено</h1>
         <p className="mt-2 text-ink-2">Попросите прислать ссылку ещё раз.</p>
-        <Button variant="soft" className="mt-6" onClick={() => (window.location.href = "/")}>
+        <Button
+          variant="soft"
+          className="mt-6"
+          onClick={() => {
+            clearInvite();
+            window.location.href = "/";
+          }}
+        >
           Создать свою семью
         </Button>
       </main>

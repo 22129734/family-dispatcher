@@ -12,10 +12,10 @@
 from datetime import datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import EventRow, FamilyRow, MemberRow, TaskRow
+from app.models import ComponentCallRow, EventRow, FamilyRow, MemberRow, TaskRow
 from app.schemas.task import TaskDraft
 from app.services.when import plain_title
 
@@ -125,6 +125,37 @@ def thank(task: TaskRow, member: MemberRow) -> bool:
         return False
     task.thanked_at = datetime.now()
     return True
+
+
+def move_to_family(db: Session, member: MemberRow, target: FamilyRow) -> None:
+    """Перейти в семью по приглашению, когда своя семья уже есть («муж зашёл не по той ссылке»).
+
+    Можно, только если в своей семье человек один (дети без входа переезжают с ним):
+    его дела, события и рекомендации переезжают, пустая семья удаляется.
+    """
+    old = member.family
+    if old.id == target.id:
+        return
+    if any(m.id != member.id and m.account_id for m in old.members):
+        raise TaskActionError(
+            409,
+            "В вашей семье есть другие люди — переход разделил бы вас. Напишите нам, поможем",
+        )
+    db.execute(update(TaskRow).where(TaskRow.family_id == old.id).values(family_id=target.id))
+    db.execute(update(EventRow).where(EventRow.family_id == old.id).values(family_id=target.id))
+    db.execute(
+        update(ComponentCallRow)
+        .where(ComponentCallRow.family_id == old.id)
+        .values(family_id=target.id)
+    )
+    db.execute(
+        update(FamilyRow).where(FamilyRow.referred_by_id == old.id).values(referred_by_id=target.id)
+    )
+    for mover in list(old.members):
+        target.members.append(mover)
+    db.flush()
+    db.delete(old)
+    db.flush()
 
 
 def frequent(db: Session, member: MemberRow, days: int = 90, limit: int = 5):

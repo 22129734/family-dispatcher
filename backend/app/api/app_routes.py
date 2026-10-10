@@ -148,7 +148,9 @@ def invite_info(code: str, db: DbSession) -> InviteInfo:
     family = db.scalar(select(FamilyRow).where(FamilyRow.invite_code == code))
     if family is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Приглашение не найдено")
-    return InviteInfo(family_name=family.name, members=[m.name for m in family.members])
+    return InviteInfo(
+        family_id=family.id, family_name=family.name, members=[m.name for m in family.members]
+    )
 
 
 @router.post("/invites/{code}/join", response_model=SessionOut, status_code=201, tags=["family"])
@@ -175,6 +177,25 @@ def join_family(
     db.flush()
     fs.track(db, member, "family_joined")
     db.commit()
+    return _session(member, token)
+
+
+@router.post("/invites/{code}/move", response_model=SessionOut, tags=["family"])
+def move_to_family(
+    code: str, member: CurrentMember, token: CurrentToken, db: DbSession
+) -> SessionOut:
+    """Уже есть своя семья из одного человека — перейти в семью, куда позвали по ссылке."""
+    family = db.scalar(select(FamilyRow).where(FamilyRow.invite_code == code))
+    if family is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Приглашение не найдено")
+    if family.id != member.family_id:
+        try:
+            fs.move_to_family(db, member, family)
+        except TaskActionError as exc:
+            raise HTTPException(exc.status_code, str(exc)) from exc
+        db.refresh(member)
+        fs.track(db, member, "family_joined", moved=True)
+        db.commit()
     return _session(member, token)
 
 

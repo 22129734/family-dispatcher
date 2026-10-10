@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, tokenStore, type Draft, type Family, type Frequent, type Session, type Task } from "./api";
+import {
+  api,
+  ApiError,
+  tokenStore,
+  type Draft,
+  type Family,
+  type Frequent,
+  type InviteInfo,
+  type Session,
+  type Task,
+} from "./api";
 import { parseLocal, plainTitle } from "./format";
 import { ConfirmSheet } from "./components/ConfirmSheet";
 import { Composer } from "./components/Composer";
@@ -9,7 +19,8 @@ import { CalendarScreen } from "./screens/CalendarScreen";
 import { MoreScreen } from "./screens/MoreScreen";
 import { applyTheme } from "./theme";
 import { useSpeech } from "./useSpeech";
-import { Join, Welcome } from "./screens/Onboarding";
+import { Join, MoveToFamily, Welcome } from "./screens/Onboarding";
+import { clearInvite, inviteCode } from "./invite";
 import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
 import { ActPage } from "./screens/ActPage";
@@ -47,12 +58,8 @@ function actTokenFromPath(): string | null {
   return match ? match[1] : null;
 }
 
-function inviteCodeFromPath(): string | null {
-  const match = window.location.pathname.match(/^\/join\/([\w-]+)/);
-  return match ? match[1] : null;
-}
 
-type Stage = "booting" | "login" | "setpin" | "onboarding" | "home";
+type Stage = "booting" | "login" | "setpin" | "onboarding" | "move" | "home";
 
 export default function App() {
   const actToken = actTokenFromPath();
@@ -78,10 +85,12 @@ function Main() {
   const [inviter, setInviter] = useState<string | null>(null);
   // Имя пригласившего ещё грузится — не мелькаем «Близкий приглашает» и чужой страницей
   const [linkChecked, setLinkChecked] = useState(false);
-  const inviteCode = inviteCodeFromPath();
+  // Приглашение — из ссылки или запомненное на телефоне, если ссылка потерялась
+  const [code, setCode] = useState<string | null>(inviteCode);
+  const [moveInfo, setMoveInfo] = useState<InviteInfo | null>(null);
   // Знакомство до входа: «full» — страница о проекте, «short» — личный экран приглашения или рекомендации
   const [intro, setIntro] = useState<"full" | "short" | null>(() =>
-    platform().standalone || knownDevice() ? null : inviteCode || referralCode() ? "short" : "full",
+    platform().standalone || knownDevice() ? null : code || referralCode() ? "short" : "full",
   );
 
   // Есть сессия → смотрим, состоит ли человек в семье; нет → вход по телефону
@@ -96,6 +105,17 @@ function Main() {
         // Тема из профиля: выбранная на другом устройстве приезжает сюда
         applyTheme(account.member.theme);
         setSession({ token: tokenStore.get() ?? "", member: account.member, family_id: account.family_id });
+        // Позвали в другую семью, а своя уже есть — спросим, перейти ли
+        const pending = inviteCode();
+        if (pending) {
+          const info = await api.inviteInfo(pending).catch(() => null);
+          if (info && info.family_id !== account.family_id) {
+            setMoveInfo(info);
+            return setStage("move");
+          }
+          clearInvite();
+          setCode(null);
+        }
         setStage("home");
       } else {
         setStage("onboarding");
@@ -109,8 +129,8 @@ function Main() {
   useEffect(() => {
     void resolve();
     const ref = referralCode();
-    if (inviteCode) {
-      api.inviteInfo(inviteCode).then(
+    if (code) {
+      api.inviteInfo(code).then(
         (info) => {
           setInvitedBy(info.members.join(", ") || null);
           setInviter(info.members[0] ?? null);
@@ -125,7 +145,7 @@ function Main() {
     } else {
       setLinkChecked(true);
     }
-  }, [resolve, inviteCode]);
+  }, [resolve, code]);
 
   const onToken = useCallback(
     (token: string) => {
@@ -137,6 +157,8 @@ function Main() {
   );
 
   const start = (s: Session) => {
+    clearInvite();
+    setCode(null);
     tokenStore.set(s.token);
     window.history.replaceState(null, "", "/");
     setSession(s);
@@ -152,7 +174,7 @@ function Main() {
 
   if (stage === "booting") return <div className="min-h-dvh" />;
   if (stage === "login" && intro === "short" && !linkChecked) return <div className="min-h-dvh" />;
-  if (stage === "login" && intro === "short" && inviteCode) {
+  if (stage === "login" && intro === "short" && code) {
     return <InviteIntro inviter={inviter} onJoin={() => setIntro(null)} />;
   }
   if (stage === "login" && intro === "short" && recommendedBy) {
@@ -165,7 +187,7 @@ function Main() {
       />
     );
   }
-  if (stage === "login" && (intro === "full" || (intro === "short" && !inviteCode))) {
+  if (stage === "login" && (intro === "full" || (intro === "short" && !code))) {
     // Рекомендация ещё грузится или код не нашёлся — показываем страницу о проекте
     return <Landing onTry={() => setIntro(null)} onLogin={() => setIntro(null)} />;
   }
@@ -175,13 +197,28 @@ function Main() {
         onToken={onToken}
         invitedBy={invitedBy}
         recommendedBy={recommendedBy}
-        onBack={knownDevice() ? undefined : () => setIntro(inviteCode ? "short" : "full")}
+        onBack={knownDevice() ? undefined : () => setIntro(code ? "short" : "full")}
       />
     );
   }
   if (stage === "setpin") return <SetPin onDone={() => void resolve()} />;
+  if (stage === "move" && moveInfo && code && session) {
+    return (
+      <MoveToFamily
+        code={code}
+        info={moveInfo}
+        onMoved={start}
+        onStay={() => {
+          clearInvite();
+          setCode(null);
+          window.history.replaceState(null, "", "/");
+          setStage("home");
+        }}
+      />
+    );
+  }
   if (stage === "onboarding" || !session) {
-    return inviteCode ? <Join code={inviteCode} onSession={start} /> : <Welcome onSession={start} />;
+    return code ? <Join code={code} onSession={start} /> : <Welcome onSession={start} />;
   }
   return <Home session={session} onLogout={logout} />;
 }
