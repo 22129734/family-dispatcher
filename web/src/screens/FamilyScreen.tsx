@@ -103,8 +103,19 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
         </button>
       )}
 
-      <button onClick={() => setSheet("recommend")} className="block w-full text-center text-sm font-medium text-ink-2">
-        Посоветовать приложение знакомым →
+      {/* Рекомендация — заметной карточкой: новые семьи приходят от знакомых */}
+      <button
+        onClick={() => setSheet("recommend")}
+        className="glass flex w-full items-center gap-3 rounded-2xl p-4 text-left active:opacity-80"
+      >
+        <span className="bg-fab flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-xl" aria-hidden>
+          💌
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold">Посоветуйте знакомым</span>
+          <span className="block text-sm text-ink-2">У них будет своя семья и свои дела — ваших они не увидят</span>
+        </span>
+        <span className="shrink-0 rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-accent-ink">Поделиться</span>
       </button>
 
       {sheet && (
@@ -203,7 +214,6 @@ function Invite({ family, me }: { family: Family; me: Member }) {
       description="Отправьте ссылку близкому в мессенджер — он присоединится к вашим делам."
       url={url}
       text={familyInviteText(family, me)}
-      shortText={`${me.name} приглашает тебя в Семейный диспетчер`}
       copyLabel="Скопировать приглашение"
     />
   );
@@ -220,7 +230,6 @@ function Recommend({ family }: { family: Family }) {
       url={url}
       text={`Попробуй Семейный диспетчер: пишешь «завтра в 6 забрать Машу» — второму взрослому приходит уведомление, он жмёт «Беру», и видно, что дело взято. Без «я же тебе писала». Бесплатно:
 ${url}`}
-      shortText="Семейный диспетчер — просьбы, которые доходят и выполняются"
       copyLabel="Скопировать рекомендацию"
     />
   );
@@ -236,7 +245,6 @@ function ShareBlock({
   description,
   url,
   text,
-  shortText,
   copyLabel,
 }: {
   kind: "family" | "referral";
@@ -244,11 +252,9 @@ function ShareBlock({
   description?: string;
   url: string;
   text: string;
-  shortText: string;
   copyLabel: string;
 }) {
   const [copied, setCopied] = useState(false);
-  const encodedUrl = encodeURIComponent(url);
 
   const track = (channel: string) => api.track("invite_shared", { channel, kind });
 
@@ -285,39 +291,19 @@ function ShareBlock({
         {copied ? "Скопировано — вставьте в Max или любой чат" : copyLabel}
       </Button>
 
-      <div className="grid grid-cols-3 gap-2">
+      {"share" in navigator ? (
+        <button onClick={share} className="h-11 w-full rounded-xl bg-surface-2 text-sm font-medium active:opacity-70">
+          Отправить в мессенджер…
+        </button>
+      ) : (
         <a
-          href={`https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(shortText)}`}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => track("telegram")}
-          className="flex h-11 items-center justify-center rounded-xl bg-surface-2 text-sm font-medium active:opacity-70"
+          href={`sms:?&body=${encodeURIComponent(text)}`}
+          onClick={() => track("sms")}
+          className="flex h-11 w-full items-center justify-center rounded-xl bg-surface-2 text-sm font-medium active:opacity-70"
         >
-          Telegram
+          Отправить СМС
         </a>
-        <a
-          href={`https://vk.com/share.php?url=${encodedUrl}`}
-          target="_blank"
-          rel="noreferrer"
-          onClick={() => track("vk")}
-          className="flex h-11 items-center justify-center rounded-xl bg-surface-2 text-sm font-medium active:opacity-70"
-        >
-          ВКонтакте
-        </a>
-        {"share" in navigator ? (
-          <button onClick={share} className="h-11 rounded-xl bg-surface-2 text-sm font-medium active:opacity-70">
-            Ещё…
-          </button>
-        ) : (
-          <a
-            href={`sms:?&body=${encodeURIComponent(text)}`}
-            onClick={() => track("sms")}
-            className="flex h-11 items-center justify-center rounded-xl bg-surface-2 text-sm font-medium active:opacity-70"
-          >
-            SMS
-          </a>
-        )}
-      </div>
+      )}
       <p className="text-xs text-ink-3">Для Max: скопируйте сообщение и вставьте в чат — ссылка будет внутри.</p>
     </section>
   );
