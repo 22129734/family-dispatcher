@@ -21,6 +21,7 @@ import { applyTheme } from "./theme";
 import { useSpeech } from "./useSpeech";
 import { Join, MoveToFamily, Welcome } from "./screens/Onboarding";
 import { clearInvite, inviteCode } from "./invite";
+import { pendingCall } from "./pendingCall";
 import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
 import { ActPage } from "./screens/ActPage";
@@ -90,7 +91,8 @@ function Main() {
   const [moveInfo, setMoveInfo] = useState<InviteInfo | null>(null);
   // Знакомство до входа: «full» — страница о проекте, «short» — личный экран приглашения или рекомендации
   const [intro, setIntro] = useState<"full" | "short" | null>(() =>
-    platform().standalone || knownDevice() ? null : code || referralCode() ? "short" : "full",
+    // Вернулись из звонка — сразу к ожиданию подтверждения, без знакомства
+    platform().standalone || knownDevice() || pendingCall() ? null : code || referralCode() ? "short" : "full",
   );
 
   // Есть сессия → смотрим, состоит ли человек в семье; нет → вход по телефону

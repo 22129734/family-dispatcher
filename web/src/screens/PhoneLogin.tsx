@@ -3,6 +3,7 @@ import { api, ApiError, type PhoneCheck } from "../api";
 import { Button, ErrorNote } from "../components/ui";
 import { PinField } from "../components/PinField";
 import { holdNumericKeyboard, releaseKeyboard } from "../keyboard";
+import { clearPendingCall, pendingCall, savePendingCall } from "../pendingCall";
 
 const POLL_MS = 2500;
 
@@ -37,12 +38,14 @@ export function PhoneLogin({
   /** Назад к знакомству с проектом — если человек пришёл со страницы о нём */
   onBack?: () => void;
 }) {
-  const [phone, setPhone] = useState("+7");
+  // Начатый вход по звонку переживает перезагрузку вкладки, пока человек звонил
+  const [resumed] = useState(pendingCall);
+  const [phone, setPhone] = useState(resumed?.phone ?? "+7");
   const [consent, setConsent] = useState(false);
   // Галочку показываем, только если сервер сказал, что этот номер ещё не давал согласия:
   // вернувшимся пользователям отмечать её заново не нужно
   const [askConsent, setAskConsent] = useState(false);
-  const [check, setCheck] = useState<PhoneCheck | null>(null);
+  const [check, setCheck] = useState<PhoneCheck | null>(resumed?.check ?? null);
   const [secondsLeft, setSecondsLeft] = useState(0);
   const [expired, setExpired] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,8 +58,10 @@ export function PhoneLogin({
   useEffect(() => {
     if (!check || check.method !== "call" || !check.check_id || !check.expires_in_s) return;
     const checkId = check.check_id;
-    const deadline = Date.now() + check.expires_in_s * 1000;
-    setSecondsLeft(check.expires_in_s);
+    const saved = pendingCall();
+    const deadline =
+      saved?.check.check_id === checkId ? saved.deadline : savePendingCall(check, phone).deadline;
+    setSecondsLeft(Math.max(0, Math.round((deadline - Date.now()) / 1000)));
     setExpired(false);
 
     const tick = window.setInterval(() => {
@@ -66,18 +71,32 @@ export function PhoneLogin({
     const poll = async () => {
       try {
         const status = await api.phoneCheckStatus(checkId);
-        if (status.status === "confirmed" && status.token) return onToken(status.token);
-        if (status.status === "expired" || status.status === "used") return setExpired(true);
+        if (status.status === "confirmed" && status.token) {
+          clearPendingCall();
+          return onToken(status.token);
+        }
+        if (status.status === "expired" || status.status === "used") {
+          clearPendingCall();
+          return setExpired(true);
+        }
       } catch {
         /* сеть моргнула — спросим ещё раз */
       }
       timer.current = window.setTimeout(poll, POLL_MS);
     };
-    timer.current = window.setTimeout(poll, POLL_MS);
+    // Сразу после возврата из звонка — не ждём следующего опроса
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      window.clearTimeout(timer.current);
+      void poll();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    timer.current = window.setTimeout(poll, resumed ? 0 : POLL_MS);
 
     return () => {
       window.clearInterval(tick);
       window.clearTimeout(timer.current);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [check, onToken]);
 
@@ -195,7 +214,14 @@ export function PhoneLogin({
         )}
 
         <div className="mt-auto pt-6">
-          <Button variant="ghost" className="w-full" onClick={() => setCheck(null)}>
+          <Button
+            variant="ghost"
+            className="w-full"
+            onClick={() => {
+              clearPendingCall();
+              setCheck(null);
+            }}
+          >
             Изменить номер
           </Button>
         </div>
