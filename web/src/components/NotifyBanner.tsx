@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
-import { enablePush, platform, pushState, type PushState } from "../push";
+import { browserName, enablePush, platform, pushState, type PushState } from "../push";
 
 /**
  * Подключение уведомлений — главный риск продукта: исполнитель должен поставить
@@ -61,6 +61,10 @@ export function NotifyBanner() {
         </button>
       </div>
     );
+  }
+
+  if (state === "failed") {
+    return <FailedHelp onRetry={() => void turnOn()} busy={busy} onHide={() => setHidden(true)} />;
   }
 
   if (!expanded) {
@@ -130,6 +134,71 @@ export function NotifyBanner() {
       <button onClick={() => setExpanded(false)} className="mt-2 text-xs text-ink-3">
         Свернуть
       </button>
+    </div>
+  );
+}
+
+/** Открыть этот же адрес в другом браузере Android (intent-ссылка). */
+function intentUrl(pkg: string): string {
+  const { host, pathname } = window.location;
+  return `intent://${host}${pathname}#Intent;scheme=https;package=${pkg};end`;
+}
+
+/** Нажали «Включить», а браузер не дал: говорим прямо и предлагаем, что сделать. */
+function FailedHelp({ onRetry, busy, onHide }: { onRetry: () => void; busy: boolean; onHide: () => void }) {
+  const browser = browserName();
+  const p = platform();
+  const samsung = /SM-|Samsung/i.test(navigator.userAgent);
+  return (
+    <div className="appear mb-4 rounded-2xl border border-warn/40 bg-warn-soft p-4">
+      {browser === "yandex" ? (
+        <>
+          <p className="font-semibold">Яндекс Браузер не даёт сайтам присылать уведомления</p>
+          <p className="mt-1 text-sm text-ink-2">
+            Откройте «Семейный диспетчер» в другом браузере — там уведомления работают. Войдите тем же номером и
+            PIN-кодом, все дела на месте.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="font-semibold">Браузер не дал включить уведомления</p>
+          <p className="mt-1 text-sm text-ink-2">
+            Попробуйте ещё раз. Если не выйдет — откройте приложение в Chrome{samsung ? " или Samsung Internet" : ""}.
+          </p>
+        </>
+      )}
+      {p.android && (
+        <div className="mt-3 flex flex-col gap-2">
+          <a
+            href={intentUrl("com.android.chrome")}
+            className="flex h-11 items-center justify-center rounded-xl bg-accent font-semibold text-accent-ink active:opacity-80"
+          >
+            Открыть в Chrome
+          </a>
+          {samsung && (
+            <a
+              href={intentUrl("com.sec.android.app.sbrowser")}
+              className="flex h-11 items-center justify-center rounded-xl bg-surface font-medium active:opacity-70"
+            >
+              Открыть в Samsung Internet
+            </a>
+          )}
+        </div>
+      )}
+      {browser === "yandex" && (
+        <p className="mt-3 text-xs text-ink-2">
+          Хотите остаться в Яндекс Браузере? Меню <B>⋮</B> → <B>«Настройки»</B> → <B>«Уведомления»</B> →{" "}
+          <B>«От сайтов»</B> → разрешите для семейныйдиспетчер.рф, затем нажмите «Попробовать снова».
+        </p>
+      )}
+      <div className="mt-2 flex gap-4">
+        <button onClick={onRetry} disabled={busy} className="text-xs font-medium text-accent">
+          {busy ? "Пробуем…" : "Попробовать снова"}
+        </button>
+        <button onClick={onHide} className="text-xs text-ink-3">
+          Скрыть
+        </button>
+      </div>
     </div>
   );
 }

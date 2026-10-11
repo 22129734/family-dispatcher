@@ -196,7 +196,8 @@ export type ClientEvent =
   | "install_accepted"
   | "push_prompt_shown"
   | "push_permission_granted"
-  | "push_permission_denied";
+  | "push_permission_denied"
+  | "push_enable_failed";
 
 const TOKEN_KEY = "fd.token";
 

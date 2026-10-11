@@ -11,11 +11,22 @@ export function platform() {
   return { ios, android: /Android/.test(ua), standalone, supported };
 }
 
+/** Браузер — у Яндекс Браузера на Android уведомления от сайтов часто не работают. */
+export function browserName(): "yandex" | "samsung" | "firefox" | "chrome" | "other" {
+  const ua = navigator.userAgent;
+  if (/YaBrowser|YaSearchBrowser/.test(ua)) return "yandex";
+  if (/SamsungBrowser/.test(ua)) return "samsung";
+  if (/Firefox|FxiOS/.test(ua)) return "firefox";
+  if (/Chrome|CriOS/.test(ua)) return "chrome";
+  return "other";
+}
+
 export type PushState =
   | "unsupported" // браузер не умеет push (или iPhone без установки на экран «Домой»)
   | "ios-install" // iPhone: нужно добавить на экран «Домой»
   | "denied" // пользователь запретил уведомления
   | "ask" // можно предложить включить
+  | "failed" // нажали «Включить», а браузер не дал — объясняем, что делать
   | "on"; // подписка есть
 
 export async function pushState(): Promise<PushState> {
@@ -44,14 +55,29 @@ async function sendToServer(subscription: PushSubscription) {
 
 /** Запросить разрешение (только по нажатию) и подписаться. */
 export async function enablePush(publicKey: string): Promise<PushState> {
-  const permission = await Notification.requestPermission();
-  api.track(permission === "granted" ? "push_permission_granted" : "push_permission_denied");
-  if (permission !== "granted") return permission === "denied" ? "denied" : "ask";
-  const registration = await navigator.serviceWorker.ready;
-  const subscription =
-    (await registration.pushManager.getSubscription()) ??
-    (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }));
-  await sendToServer(subscription);
+  const browser = browserName();
+  const fail = (step: string, error = "") => {
+    api.track("push_enable_failed", { browser, step, error: error.slice(0, 80) });
+    return "failed" as const;
+  };
+  let permission: NotificationPermission;
+  try {
+    permission = await Notification.requestPermission();
+  } catch (err) {
+    return fail("permission", (err as Error).name);
+  }
+  api.track(permission === "granted" ? "push_permission_granted" : "push_permission_denied", { browser });
+  // Яндекс Браузер и часть других отвечают «нет», не показав человеку вопроса — молча не оставляем
+  if (permission !== "granted") return browser === "yandex" ? fail("permission", permission) : permission === "denied" ? "denied" : "failed";
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription =
+      (await registration.pushManager.getSubscription()) ??
+      (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) }));
+    await sendToServer(subscription);
+  } catch (err) {
+    return fail("subscribe", `${(err as Error).name}: ${(err as Error).message}`);
+  }
   return "on";
 }
 
