@@ -31,3 +31,9 @@ def test_invite_text_fits_and_has_latin_link() -> None:
     text = sms.invite_text("Анастасия", "AbC12345")
     assert "semeinidispetcher.ru/join/AbC12345" in text
     assert len(text) <= 70  # одно СМС кириллицей
+
+
+def test_referral_text_has_ref_link() -> None:
+    text = sms.referral_text("Вера", "Zecmbvcv")
+    assert text.endswith("semeinidispetcher.ru/?from=Zecmbvcv")
+    assert len(text) <= 70

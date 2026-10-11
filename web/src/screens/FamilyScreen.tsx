@@ -2,7 +2,7 @@ import { Hint } from "../components/Hint";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { api, type Family, type Member, type PhoneInvite as PhoneInviteRow, type WeekStats } from "../api";
-import { InviteQr, PhoneInvite } from "../components/PhoneInvite";
+import { InviteQr, PhoneInvite, RecommendSms } from "../components/PhoneInvite";
 import { Avatar, Button } from "../components/ui";
 import { plural } from "./Today";
 import { familyInviteText, familyInviteUrl, SHARE_ORIGIN } from "../share";
@@ -127,7 +127,10 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
               <Invite family={family} me={me} />
             </div>
           ) : (
-            <Recommend family={family} />
+            <div className="space-y-6">
+              <RecommendSms />
+              <Recommend family={family} />
+            </div>
           )}
         </BottomSheet>
       )}

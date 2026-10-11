@@ -121,6 +121,15 @@ class PhoneInviteRequest(BaseModel):
     send_sms: bool = True
 
 
+class ReferralSmsRequest(BaseModel):
+    phone: str = Field(min_length=10, max_length=20)
+
+
+class ReferralSmsOut(BaseModel):
+    phone_masked: str
+    left_today: int
+
+
 class PhoneInviteOut(BaseModel):
     id: str
     phone_masked: str

@@ -27,6 +27,10 @@ def invite_text(inviter: str, code: str) -> str:
     return f"{inviter.strip()[:12]}: присоединяйся к семье {INVITE_HOST}/join/{code}"
 
 
+def referral_text(name: str, ref_code: str) -> str:
+    return f"{name.strip()[:12]} советует Семейный диспетчер: {INVITE_HOST}/?from={ref_code}"
+
+
 def send(
     phone: str,
     text: str,

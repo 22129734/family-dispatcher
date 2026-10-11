@@ -277,6 +277,8 @@ export const api = {
   moveToFamily: (code: string) => post<Session>(`/invites/${code}/move`),
   phoneInvite: (phone: string, send_sms: boolean) => post<PhoneInvite>("/family/phone-invites", { phone, send_sms }),
   phoneInvites: () => request<PhoneInvite[]>("/family/phone-invites"),
+  recommendBySms: (phone: string) =>
+    post<{ phone_masked: string; left_today: number }>("/referrals/sms", { phone }),
   cancelPhoneInvite: (id: string) => request<void>(`/family/phone-invites/${id}`, { method: "DELETE" }),
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),

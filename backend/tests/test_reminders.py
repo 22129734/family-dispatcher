@@ -766,3 +766,20 @@ def test_unanswered_request_nudged_twice_by_day(
     client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"]))
     with SessionLocal() as db:
         assert db.get(TaskRow, task["id"]).nudges == 2
+
+
+def test_referral_sms_three_per_day(client: TestClient, family: dict[str, str]) -> None:
+    for n in range(3):
+        sent = client.post(
+            "/api/v1/referrals/sms", json={"phone": f"7999000300{n}"}, headers=auth(family["mom"])
+        ).json()
+        assert sent["left_today"] == 2 - n
+    fourth = client.post(
+        "/api/v1/referrals/sms", json={"phone": "79990003009"}, headers=auth(family["mom"])
+    )
+    assert fourth.status_code == 429
+    # У папы свой лимит
+    known = client.post(
+        "/api/v1/referrals/sms", json={"phone": "79990002001"}, headers=auth(family["dad"])
+    )
+    assert known.status_code == 409  # у мамы уже есть аккаунт

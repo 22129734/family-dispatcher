@@ -92,3 +92,59 @@ export function InviteQr({ url }: { url: string }) {
     </section>
   );
 }
+
+/** Посоветовать знакомому по СМС — не больше трёх в сутки с аккаунта. */
+export function RecommendSms() {
+  const [phone, setPhone] = useState("+7");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const ready = phone.replace(/\D/g, "").length === 11;
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      const sent = await api.recommendBySms(phone);
+      setDone(
+        `СМС отправлено на ${sent.phone_masked}.` +
+          (sent.left_today > 0 ? ` Сегодня можно ещё ${sent.left_today}.` : " На сегодня СМС закончились."),
+      );
+      setPhone("+7");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">СМС знакомому</h2>
+      <p className="mt-1 text-sm text-ink-2">Отправим СМС со ссылкой от вашего имени — до 3 в день.</p>
+      <form onSubmit={submit} className="mt-3 flex gap-2">
+        <input
+          type="tel"
+          inputMode="tel"
+          autoComplete="off"
+          value={phone}
+          onChange={(e) => setPhone(formatPhone(e.target.value))}
+          aria-label="Номер телефона знакомого"
+          className="h-12 min-w-0 flex-1 rounded-2xl border border-line bg-surface px-4 text-lg tracking-wide outline-none focus:border-accent"
+        />
+        <button
+          type="submit"
+          disabled={busy || !ready}
+          className="h-12 shrink-0 rounded-2xl bg-accent px-4 font-semibold text-accent-ink active:opacity-80 disabled:opacity-40"
+        >
+          {busy ? "…" : "Отправить"}
+        </button>
+      </form>
+      {done && <p className="mt-2 rounded-xl bg-ok-soft px-3 py-2 text-sm text-ok">{done}</p>}
+      {error && <p className="mt-2 text-sm text-warn">{error}</p>}
+    </section>
+  );
+}

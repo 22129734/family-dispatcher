@@ -10,6 +10,8 @@ from sqlalchemy import func, select
 
 from app.auth import CurrentAccount, CurrentMember, CurrentToken, DbSession, member_of
 from app.models import (
+    AccountRow,
+    EventRow,
     FamilyRow,
     MemberRow,
     PhoneInviteRow,
@@ -32,6 +34,8 @@ from app.schemas.api import (
     PhoneInviteOut,
     PhoneInviteRequest,
     ReferralInfo,
+    ReferralSmsOut,
+    ReferralSmsRequest,
     RejectRequest,
     SessionOut,
     TaskOut,
@@ -191,6 +195,44 @@ def join_family(
 
 
 SMS_PER_FAMILY_DAY = 5
+# Рекомендации по СМС платные для нас — не больше трёх в сутки с одного аккаунта
+REFERRAL_SMS_PER_DAY = 3
+
+
+@router.post("/referrals/sms", response_model=ReferralSmsOut, tags=["family"])
+def recommend_by_sms(
+    payload: ReferralSmsRequest, member: CurrentMember, db: DbSession
+) -> ReferralSmsOut:
+    """Посоветовать приложение знакомому: СМС со ссылкой-рекомендацией этой семьи."""
+    try:
+        phone = phone_auth.normalize_phone(payload.phone)
+    except phone_auth.PhoneAuthError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    day_ago = datetime.now() - timedelta(days=1)
+    sent = db.scalar(
+        select(func.count()).where(
+            EventRow.member_id == member.id,
+            EventRow.name == "referral_sms",
+            EventRow.created_at > day_ago,
+        )
+    )
+    if sent >= REFERRAL_SMS_PER_DAY:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Можно отправить {REFERRAL_SMS_PER_DAY} СМС-рекомендации в сутки — попробуйте завтра "
+            "или поделитесь ссылкой",
+        )
+    if db.scalar(select(AccountRow).where(AccountRow.phone == phone)):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Этот человек уже пользуется приложением")
+    try:
+        sms.send(phone, sms.referral_text(member.name, member.family.ref_code))
+    except sms.SmsError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    fs.track(db, member, "referral_sms")
+    db.commit()
+    return ReferralSmsOut(
+        phone_masked=phone_auth.mask_phone(phone), left_today=REFERRAL_SMS_PER_DAY - sent - 1
+    )
 
 
 @router.post(
