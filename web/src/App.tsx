@@ -20,7 +20,7 @@ import { MoreScreen } from "./screens/MoreScreen";
 import { applyTheme } from "./theme";
 import { useSpeech } from "./useSpeech";
 import { Join, MoveToFamily, Welcome } from "./screens/Onboarding";
-import { clearInvite, inviteCode } from "./invite";
+import { clearInvite, inviteCode, setInvite } from "./invite";
 import { pendingCall } from "./pendingCall";
 import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
@@ -101,6 +101,11 @@ function Main() {
     try {
       const account = await api.account();
       rememberDevice();
+      // Номер пригласили в семью — дальше как по ссылке-приглашению
+      if (account.invite && account.invite.code !== inviteCode()) {
+        setInvite(account.invite.code);
+        setCode(account.invite.code);
+      }
       // Сразу после первого входа звонком — PIN-код для следующих входов
       if (!account.has_pin) return setStage("setpin");
       if (account.member && account.family_id) {

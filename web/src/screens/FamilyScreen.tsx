@@ -1,7 +1,8 @@
 import { Hint } from "../components/Hint";
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { api, type Family, type Member, type WeekStats } from "../api";
+import { api, type Family, type Member, type PhoneInvite as PhoneInviteRow, type WeekStats } from "../api";
+import { InviteQr, PhoneInvite } from "../components/PhoneInvite";
 import { Avatar, Button } from "../components/ui";
 import { plural } from "./Today";
 import { familyInviteText, familyInviteUrl, SHARE_ORIGIN } from "../share";
@@ -17,6 +18,11 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
   useEffect(() => {
     api.familyWeek().then(setWeek, () => undefined);
   }, []);
+  const [phoneInvites, setPhoneInvites] = useState<PhoneInviteRow[]>([]);
+  const loadInvites = () => {
+    api.phoneInvites().then(setPhoneInvites, () => undefined);
+  };
+  useEffect(loadInvites, []);
   return (
     <div className="space-y-5 px-4 pt-6 pb-6">
       <header>
@@ -64,6 +70,30 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
         ))}
       </ul>
 
+      {phoneInvites.length > 0 && (
+        <section>
+          <h2 className="mb-2 text-xs font-semibold tracking-wide text-ink-3 uppercase">Ждём по номеру</h2>
+          <ul className="space-y-2">
+            {phoneInvites.map((invite) => (
+              <li key={invite.id} className="glass flex items-center gap-3 rounded-2xl px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium tabular-nums">{invite.phone_masked}</p>
+                  <p className="text-xs text-ink-2">
+                    {invite.sms_sent ? "СМС отправлено · " : ""}войдёт с этим номером — окажется в семье
+                  </p>
+                </div>
+                <button
+                  onClick={() => void api.cancelPhoneInvite(invite.id).then(loadInvites)}
+                  className="h-9 shrink-0 rounded-xl px-3 text-sm text-ink-3 active:bg-surface-2"
+                >
+                  Отменить
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {!alone && (
         <button
           onClick={() => setSheet("invite")}
@@ -79,7 +109,15 @@ export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
 
       {sheet && (
         <BottomSheet onClose={() => setSheet(null)}>
-          {sheet === "invite" ? <Invite family={family} me={me} /> : <Recommend family={family} />}
+          {sheet === "invite" ? (
+            <div className="space-y-6">
+              <PhoneInvite onInvited={loadInvites} />
+              <InviteQr url={familyInviteUrl(family)} />
+              <Invite family={family} me={me} />
+            </div>
+          ) : (
+            <Recommend family={family} />
+          )}
         </BottomSheet>
       )}
     </div>
@@ -161,8 +199,8 @@ function Invite({ family, me }: { family: Family; me: Member }) {
   return (
     <ShareBlock
       kind="family"
-      title="Пригласить в семью"
-      description="Отправьте ссылку близкому — он присоединится к вашим делам."
+      title="Или ссылкой"
+      description="Отправьте ссылку близкому в мессенджер — он присоединится к вашим делам."
       url={url}
       text={familyInviteText(family, me)}
       shortText={`${me.name} приглашает тебя в Семейный диспетчер`}

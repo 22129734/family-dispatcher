@@ -18,6 +18,7 @@ from app.models import (
     LoginAttemptRow,
     MemberRow,
     PhoneCheckRow,
+    PhoneInviteRow,
     PushSubscriptionRow,
     SessionRow,
     TaskFileRow,
@@ -38,6 +39,7 @@ def _drop_tasks(db: Session, tasks: list[TaskRow]) -> None:
 def _drop_members(db: Session, member_ids: list[str]) -> None:
     if not member_ids:
         return
+    db.execute(delete(PhoneInviteRow).where(PhoneInviteRow.invited_by_id.in_(member_ids)))
     db.execute(delete(PushSubscriptionRow).where(PushSubscriptionRow.member_id.in_(member_ids)))
     db.execute(delete(EventRow).where(EventRow.member_id.in_(member_ids)))
     db.execute(
@@ -60,6 +62,7 @@ def delete_account(db: Session, account: AccountRow) -> None:
     phone = account.phone
     db.execute(delete(SessionRow).where(SessionRow.account_id == account.id))
     db.execute(delete(PhoneCheckRow).where(PhoneCheckRow.phone == phone))
+    db.execute(delete(PhoneInviteRow).where(PhoneInviteRow.phone == phone))
     db.execute(delete(LoginAttemptRow).where(LoginAttemptRow.phone == phone))
     db.delete(account)
     db.commit()
@@ -95,6 +98,7 @@ def _delete_family(db: Session, family: FamilyRow) -> None:
     db.flush()
     _drop_members(db, [m.id for m in family.members])
     db.execute(delete(EventRow).where(EventRow.family_id == family.id))
+    db.execute(delete(PhoneInviteRow).where(PhoneInviteRow.family_id == family.id))
     db.execute(
         update(ComponentCallRow)
         .where(ComponentCallRow.family_id == family.id)

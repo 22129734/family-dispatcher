@@ -125,6 +125,8 @@ class MemberRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     family: Mapped[FamilyRow] = relationship(back_populates="members")
+    # Аккаунт для входа по телефону; у детей без телефона — нет
+    account: Mapped[AccountRow | None] = relationship()
 
 
 class TaskRow(Base):
@@ -178,6 +180,22 @@ class TaskRow(Base):
     files: Mapped[list["TaskFileRow"]] = relationship(
         order_by="TaskFileRow.created_at", cascade="all, delete-orphan", passive_deletes=True
     )
+
+
+class PhoneInviteRow(Base):
+    """Приглашение по номеру: войдёт с этим номером — попадёт в семью, без ссылки."""
+
+    __tablename__ = "phone_invites"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    family_id: Mapped[str] = mapped_column(
+        ForeignKey("families.id", ondelete="CASCADE"), index=True
+    )
+    invited_by_id: Mapped[str] = mapped_column(ForeignKey("members.id", ondelete="CASCADE"))
+    phone: Mapped[str] = mapped_column(String(16), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    sms_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class TaskFileRow(Base):

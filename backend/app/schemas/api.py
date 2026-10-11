@@ -89,11 +89,19 @@ class PhoneCheckStatusOut(BaseModel):
     token: str | None = None
 
 
+class PendingInviteOut(BaseModel):
+    """Этот номер пригласили в семью — после входа предложим присоединиться."""
+
+    code: str
+    members: list[str]
+
+
 class AccountOut(BaseModel):
     phone_masked: str
     has_pin: bool = False
     member: MemberOut | None
     family_id: str | None
+    invite: PendingInviteOut | None = None
 
 
 class SessionOut(BaseModel):
@@ -106,6 +114,18 @@ class ReferralInfo(BaseModel):
     """Кто рекомендует — имя создателя семьи, больше ничего."""
 
     from_name: str
+
+
+class PhoneInviteRequest(BaseModel):
+    phone: str = Field(min_length=10, max_length=20)
+    send_sms: bool = True
+
+
+class PhoneInviteOut(BaseModel):
+    id: str
+    phone_masked: str
+    sms_sent: bool
+    created_at: datetime
 
 
 class InviteInfo(BaseModel):

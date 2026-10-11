@@ -35,6 +35,7 @@ class Kind:
     TELEGRAM = "telegram"
     EMAIL = "email"
     PHONE_AUTH = "phone_auth"
+    SMS = "sms"  # СМС-приглашение в семью
     REMINDER = "reminder"  # фоновая система напоминаний
     ESCALATION = "escalation"
 

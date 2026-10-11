@@ -6,10 +6,17 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.auth import CurrentAccount, CurrentMember, CurrentToken, DbSession, member_of
-from app.models import FamilyRow, MemberRow, PushSubscriptionRow, TaskFileRow, TaskRow
+from app.models import (
+    FamilyRow,
+    MemberRow,
+    PhoneInviteRow,
+    PushSubscriptionRow,
+    TaskFileRow,
+    TaskRow,
+)
 from app.schemas.api import (
     CreateFamilyRequest,
     CreateTaskRequest,
@@ -22,6 +29,8 @@ from app.schemas.api import (
     ItemsRequest,
     JoinFamilyRequest,
     MemberOut,
+    PhoneInviteOut,
+    PhoneInviteRequest,
     ReferralInfo,
     RejectRequest,
     SessionOut,
@@ -32,7 +41,7 @@ from app.schemas.api import (
     WeekOut,
 )
 from app.services import family_service as fs
-from app.services import files, notifications
+from app.services import files, notifications, phone_auth, sms
 from app.services.family_service import TaskActionError
 from app.services.task_extractor import TaskExtractor
 
@@ -176,8 +185,101 @@ def join_family(
     family.members.append(member)
     db.flush()
     fs.track(db, member, "family_joined")
+    _accept_phone_invites(db, account.phone, family.id)
     db.commit()
     return _session(member, token)
+
+
+SMS_PER_FAMILY_DAY = 5
+
+
+@router.post(
+    "/family/phone-invites", response_model=PhoneInviteOut, status_code=201, tags=["family"]
+)
+def invite_by_phone(
+    payload: PhoneInviteRequest, member: CurrentMember, db: DbSession
+) -> PhoneInviteOut:
+    """Пригласить по номеру: войдёт с ним — попадёт в семью. По желанию — СМС со ссылкой."""
+    try:
+        phone = phone_auth.normalize_phone(payload.phone)
+    except phone_auth.PhoneAuthError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    if any(m.account and m.account.phone == phone for m in member.family.members):
+        raise HTTPException(status.HTTP_409_CONFLICT, "Этот человек уже в вашей семье")
+    invite = db.scalar(
+        select(PhoneInviteRow).where(
+            PhoneInviteRow.family_id == member.family_id,
+            PhoneInviteRow.phone == phone,
+            PhoneInviteRow.accepted_at.is_(None),
+        )
+    )
+    if invite is None:
+        invite = PhoneInviteRow(family_id=member.family_id, invited_by_id=member.id, phone=phone)
+        db.add(invite)
+    now = datetime.now()
+    if payload.send_sms:
+        day_ago = now - timedelta(days=1)
+        if invite.sms_sent_at and invite.sms_sent_at > day_ago:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS, "СМС на этот номер уже отправлено сегодня"
+            )
+        sent_today = db.scalar(
+            select(func.count()).where(
+                PhoneInviteRow.family_id == member.family_id, PhoneInviteRow.sms_sent_at > day_ago
+            )
+        )
+        if sent_today >= SMS_PER_FAMILY_DAY:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "Сегодня отправлено много СМС — попробуйте завтра",
+            )
+        try:
+            sms.send(phone, sms.invite_text(member.name, member.family.invite_code))
+        except sms.SmsError as exc:
+            db.commit()  # приглашение по номеру работает и без СМС
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+        invite.sms_sent_at = now
+    fs.track(db, member, "invite_phone", sms=payload.send_sms)
+    db.commit()
+    return _phone_invite_out(invite)
+
+
+@router.get("/family/phone-invites", response_model=list[PhoneInviteOut], tags=["family"])
+def phone_invites(member: CurrentMember, db: DbSession) -> list[PhoneInviteOut]:
+    rows = db.scalars(
+        select(PhoneInviteRow)
+        .where(PhoneInviteRow.family_id == member.family_id, PhoneInviteRow.accepted_at.is_(None))
+        .order_by(PhoneInviteRow.created_at.desc())
+    ).all()
+    return [_phone_invite_out(row) for row in rows]
+
+
+@router.delete("/family/phone-invites/{invite_id}", status_code=204, tags=["family"])
+def cancel_phone_invite(invite_id: str, member: CurrentMember, db: DbSession) -> None:
+    invite = db.get(PhoneInviteRow, invite_id)
+    if invite is None or invite.family_id != member.family_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Приглашение не найдено")
+    db.delete(invite)
+    db.commit()
+
+
+def _phone_invite_out(invite: PhoneInviteRow) -> PhoneInviteOut:
+    return PhoneInviteOut(
+        id=invite.id,
+        phone_masked=phone_auth.mask_phone(invite.phone),
+        sms_sent=invite.sms_sent_at is not None,
+        created_at=invite.created_at,
+    )
+
+
+def _accept_phone_invites(db: DbSession, account_phone: str, family_id: str) -> None:
+    """Человек оказался в семье — приглашения этого номера в неё выполнены."""
+    for invite in db.scalars(
+        select(PhoneInviteRow).where(
+            PhoneInviteRow.phone == account_phone, PhoneInviteRow.accepted_at.is_(None)
+        )
+    ).all():
+        invite.accepted_at = datetime.now()
 
 
 @router.post("/invites/{code}/move", response_model=SessionOut, tags=["family"])
@@ -195,6 +297,8 @@ def move_to_family(
             raise HTTPException(exc.status_code, str(exc)) from exc
         db.refresh(member)
         fs.track(db, member, "family_joined", moved=True)
+        if member.account:
+            _accept_phone_invites(db, member.account.phone, family.id)
         db.commit()
     return _session(member, token)
 

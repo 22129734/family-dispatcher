@@ -676,3 +676,64 @@ def test_move_refused_when_own_family_has_others(
     code = client.get("/api/v1/family", headers=auth(other["token"])).json()["invite_code"]
     refused = client.post(f"/api/v1/invites/{code}/move", headers=auth(family["mom"]))
     assert refused.status_code == 409
+
+
+def test_invite_by_phone_then_login_joins_family(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    invited = client.post(
+        "/api/v1/family/phone-invites",
+        json={"phone": "+7 999 000-20-05", "send_sms": False},
+        headers=auth(family["mom"]),
+    ).json()
+    assert invited["sms_sent"] is False
+    assert len(client.get("/api/v1/family/phone-invites", headers=auth(family["mom"])).json()) == 1
+
+    # Бабушка входит со своим номером — приложение само предлагает семью
+    granny = login(client, "79990002005")
+    account = client.get("/api/v1/account", headers=auth(granny)).json()
+    assert account["member"] is None
+    assert account["invite"]["members"] == ["Мама", "Папа"]
+    client.post(
+        f"/api/v1/invites/{account['invite']['code']}/join",
+        json={"member_name": "Бабушка"},
+        headers=auth(granny),
+    )
+    assert client.get("/api/v1/account", headers=auth(granny)).json()["invite"] is None
+    assert client.get("/api/v1/family/phone-invites", headers=auth(family["mom"])).json() == []
+
+
+def test_invite_by_phone_offers_move_to_solo_member(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    solo = client.post(
+        "/api/v1/families", json={"member_name": "Олег"}, headers=auth(login(client, "79990002006"))
+    ).json()
+    client.post(
+        "/api/v1/family/phone-invites",
+        json={"phone": "79990002006", "send_sms": False},
+        headers=auth(family["mom"]),
+    )
+    account = client.get("/api/v1/account", headers=auth(solo["token"])).json()
+    assert account["invite"] is not None  # своя семья из одного — предложим перейти
+
+
+def test_invite_by_phone_limits(client: TestClient, family: dict[str, str]) -> None:
+    dad_phone = client.post(
+        "/api/v1/family/phone-invites",
+        json={"phone": "79990002002", "send_sms": False},
+        headers=auth(family["mom"]),
+    )
+    assert dad_phone.status_code == 409  # уже в семье
+    first = client.post(
+        "/api/v1/family/phone-invites", json={"phone": "79990002007"}, headers=auth(family["mom"])
+    ).json()
+    assert first["sms_sent"] is True  # без ключа SMS.RU в разработке — «отправлено» без отправки
+    again = client.post(
+        "/api/v1/family/phone-invites", json={"phone": "79990002007"}, headers=auth(family["mom"])
+    )
+    assert again.status_code == 429
+    bad = client.post(
+        "/api/v1/family/phone-invites", json={"phone": "12345678901"}, headers=auth(family["mom"])
+    )
+    assert bad.status_code == 400

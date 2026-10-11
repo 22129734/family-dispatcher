@@ -69,6 +69,7 @@ def test_login_flow_issues_token_once_and_account_has_no_family(client: TestClie
         "has_pin": False,
         "member": None,
         "family_id": None,
+        "invite": None,
     }
     # Без семьи доступны только создание семьи и вход по приглашению
     assert client.get("/api/v1/tasks", headers=auth(status["token"])).status_code == 409

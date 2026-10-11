@@ -8,7 +8,7 @@ import { clearPendingCall, pendingCall, savePendingCall } from "../pendingCall";
 const POLL_MS = 2500;
 
 /** Маска ввода: «+7 999 123-45-67». Понимает набор с 8 и вставку номера целиком. */
-function formatPhone(raw: string): string {
+export function formatPhone(raw: string): string {
   // «+7» в поле — приставка, а не первая цифра номера
   let digits = (raw.startsWith("+7") ? raw.slice(2) : raw).replace(/\D/g, "");
   if (!raw.startsWith("+7") && digits.length === 11 && /^[78]/.test(digits)) digits = digits.slice(1);

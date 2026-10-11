@@ -26,6 +26,16 @@ let current = fromPath ?? stored();
 
 export const inviteCode = () => current;
 
+/** Приглашение по номеру пришло с сервера после входа — запоминаем, как из ссылки. */
+export function setInvite(code: string) {
+  current = code;
+  try {
+    localStorage.setItem(KEY, code);
+  } catch {
+    /* приватный режим */
+  }
+}
+
 export function clearInvite() {
   current = null;
   try {

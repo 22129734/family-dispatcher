@@ -118,6 +118,15 @@ export interface Account {
   has_pin: boolean;
   member: Member | null;
   family_id: string | null;
+  /** Номер пригласили в семью — после входа предложим присоединиться */
+  invite: { code: string; members: string[] } | null;
+}
+
+export interface PhoneInvite {
+  id: string;
+  phone_masked: string;
+  sms_sent: boolean;
+  created_at: string;
 }
 
 export interface ActInfo {
@@ -265,6 +274,9 @@ export const api = {
   referralInfo: (code: string) => request<{ from_name: string }>(`/referrals/${code}`),
   inviteInfo: (code: string) => request<InviteInfo>(`/invites/${code}`),
   moveToFamily: (code: string) => post<Session>(`/invites/${code}/move`),
+  phoneInvite: (phone: string, send_sms: boolean) => post<PhoneInvite>("/family/phone-invites", { phone, send_sms }),
+  phoneInvites: () => request<PhoneInvite[]>("/family/phone-invites"),
+  cancelPhoneInvite: (id: string) => request<void>(`/family/phone-invites/${id}`, { method: "DELETE" }),
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),

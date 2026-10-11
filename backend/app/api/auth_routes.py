@@ -11,10 +11,18 @@ from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import delete, func, select
 
 from app.auth import CurrentAccount, CurrentSession, DbSession, issue_session, member_of
-from app.models import AccountRow, LoginAttemptRow, PhoneCheckRow, SessionRow
+from app.models import (
+    AccountRow,
+    FamilyRow,
+    LoginAttemptRow,
+    PhoneCheckRow,
+    PhoneInviteRow,
+    SessionRow,
+)
 from app.schemas.api import (
     AccountOut,
     MemberOut,
+    PendingInviteOut,
     PhoneCheckOut,
     PhoneCheckStatusOut,
     PhoneStartRequest,
@@ -223,7 +231,25 @@ def get_account(account: CurrentAccount, db: DbSession) -> AccountOut:
         has_pin=bool(account.pin_hash),
         member=MemberOut.model_validate(member) if member else None,
         family_id=member.family_id if member else None,
+        invite=_pending_invite(db, account, member),
     )
+
+
+def _pending_invite(db: DbSession, account, member) -> PendingInviteOut | None:
+    """Номер пригласили в другую семью, а человек ещё ни в чьей семье или в своей один."""
+    if member is not None and sum(1 for m in member.family.members if m.account_id) > 1:
+        return None
+    invite = db.scalar(
+        select(PhoneInviteRow)
+        .where(PhoneInviteRow.phone == account.phone, PhoneInviteRow.accepted_at.is_(None))
+        .order_by(PhoneInviteRow.created_at.desc())
+    )
+    if invite is None or (member is not None and invite.family_id == member.family_id):
+        return None
+    family = db.get(FamilyRow, invite.family_id)
+    if family is None:
+        return None
+    return PendingInviteOut(code=family.invite_code, members=[m.name for m in family.members])
 
 
 @router.delete("/account", status_code=204)

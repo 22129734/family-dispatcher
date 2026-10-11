@@ -15,7 +15,7 @@ from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
-from app.models import ComponentCallRow, EventRow, FamilyRow, MemberRow, TaskRow
+from app.models import ComponentCallRow, EventRow, FamilyRow, MemberRow, PhoneInviteRow, TaskRow
 from app.schemas.task import TaskDraft
 from app.services.when import plain_title
 
@@ -150,6 +150,9 @@ def move_to_family(db: Session, member: MemberRow, target: FamilyRow) -> None:
     )
     db.execute(
         update(FamilyRow).where(FamilyRow.referred_by_id == old.id).values(referred_by_id=target.id)
+    )
+    db.execute(
+        update(PhoneInviteRow).where(PhoneInviteRow.family_id == old.id).values(family_id=target.id)
     )
     for mover in list(old.members):
         target.members.append(mover)
