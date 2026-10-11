@@ -737,3 +737,32 @@ def test_invite_by_phone_limits(client: TestClient, family: dict[str, str]) -> N
         "/api/v1/family/phone-invites", json={"phone": "12345678901"}, headers=auth(family["mom"])
     )
     assert bad.status_code == 400
+
+
+def test_unanswered_request_nudged_twice_by_day(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    task = client.post(
+        "/api/v1/tasks",
+        json={"title": "Забрать посылку", "assignee_id": family["dad_id"]},
+        headers=auth(family["mom"]),
+    ).json()
+    with SessionLocal() as db:
+        row = db.get(TaskRow, task["id"])
+        row.created_at = datetime(2026, 10, 10, 12, 0)
+        db.commit()
+    sent.clear()
+
+    noon = datetime(2026, 10, 11, 13, 0)
+    assert reminders.run_once(noon) == 1
+    assert [(m, msg.title) for m, msg in sent] == [(family["dad_id"], "Мама ждёт ответа")]
+    assert [a["action"] for a in sent[0][1].actions] == ["accept", "decline"]
+    assert reminders.run_once(noon + timedelta(hours=3)) == 0  # раз в сутки
+    assert reminders.run_once(datetime(2026, 10, 12, 23, 0)) == 0  # ночью не будим
+    assert reminders.run_once(datetime(2026, 10, 12, 14, 0)) == 1
+    assert reminders.run_once(datetime(2026, 10, 13, 14, 0)) == 0  # не больше двух раз
+
+    # Ответил — больше не напоминаем
+    client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"]))
+    with SessionLocal() as db:
+        assert db.get(TaskRow, task["id"]).nudges == 2

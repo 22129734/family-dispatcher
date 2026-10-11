@@ -166,6 +166,9 @@ class TaskRow(Base):
     # Напоминание перед сроком отправлено; исполнитель ответил «Я помню»
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     remembered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Исполнитель не ответил на просьбу больше суток — напомнили (не больше двух раз)
+    nudged_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    nudges: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # «Не выполнено»: автор вернул сделанное с комментарием исполнителю
     feedback: Mapped[str | None] = mapped_column(String(300), nullable=True)
     # Заметка: подробности, которые не влезают в название (кабинет, адрес, что взять)

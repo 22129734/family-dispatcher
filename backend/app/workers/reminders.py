@@ -1,5 +1,8 @@
 """Фоновая система напоминаний: за N минут до срока — push исполнителю.
 
+Ещё — «ждёт ответа»: исполнитель больше суток не ответил на просьбу — напоминаем
+с кнопками «Беру» / «Не могу». Не больше NUDGE_MAX раз, раз в сутки, днём.
+
 N — личная настройка участника (`remind_before_min`, по умолчанию час, 0 — не напоминать).
 Одно напоминание на задачу; после смены срока или исполнителя оно отправится заново.
 Работает отдельным процессом (сервис `worker` в docker-compose):
@@ -51,10 +54,54 @@ def due_reminders(db: Session, now: datetime) -> list[tuple[TaskRow, MemberRow]]
     return result
 
 
+NUDGE_AFTER = timedelta(days=1)
+NUDGE_MAX = 2
+# Будим только днём по местному времени семьи (контейнер — Europe/Moscow)
+NUDGE_HOURS = range(9, 21)
+
+
+def unanswered(db: Session, now: datetime) -> list[tuple[TaskRow, MemberRow]]:
+    """Просьбы, на которые исполнитель больше суток не ответил «Беру» или «Не могу»."""
+    if now.hour not in NUDGE_HOURS:
+        return []
+    candidates = db.scalars(
+        select(TaskRow).where(
+            TaskRow.status == "new",
+            TaskRow.assignee_id.is_not(None),
+            TaskRow.assignee_id != TaskRow.created_by_id,
+            TaskRow.created_at <= now - NUDGE_AFTER,
+            TaskRow.nudges < NUDGE_MAX,
+        )
+    ).all()
+    result = []
+    for task in candidates:
+        if task.nudged_at and task.nudged_at > now - NUDGE_AFTER:
+            continue
+        # Срок давно прошёл — напоминать поздно
+        if task.due_at and task.due_at < now - timedelta(days=1):
+            continue
+        author = db.get(MemberRow, task.created_by_id)
+        if author is not None:
+            result.append((task, author))
+    return result
+
+
 def run_once(now: datetime | None = None) -> int:
     """Отправить все созревшие напоминания. Возвращает число задач."""
     now = now or datetime.now()
     with SessionLocal() as db:
+        nudges = unanswered(db, now)
+        for task, author in nudges:
+            message = notifications.nudge_message(task, author)
+            task.nudged_at = now
+            task.nudges += 1
+            db.commit()
+            telemetry.record(
+                Kind.REMINDER,
+                "unanswered",
+                actor=telemetry.Actor(task.assignee_id, task.family_id),
+            )
+            notifications.deliver(task.assignee_id, message)
         due = due_reminders(db, now)
         for task, member in due:
             message = notifications.reminder_message(task, now)
@@ -64,7 +111,7 @@ def run_once(now: datetime | None = None) -> int:
                 Kind.REMINDER, "before_due", actor=telemetry.Actor(member.id, member.family_id)
             )
             notifications.deliver(member.id, message)
-        return len(due)
+        return len(due) + len(nudges)
 
 
 def main() -> None:

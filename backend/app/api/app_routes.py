@@ -532,6 +532,8 @@ def update_task(
         # Новый срок или исполнитель — напоминание отправится заново
         task.reminded_at = None
         task.remembered_at = None
+        task.nudged_at = None
+        task.nudges = 0
     if "due_at" in changes and task.due_at is not None:
         task.clarifying_question = None
     fs.track(db, member, "task_edited", fields=fields)

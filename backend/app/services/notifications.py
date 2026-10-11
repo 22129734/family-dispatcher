@@ -145,6 +145,19 @@ def _when(due: datetime, now: datetime) -> str:
     return f"{day} в {due:%H:%M}"
 
 
+def nudge_message(task: TaskRow, author: MemberRow) -> PushMessage:
+    """Исполнителю: просьба больше суток без ответа — «Беру» / «Не могу» прямо в уведомлении."""
+    url, act = _act(task, task.assignee_id)
+    return PushMessage(
+        title=f"{author.name} ждёт ответа",
+        body=_with_details(task),
+        url=url,
+        tag=f"task-{task.id}",
+        actions=[{"action": "accept", "title": "Беру"}, {"action": "decline", "title": "Не могу"}],
+        act_url=act,
+    )
+
+
 def reminder_message(task: TaskRow, now: datetime) -> PushMessage:
     """Исполнителю перед сроком.
 
