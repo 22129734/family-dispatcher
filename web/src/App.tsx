@@ -3,6 +3,7 @@ import {
   api,
   ApiError,
   tokenStore,
+  type BatchItem,
   type Draft,
   type Family,
   type Frequent,
@@ -12,6 +13,7 @@ import {
 } from "./api";
 import { parseLocal, plainTitle } from "./format";
 import { ConfirmSheet } from "./components/ConfirmSheet";
+import { BatchSheet } from "./components/BatchSheet";
 import { Composer } from "./components/Composer";
 import { dismissHint, Hint } from "./components/Hint";
 import { FamilyScreen } from "./screens/FamilyScreen";
@@ -414,6 +416,14 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     durationMin?: number | null;
   } | null>(null);
 
+  // Несколько дел в одном сообщении — шторка со списком
+  const [batch, setBatch] = useState<{
+    items: BatchItem[];
+    text: string;
+    source: "text" | "voice";
+    assigneeId: string | null;
+  } | null>(null);
+
   // «Частые дела» над полем ввода — обновляем после каждой новой просьбы
   const [frequent, setFrequent] = useState<Frequent[]>([]);
   const loadFrequent = useCallback(() => {
@@ -442,6 +452,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         rationale: null,
         clarifying_question: null,
         unclear: true,
+        batch: [],
       },
       text: title,
       source: "copy",
@@ -471,10 +482,16 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   async function send(text: string, source: "text" | "voice") {
     // Режим из профиля: never — сразу, always — всегда шторка, auto (по умолчанию) — если неясно
     const mode = family?.members.find((m) => m.id === me.id)?.confirm_mode ?? "auto";
+    // Длинное или многострочное сообщение — возможно, несколько дел: разбираем даже в режиме «сразу»
+    const maybeMany = text.includes("\n") || text.length > 150;
     setSending(true);
     try {
-      if (mode !== "never") {
+      if (mode !== "never" || maybeMany) {
         const draft = await api.parseTask(text, source);
+        if (draft.batch.length >= 2) {
+          setBatch({ items: draft.batch, text, source, assigneeId: draft.assignee_id });
+          return;
+        }
         if (mode === "always" || draft.unclear) {
           setConfirm({ draft, text, source });
           return;
@@ -556,6 +573,25 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           <FamilyScreen family={family} me={me} />
         ) : null}
       </main>
+
+      {batch && (
+        <BatchSheet
+          items={batch.items}
+          text={batch.text}
+          source={batch.source}
+          members={family?.members ?? [me]}
+          meId={me.id}
+          assigneeId={batch.assigneeId}
+          onCancel={() => setBatch(null)}
+          onSent={(created) => {
+            setBatch(null);
+            setTasks((list) => [...created, ...list]);
+            loadFrequent();
+            notify(`Создано дел: ${created.length}`);
+            void refresh();
+          }}
+        />
+      )}
 
       {confirm && (
         <ConfirmSheet

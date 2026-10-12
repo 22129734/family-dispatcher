@@ -242,7 +242,8 @@ class WeekOut(BaseModel):
 
 
 class DispatchRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=1000)
+    # Расписание на неделю бывает длинным
+    message: str = Field(min_length=1, max_length=4000)
     source: Literal["text", "voice"] = "text"
 
 
@@ -284,6 +285,31 @@ class DraftOut(BaseModel):
     clarifying_question: str | None
     # Срок или исполнитель не поняты — в режиме «если неясно» показываем шторку
     unclear: bool
+    # В сообщении несколько дел (расписание, список) — каждое отдельно
+    batch: list["BatchItemOut"] = []
+
+
+class BatchItemOut(BaseModel):
+    title: str
+    due_at: datetime | None
+    ends_at: datetime | None = None
+    note: str | None = None
+
+
+class BatchItemIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    due_at: datetime | None = None
+    ends_at: datetime | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class BatchCreateRequest(BaseModel):
+    """Несколько дел разом — одно уведомление исполнителю вместо пачки."""
+
+    tasks: list[BatchItemIn] = Field(min_length=1, max_length=20)
+    assignee_id: str | None = None
+    source: Literal["text", "voice"] = "text"
+    source_text: str | None = Field(default=None, max_length=4000)
 
 
 class UpdateTaskRequest(BaseModel):

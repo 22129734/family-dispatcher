@@ -826,3 +826,27 @@ def test_note_only_for_this_repeat_unless_for_all(
         if t["title"] == "Полить цветы" and t["status"] != "done"
     )
     assert (third["note"], third["note_repeat"]) == ("лейка на балконе", True)
+
+
+def test_schedule_parsed_as_batch_and_created_with_one_push(
+    client: TestClient, family: dict[str, str], sent: list
+) -> None:
+    from tests.test_multi_tasks import SCHEDULE
+
+    draft = client.post(
+        "/api/v1/tasks/parse", json={"message": SCHEDULE}, headers=auth(family["mom"])
+    ).json()
+    assert len(draft["batch"]) == 8
+    sent.clear()
+    created = client.post(
+        "/api/v1/tasks/batch",
+        json={
+            "tasks": draft["batch"][:3],
+            "assignee_id": family["dad_id"],
+            "source_text": SCHEDULE,
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    assert [t["title"] for t in created] == ["Зал", "Зал", "Зал"]
+    assert all(t["assignee_id"] == family["dad_id"] and t["ends_at"] for t in created)
+    assert [(m, msg.title) for m, msg in sent] == [(family["dad_id"], "Мама просит: 3 дела")]

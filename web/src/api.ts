@@ -35,6 +35,15 @@ export interface Draft {
   rationale: string | null;
   clarifying_question: string | null;
   unclear: boolean;
+  /** Несколько дел в одном сообщении — расписание или список */
+  batch: BatchItem[];
+}
+
+export interface BatchItem {
+  title: string;
+  due_at: string | null;
+  ends_at: string | null;
+  note: string | null;
 }
 
 export interface InviteInfo {
@@ -293,6 +302,8 @@ export const api = {
   tasks: (doneDays = 1) => request<Task[]>(`/tasks?include_done_days=${doneDays}`),
   createTask: (task: NewTask) => post<Task>("/tasks", task),
   frequent: () => request<Frequent[]>("/tasks/frequent"),
+  createBatch: (body: { tasks: BatchItem[]; assignee_id: string | null; source: "text" | "voice"; source_text: string }) =>
+    post<Task[]>("/tasks/batch", body),
   thank: (id: string) => post<Task>(`/tasks/${id}/thanks`),
   familyWeek: () => request<WeekStats>("/family/week"),
   parseTask: (message: string, source: "text" | "voice") => post<Draft>("/tasks/parse", { message, source }),

@@ -120,6 +120,22 @@ def thanks_message(task: TaskRow, author: MemberRow) -> PushMessage:
     )
 
 
+def batch_message(author: MemberRow, titles: list[str]) -> PushMessage:
+    """Исполнителю: сразу несколько дел (расписание, список) — одно уведомление на всё."""
+    n = len(titles)
+    word = (
+        "дело"
+        if n % 10 == 1 and n % 100 != 11
+        else "дела"
+        if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14
+        else "дел"
+    )
+    shown = ", ".join(titles[:4]) + ("…" if n > 4 else "")
+    return PushMessage(
+        title=f"{author.name} просит: {n} {word}", body=shown, url="/", tag=f"batch-{author.id}"
+    )
+
+
 def participant_message(task: TaskRow, author: MemberRow) -> PushMessage:
     """Участнику совместного дела: отвечать не нужно — просто знать, что вы заняты."""
     when = _when(task.due_at, datetime.now()) if task.due_at else "без срока"

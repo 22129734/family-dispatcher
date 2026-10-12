@@ -1,5 +1,5 @@
 import type { Frequent } from "../api";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 /**
  * Примеры сменяются по кругу и показывают, что умеет диспетчер: повторы, список покупок,
@@ -51,6 +51,14 @@ export function Composer({
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
+  const field = useRef<HTMLTextAreaElement>(null);
+  // Поле растёт вместе с текстом (до 6 строк), потом прокручивается
+  useEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
   const examples = hints(spouse ?? null);
   const [hintIndex, setHintIndex] = useState(() => Math.floor(Math.random() * examples.length));
 
@@ -95,18 +103,27 @@ export function Composer({
           ))}
         </div>
       )}
-      <form onSubmit={submit} className="glass flex items-center gap-2 rounded-[22px] p-1.5 pl-4 shadow-md">
-        <input
+      <form onSubmit={submit} className="glass flex items-end gap-2 rounded-[22px] p-1.5 pl-4 shadow-md">
+        <textarea
+          ref={field}
           value={text}
+          rows={1}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            // Enter — отправить; Shift+Enter — новая строка. Вставка сохраняет переносы
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder={hint}
           enterKeyHint="send"
-          maxLength={1000}
+          maxLength={4000}
           aria-label="Новое дело"
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           // Подсказка мельче текста: длинные примеры помещаются, а ввод остаётся 16 px (иначе iPhone приближает)
-          className="h-10 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-[14px] placeholder:text-ink-3"
+          className="max-h-40 min-w-0 flex-1 resize-none bg-transparent py-2 text-base leading-6 outline-none placeholder:text-[14px] placeholder:text-ink-3"
         />
         <button
           type="submit"

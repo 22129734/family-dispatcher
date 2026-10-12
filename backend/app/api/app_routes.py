@@ -20,6 +20,8 @@ from app.models import (
     TaskRow,
 )
 from app.schemas.api import (
+    BatchCreateRequest,
+    BatchItemOut,
     CreateFamilyRequest,
     CreateTaskRequest,
     DeclineRequest,
@@ -45,7 +47,7 @@ from app.schemas.api import (
     WeekOut,
 )
 from app.services import family_service as fs
-from app.services import files, notifications, phone_auth, sms
+from app.services import files, multi_tasks, notifications, phone_auth, sms
 from app.services.family_service import TaskActionError
 from app.services.task_extractor import TaskExtractor
 
@@ -444,6 +446,28 @@ def _valid_end(due: datetime | None, end: datetime | None) -> datetime | None:
 @router.post("/tasks/parse", response_model=DraftOut, tags=["tasks"])
 def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
     """Разобрать фразу, но не сохранять: шторка «Проверьте просьбу» перед отправкой."""
+    batch = multi_tasks.split(payload.message, datetime.now())
+    if batch:
+        # Несколько дел — правилами, без модели; исполнитель — по общему правилу семьи
+        assignee, why = fs.default_assignee(member.family, member, False)
+        return DraftOut(
+            title=batch[0].title,
+            due_at=batch[0].due_at,
+            ends_at=batch[0].ends_at,
+            recurrence="none",
+            priority="normal",
+            items=[],
+            requires_car=False,
+            note=batch[0].note,
+            assignee_id=assignee.id if assignee else None,
+            rationale=why,
+            clarifying_question=None,
+            unclear=True,
+            batch=[
+                BatchItemOut(title=i.title, due_at=i.due_at, ends_at=i.ends_at, note=i.note)
+                for i in batch
+            ],
+        )
     others = [m.name for m in member.family.members if m.id != member.id]
     draft = extractor.extract(payload.message, datetime.now(), member.name, others)
     assignee, why = fs.assignee_for(member.family, member, draft)
@@ -468,6 +492,45 @@ def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
         clarifying_question=draft.clarifying_question,
         unclear=draft.due_at is None or assignee is None or bool(draft.clarifying_question),
     )
+
+
+@router.post("/tasks/batch", response_model=list[TaskOut], status_code=201, tags=["tasks"])
+def create_batch(
+    payload: BatchCreateRequest, member: CurrentMember, db: DbSession, background: BackgroundTasks
+) -> list[TaskRow]:
+    """Несколько дел из одного сообщения: каждое — отдельная задача, уведомление одно."""
+    _check_member(member, payload.assignee_id)
+    assignee = next((m for m in member.family.members if m.id == payload.assignee_id), None)
+    created = []
+    for item in payload.tasks:
+        task = TaskRow(
+            family_id=member.family_id,
+            created_by_id=member.id,
+            title=item.title.strip(),
+            source=payload.source,
+            source_text=payload.source_text,
+            due_at=item.due_at,
+            ends_at=_valid_end(item.due_at, item.ends_at) if item.ends_at else None,
+            note=(item.note or "").strip() or None,
+        )
+        if assignee is not None:
+            fs.assign(task, assignee, member, None)
+        else:
+            who, why = fs.default_assignee(member.family, member, False)
+            fs.assign(task, who, member, why)
+        db.add(task)
+        created.append(task)
+    db.flush()
+    fs.track(db, member, "task_dispatched", source=payload.source, batch=len(created))
+    db.commit()
+    target = created[0].assignee_id
+    if target and target != member.id and all(t.assignee_id == target for t in created):
+        background.add_task(
+            notifications.deliver,
+            target,
+            notifications.batch_message(member, [t.title for t in created]),
+        )
+    return created
 
 
 @router.post("/tasks", response_model=TaskOut, status_code=201, tags=["tasks"])
