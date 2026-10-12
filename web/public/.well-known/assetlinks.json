@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "ru.semeinidispetcher.app",
+    "sha256_cert_fingerprints": ["FB:3E:C1:1F:6B:B4:8F:C4:56:35:7A:F7:E7:BE:F7:C0:A0:9C:7E:BE:01:8B:AB:E8:85:56:E4:36:0D:39:FF:C0"]
+  }
+}]
