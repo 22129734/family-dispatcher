@@ -206,6 +206,7 @@ class TaskOut(BaseModel):
     remembered_at: datetime | None = None
     feedback: str | None = None
     note: str | None = None
+    note_repeat: bool = True
     feedback_at: datetime | None = None
     thanked_at: datetime | None = None
     created_at: datetime
@@ -261,6 +262,7 @@ class CreateTaskRequest(BaseModel):
     source: Literal["text", "voice", "manual", "copy"] = "manual"
     source_text: str | None = Field(default=None, max_length=1000)
     note: str | None = Field(default=None, max_length=2000)
+    note_repeat: bool = True
     # True — не слать уведомление сразу: сначала прикрепят файлы, потом POST /tasks/{id}/notify
     defer_notify: bool = False
 
@@ -293,6 +295,8 @@ class UpdateTaskRequest(BaseModel):
     assignee_id: str | None = None
     recurrence: Recurrence | None = None
     note: str | None = Field(default=None, max_length=2000)
+    # Заметка для всех повторов или только для этого раза
+    note_repeat: bool | None = None
     participants: list[str] | None = Field(default=None, max_length=10)
 
 

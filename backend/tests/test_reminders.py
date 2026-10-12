@@ -783,3 +783,46 @@ def test_referral_sms_three_per_day(client: TestClient, family: dict[str, str]) 
         "/api/v1/referrals/sms", json={"phone": "79990002001"}, headers=auth(family["dad"])
     )
     assert known.status_code == 409  # у мамы уже есть аккаунт
+
+
+def test_note_only_for_this_repeat_unless_for_all(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    due = (datetime.now() + timedelta(days=1)).replace(microsecond=0).isoformat()
+    task = client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Полить цветы",
+            "recurrence": "weekly",
+            "due_at": due,
+            "assignee_id": family["dad_id"],
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    # Заметка только к этому разу
+    client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={"note": "кактус не поливать", "note_repeat": False},
+        headers=auth(family["mom"]),
+    )
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["dad"]))
+    nxt = next(
+        t
+        for t in client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+        if t["title"] == "Полить цветы" and t["status"] != "done"
+    )
+    assert nxt["note"] is None
+
+    # Для всех повторов — переходит дальше
+    client.patch(
+        f"/api/v1/tasks/{nxt['id']}",
+        json={"note": "лейка на балконе", "note_repeat": True},
+        headers=auth(family["mom"]),
+    )
+    client.post(f"/api/v1/tasks/{nxt['id']}/done", headers=auth(family["dad"]))
+    third = next(
+        t
+        for t in client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+        if t["title"] == "Полить цветы" and t["status"] != "done"
+    )
+    assert (third["note"], third["note_repeat"]) == ("лейка на балконе", True)

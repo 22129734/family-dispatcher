@@ -361,7 +361,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     undo: (id) => undoDone(id),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
     rename: (id, title) => run(async () => replace(await api.updateTask(id, { title }))),
-    note: (id, note) => run(async () => replace(await api.updateTask(id, { note }))),
+    note: (id, note, repeat) =>
+      run(async () => replace(await api.updateTask(id, repeat === undefined ? { note } : { note, note_repeat: repeat }))),
     attach: async (id, file) => {
       try {
         replace(await api.attach(id, file));

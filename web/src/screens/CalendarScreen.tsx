@@ -275,7 +275,7 @@ export function CalendarScreen({
                 onReopen={() => actions.reopen(entry.task.id)}
                 onReject={(comment) => actions.reject(entry.task.id, comment)}
                 onRename={(value) => actions.rename(entry.task.id, value)}
-                onNote={(note) => actions.note(entry.task.id, note)}
+                onNote={(note, repeat) => actions.note(entry.task.id, note, repeat)}
                 onAttach={(file) => actions.attach(entry.task.id, file)}
                 onDetach={(fileId) => actions.detach(entry.task.id, fileId)}
                 onAssign={(memberId) => actions.assign(entry.task.id, memberId)}

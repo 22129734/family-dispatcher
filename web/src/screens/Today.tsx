@@ -14,7 +14,8 @@ export interface TaskActions {
   reopen: (id: string) => void;
   reject: (id: string, comment: string | null) => void;
   rename: (id: string, title: string) => void;
-  note: (id: string, note: string | null) => void;
+  /** repeat — у повторяющегося дела: заметка для всех повторов (true) или только для этого раза */
+  note: (id: string, note: string | null, repeat?: boolean) => void;
   attach: (id: string, file: File) => Promise<void>;
   detach: (id: string, fileId: string) => void;
   assign: (id: string, memberId: string) => void;
@@ -97,7 +98,7 @@ export function Today({
       onReopen={() => actions.reopen(task.id)}
       onReject={(comment) => actions.reject(task.id, comment)}
       onRename={(title) => actions.rename(task.id, title)}
-      onNote={(note) => actions.note(task.id, note)}
+      onNote={(note, repeat) => actions.note(task.id, note, repeat)}
       onAttach={(file) => actions.attach(task.id, file)}
       onDetach={(fileId) => actions.detach(task.id, fileId)}
       onAssign={(memberId) => actions.assign(task.id, memberId)}

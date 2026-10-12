@@ -72,6 +72,7 @@ export interface NewTask {
   source?: "text" | "voice" | "manual" | "copy";
   source_text?: string | null;
   note?: string | null;
+  note_repeat?: boolean;
   ends_at?: string | null;
   participants?: string[];
   defer_notify?: boolean;
@@ -181,6 +182,8 @@ export interface Task {
   ends_at: string | null;
   /** Заметка: кабинет, адрес, что взять — подробности, которые не влезают в название */
   note: string | null;
+  /** У повторяющегося дела: заметка для всех повторов или только для этого раза */
+  note_repeat: boolean;
   files: TaskFile[];
   created_at: string;
   accepted_at: string | null;
@@ -296,7 +299,7 @@ export const api = {
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
-  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "note" | "participants">>) =>
+  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "note" | "note_repeat" | "participants">>) =>
     patch<Task>(`/tasks/${id}`, changes),
   setItems: (id: string, items: TaskItem[]) => request<Task>(`/tasks/${id}/items`, { method: "PUT", body: JSON.stringify({ items }) }),
   accept: (id: string) => post<Task>(`/tasks/${id}/accept`),

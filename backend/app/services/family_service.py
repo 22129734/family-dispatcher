@@ -392,7 +392,9 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             location=task.location,
             # Тот же список покупок — снова не отмеченный
             items=[{"text": item["text"], "done": False} for item in task.items or []],
-            note=task.note,
+            # Заметка «только для этого раза» в следующий повтор не переходит
+            note=task.note if task.note_repeat else None,
+            note_repeat=task.note_repeat,
             participants=list(task.participants or []),
         )
         assign(

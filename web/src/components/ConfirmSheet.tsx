@@ -88,6 +88,8 @@ export function ConfirmSheet({
   const [items, setItems] = useState<string[]>(draft.items);
   const [newItem, setNewItem] = useState("");
   const [note, setNote] = useState(draft.note ?? "");
+  // Заметка из фразы о повторяющемся деле («каждую среду, кабинет 214») — обычно для всех повторов
+  const [noteAll, setNoteAll] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
   // Сразу видно главное: что, кому, когда. Остальное раскрыто, только если разбор его уже заполнил
   const [more, setMore] = useState(
@@ -123,6 +125,7 @@ export function ConfirmSheet({
         priority: urgent ? "high" : "normal",
         items,
         note: note.trim() || null,
+        note_repeat: noteAll,
         requires_car: draft.requires_car,
         source,
         source_text: text,
@@ -325,6 +328,17 @@ export function ConfirmSheet({
             placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
             className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
           />
+          {repeat !== "none" && note.trim() && (
+            <label className="mt-2 flex items-center gap-2.5 text-sm">
+              <input
+                type="checkbox"
+                checked={noteAll}
+                onChange={(e) => setNoteAll(e.target.checked)}
+                className="h-5 w-5 accent-[var(--color-accent)]"
+              />
+              Заметка для всех повторов
+            </label>
+          )}
 
           <Label>Список с галочками — покупки, вопросы врачу, что взять</Label>
           <div className="flex flex-wrap gap-1.5">

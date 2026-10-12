@@ -492,6 +492,7 @@ def create_task(
             {"text": text.strip()[:120], "done": False} for text in payload.items if text.strip()
         ],
         note=(payload.note or "").strip() or None,
+        note_repeat=payload.note_repeat,
     )
     if payload.assignee_id:
         assignee = next(m for m in member.family.members if m.id == payload.assignee_id)
@@ -569,6 +570,8 @@ def update_task(
             value = str(value or "none")
         if field == "note":
             value = (value or "").strip() or None
+        if field == "note_repeat" and value is None:
+            continue
         setattr(task, field, value)
     if "due_at" in changes or "assignee_id" in payload.model_dump(exclude_unset=True):
         # Новый срок или исполнитель — напоминание отправится заново

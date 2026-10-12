@@ -15,7 +15,7 @@ interface Props {
   onReopen: () => void;
   onReject: (comment: string | null) => void;
   onRename: (title: string) => void;
-  onNote: (note: string | null) => void;
+  onNote: (note: string | null, repeat?: boolean) => void;
   onAttach: (file: File) => Promise<void>;
   onDetach: (fileId: string) => void;
   onAssign: (memberId: string) => void;
@@ -77,12 +77,18 @@ export function TaskCard(props: Props) {
   // С сервера подтягиваем, только если там другое (не затираем пробел, который сейчас печатают)
   useEffect(() => setNote((local) => (local.trim() === (task.note ?? "") ? local : (task.note ?? ""))), [task.note]);
   // Сохраняем сами через секунду тишины — не полагаемся на уход из поля
+  // Повторяющееся дело: новая заметка по умолчанию — только для этого раза
+  const repeating = task.recurrence !== "none";
+  const [noteAll, setNoteAll] = useState(!!task.note && task.note_repeat);
   useEffect(() => {
     if (note.trim() === (task.note ?? "")) return;
-    const timer = window.setTimeout(() => props.onNote(note.trim() || null), 1000);
+    const timer = window.setTimeout(
+      () => props.onNote(note.trim() || null, repeating ? noteAll : undefined),
+      1000,
+    );
     return () => window.clearTimeout(timer);
     // props.onNote меняется на каждый рендер — следим только за текстом
-  }, [note, task.note]);
+  }, [note, task.note, noteAll]);
   const [firstItem, setFirstItem] = useState("");
   const [showEnd, setShowEnd] = useState(false);
   const withNames = task.participants
@@ -446,6 +452,28 @@ export function TaskCard(props: Props) {
                   className="w-full resize-y rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
                 />
               </label>
+              {repeating && (
+                <label className="-mt-1 flex items-start gap-2.5 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={noteAll}
+                    onChange={(e) => {
+                      setNoteAll(e.target.checked);
+                      // Заметка уже сохранена — сразу сохраняем и выбор
+                      if (note.trim() && note.trim() === (task.note ?? "")) {
+                        props.onNote(note.trim(), e.target.checked);
+                      }
+                    }}
+                    className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--color-accent)]"
+                  />
+                  <span>
+                    Для всех повторов
+                    <span className="block text-xs text-ink-3">
+                      {noteAll ? "Заметка будет в каждом следующем повторе" : "Только для этого раза — в следующий повтор не перейдёт"}
+                    </span>
+                  </span>
+                </label>
+              )}
 
               {task.items.length === 0 && (
                 <form

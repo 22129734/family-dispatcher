@@ -4,7 +4,7 @@ import secrets
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, false
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -160,6 +160,8 @@ class TaskRow(Base):
     decline_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
     # Список покупок и других пунктов: [{"text": "молоко", "done": false}, ...]
     items: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    # Заметка повторяющегося дела переходит в следующие повторы (иначе — только для этого раза)
+    note_repeat: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     # Кто ещё участвует, кроме исполнителя: id членов семьи. Отвечает и отмечает «Сделано»
     # по-прежнему один исполнитель — остальные видят, что заняты в это время
     participants: Mapped[list[str]] = mapped_column(JSON, default=list)
