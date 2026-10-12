@@ -384,7 +384,17 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
     end: (id, iso) => run(async () => replace(await api.updateTask(id, { ends_at: iso }))),
     participants: (id, ids) => run(async () => replace(await api.updateTask(id, { participants: ids }))),
-    repeat: (id, recurrence) => run(async () => replace(await api.updateTask(id, { recurrence }))),
+    repeat: (id, value) =>
+      run(async () =>
+        replace(
+          await api.updateTask(id, {
+            recurrence: value.recurrence,
+            repeat_days: value.days,
+            repeat_until: value.forever ? null : value.until,
+            repeat_forever: value.forever,
+          }),
+        ),
+      ),
     items: (id, items) => {
       // Отметка в списке — сразу на экране, сервер догонит
       setTasks((list) => list.map((t) => (t.id === id ? { ...t, items } : t)));
@@ -443,6 +453,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         due_at: null,
         ends_at: null,
         recurrence: "none",
+        repeat_days: [],
+        repeat_until: null,
         priority: task.priority,
         items: task.items.map((item) => item.text),
         requires_car: task.requires_car,
@@ -505,6 +517,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             assignee_id: draft.assignee_id,
             participants: draft.participant_ids,
             recurrence: draft.recurrence,
+            repeat_days: draft.repeat_days,
+            repeat_until: draft.repeat_until,
             priority: draft.priority,
             items: draft.items,
             note: draft.note,

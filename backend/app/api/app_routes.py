@@ -47,7 +47,7 @@ from app.schemas.api import (
     WeekOut,
 )
 from app.services import family_service as fs
-from app.services import files, multi_tasks, notifications, phone_auth, sms
+from app.services import files, multi_tasks, notifications, phone_auth, repeat, sms
 from app.services.family_service import TaskActionError
 from app.services.task_extractor import TaskExtractor
 
@@ -476,6 +476,9 @@ def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
         due_at=draft.due_at,
         ends_at=draft.ends_at,
         recurrence=draft.recurrence.value,
+        repeat_days=draft.repeat_days,
+        repeat_until=draft.repeat_until
+        or repeat.smart_until(draft.recurrence.value, draft.due_at or datetime.now()),
         priority=draft.priority.value,
         items=draft.items,
         requires_car=draft.requires_car,
@@ -557,6 +560,13 @@ def create_task(
         note=(payload.note or "").strip() or None,
         note_repeat=payload.note_repeat,
     )
+    fs.set_repeat(
+        task,
+        payload.recurrence.value,
+        payload.repeat_days,
+        payload.repeat_until,
+        payload.repeat_forever,
+    )
     if payload.assignee_id:
         assignee = next(m for m in member.family.members if m.id == payload.assignee_id)
         fs.assign(task, assignee, member, None)
@@ -626,6 +636,22 @@ def update_task(
     elif task.participants and task.assignee_id in task.participants:
         # Новый исполнитель был участником — теперь он исполнитель
         task.participants = [i for i in task.participants if i != task.assignee_id]
+    repeat_fields = {"recurrence", "repeat_days", "repeat_until", "repeat_forever"}
+    if repeat_fields & changes.keys():
+        recurrence = (
+            str(changes["recurrence"] or "none") if "recurrence" in changes else task.recurrence
+        )
+        newly = recurrence != task.recurrence
+        fs.set_repeat(
+            task,
+            recurrence,
+            changes.get("repeat_days", task.repeat_days),
+            changes.get("repeat_until", None if newly else task.repeat_until),
+            bool(changes.get("repeat_forever"))
+            or (not newly and "repeat_until" not in changes and task.repeat_until is None),
+        )
+        for name in repeat_fields:
+            changes.pop(name, None)
     for field, value in changes.items():
         if field == "title" and value is None:
             continue

@@ -2,9 +2,9 @@
 
 import secrets
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, false, true
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -147,6 +147,9 @@ class TaskRow(Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     priority: Mapped[str] = mapped_column(String(8), default="normal")
     recurrence: Mapped[str] = mapped_column(String(8), default="none")
+    # «По дням недели»: какие дни (0 — понедельник); до какого числа повторять (пусто — всегда)
+    repeat_days: Mapped[list[int]] = mapped_column(JSON, default=list)
+    repeat_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     requires_car: Mapped[bool] = mapped_column(Boolean, default=False)
     location: Mapped[str | None] = mapped_column(String(200), nullable=True)
     clarifying_question: Mapped[str | None] = mapped_column(String(300), nullable=True)

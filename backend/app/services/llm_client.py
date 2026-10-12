@@ -42,8 +42,23 @@ EXTRACT_TASK_FUNCTION = {
             "priority": {"type": "string", "enum": ["low", "normal", "high"]},
             "recurrence": {
                 "type": "string",
-                "enum": ["none", "daily", "weekdays", "weekly", "monthly"],
-                "description": "Повтор: weekdays — по будням (пн–пт)",
+                "enum": ["none", "daily", "weekdays", "weekends", "weekly", "days", "monthly"],
+                "description": (
+                    "Повтор: weekdays — по будням (пн–пт), weekends — по выходным, "
+                    "days — по нескольким дням недели (дни — в repeat_days)"
+                ),
+            },
+            "repeat_days": {
+                "type": "array",
+                "items": {"type": "string", "enum": ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]},
+                "description": 'Для recurrence=days: «по вторникам и четвергам» → ["вт", "чт"]',
+            },
+            "repeat_until": {
+                "type": "string",
+                "description": (
+                    "До какого числа повторять, только если сказано: «до конца ноября», "
+                    "«до 30 ноября» — дата ISO YYYY-MM-DD"
+                ),
             },
             "requires_car": {"type": "boolean"},
             "location": {"type": "string"},

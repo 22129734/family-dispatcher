@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -16,6 +16,8 @@ class Recurrence(StrEnum):
     WEEKDAYS = "weekdays"  # по будням
     WEEKLY = "weekly"
     MONTHLY = "monthly"
+    WEEKENDS = "weekends"  # по выходным
+    DAYS = "days"  # по выбранным дням недели (repeat_days)
 
 
 class TaskDraft(BaseModel):
@@ -27,6 +29,9 @@ class TaskDraft(BaseModel):
     duration_minutes: int = Field(default=30, ge=5, le=600)
     # Окончание, если его назвали явно: «с 9 до 10», «на час»
     ends_at: datetime | None = None
+    # «по вторникам и четвергам» — дни недели (0 — понедельник); «до конца ноября» — срок повтора
+    repeat_days: list[int] = Field(default_factory=list)
+    repeat_until: date | None = None
     priority: Priority = Priority.NORMAL
     recurrence: Recurrence = Recurrence.NONE
     requires_car: bool = False

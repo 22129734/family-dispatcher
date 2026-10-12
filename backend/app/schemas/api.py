@@ -1,6 +1,6 @@
 """Схемы запросов и ответов публичного API приложения."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
@@ -189,6 +189,8 @@ class TaskOut(BaseModel):
     due_at: datetime | None
     duration_minutes: int
     ends_at: datetime | None = None
+    repeat_days: list[int] = []
+    repeat_until: date | None = None
     priority: str
     recurrence: str
     requires_car: bool
@@ -256,6 +258,10 @@ class CreateTaskRequest(BaseModel):
     requires_car: bool = False
     # Поля из шторки проверки (после /tasks/parse)
     recurrence: Recurrence = Recurrence.NONE
+    repeat_days: list[int] = Field(default_factory=list, max_length=7)
+    # Пусто — подберём срок сами; repeat_forever — повторять всегда
+    repeat_until: date | None = None
+    repeat_forever: bool = False
     priority: Literal["low", "normal", "high"] = "normal"
     items: list[str] = Field(default_factory=list, max_length=60)
     participants: list[str] = Field(default_factory=list, max_length=10)
@@ -275,6 +281,8 @@ class DraftOut(BaseModel):
     due_at: datetime | None
     ends_at: datetime | None = None
     recurrence: str
+    repeat_days: list[int] = []
+    repeat_until: date | None = None
     priority: str
     items: list[str]
     requires_car: bool
@@ -320,6 +328,9 @@ class UpdateTaskRequest(BaseModel):
     ends_at: datetime | None = None
     assignee_id: str | None = None
     recurrence: Recurrence | None = None
+    repeat_days: list[int] | None = Field(default=None, max_length=7)
+    repeat_until: date | None = None
+    repeat_forever: bool | None = None
     note: str | None = Field(default=None, max_length=2000)
     # Заметка для всех повторов или только для этого раза
     note_repeat: bool | None = None

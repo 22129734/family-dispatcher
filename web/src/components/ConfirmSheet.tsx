@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { api, type Draft, type Member, type Recurrence, type Task } from "../api";
-import { addToTime, endIso } from "../format";
+import { api, type Draft, type Member, type Task } from "../api";
+import { addToTime, describeRepeat, endIso, formatSpan } from "../format";
+import { RepeatPicker, type RepeatValue } from "./RepeatPicker";
 import { AttachButton } from "./TaskFiles";
 import { Avatar } from "./ui";
 
@@ -12,24 +13,21 @@ const addDays = (n: number) => {
   d.setDate(d.getDate() + n);
   return isoDate(d);
 };
+const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
-const DAYS: [string, () => string][] = [
-  ["Сегодня", () => addDays(0)],
-  ["Завтра", () => addDays(1)],
-  ["Послезавтра", () => addDays(2)],
-];
+/** Ближайшие дни кнопками: «Сегодня», «Завтра», дальше — «ср 14» */
+const DAYS: [string, string][] = Array.from({ length: 6 }, (_, i) => {
+  const d = new Date();
+  d.setDate(d.getDate() + i);
+  return [i === 0 ? "Сегодня" : i === 1 ? "Завтра" : `${WEEKDAY[d.getDay()]} ${d.getDate()}`, addDays(i)];
+});
 const TIMES: [string, string][] = [
   ["Утром", "09:00"],
   ["Днём", "13:00"],
   ["Вечером", "19:00"],
 ];
-const REPEATS: [Recurrence, string][] = [
-  ["none", "Нет"],
-  ["daily", "Каждый день"],
-  ["weekdays", "По будням"],
-  ["weekly", "Каждую неделю"],
-  ["monthly", "Каждый месяц"],
-];
+
+type Panel = "who" | "when" | "repeat" | "note" | "more" | null;
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
@@ -45,9 +43,28 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
+/** Строка-сводка: параметр и его значение; нажали — открылся выбор. */
+function Row({ label, value, muted = false, onClick }: { label: string; value: string; muted?: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-12 w-full items-center gap-3 border-b border-line py-2.5 text-left last:border-b-0 active:opacity-70"
+    >
+      <span className="w-20 shrink-0 text-sm text-ink-2">{label}</span>
+      <span className={`min-w-0 flex-1 truncate text-right text-[15px] font-semibold ${muted ? "text-ink-3" : ""}`}>
+        {value}
+      </span>
+      <span className="shrink-0 text-ink-3" aria-hidden>
+        ›
+      </span>
+    </button>
+  );
+}
+
 /**
- * «Проверьте просьбу»: разобранная фраза со всеми полями — поправить и отправить.
- * Уведомление исполнителю уходит после отправки, вместе с прикреплёнными файлами.
+ * «Проверьте просьбу»: разобранная фраза строками-сводкой — всё видно сразу,
+ * каждое значение меняется нажатием на строку.
  */
 export function ConfirmSheet({
   draft,
@@ -73,6 +90,7 @@ export function ConfirmSheet({
   onCancel: () => void;
   onSent: (task: Task) => void;
 }) {
+  const [panel, setPanel] = useState<Panel>(null);
   const [title, setTitle] = useState(draft.title);
   const [assignee, setAssignee] = useState<string | null>(draft.assignee_id);
   const [participants, setParticipants] = useState<string[]>(draft.participant_ids ?? []);
@@ -83,7 +101,12 @@ export function ConfirmSheet({
     draft.ends_at ? draft.ends_at.slice(11, 16) : durationMin ? addToTime(initialTime || "18:00", durationMin) : "",
   );
   const [showEnd, setShowEnd] = useState(!!draft.ends_at || !!durationMin);
-  const [repeat, setRepeat] = useState<Recurrence>(draft.recurrence);
+  const [repeat, setRepeat] = useState<RepeatValue>({
+    recurrence: draft.recurrence,
+    days: draft.repeat_days ?? [],
+    until: draft.repeat_until ?? null,
+    forever: false,
+  });
   const [urgent, setUrgent] = useState(draft.priority === "high");
   const [items, setItems] = useState<string[]>(draft.items);
   const [newItem, setNewItem] = useState("");
@@ -91,10 +114,6 @@ export function ConfirmSheet({
   // Заметка из фразы о повторяющемся деле («каждую среду, кабинет 214») — обычно для всех повторов
   const [noteAll, setNoteAll] = useState(true);
   const [files, setFiles] = useState<File[]>([]);
-  // Сразу видно главное: что, кому, когда. Остальное раскрыто, только если разбор его уже заполнил
-  const [more, setMore] = useState(
-    draft.recurrence !== "none" || draft.priority === "high" || !!draft.note || draft.items.length > 0,
-  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,6 +128,16 @@ export function ConfirmSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startTime]);
 
+  const nameOf = (id: string) => (id === meId ? "я" : (members.find((m) => m.id === id)?.name ?? ""));
+  const whoText = assignee
+    ? [nameOf(assignee), ...participants.filter((id) => id !== assignee).map(nameOf)].join(", ")
+    : "выберите";
+  const extras = [
+    urgent && "срочно",
+    items.length > 0 && `список: ${items.length}`,
+    files.length > 0 && `файлы: ${files.length}`,
+  ].filter(Boolean) as string[];
+
   async function send() {
     if (!title.trim()) return setError("Напишите, что нужно сделать");
     setBusy(true);
@@ -121,7 +150,10 @@ export function ConfirmSheet({
         ends_at: endsAt,
         assignee_id: assignee,
         participants: participants.filter((id) => id !== assignee),
-        recurrence: repeat,
+        recurrence: repeat.recurrence,
+        repeat_days: repeat.days,
+        repeat_until: repeat.forever ? null : repeat.until,
+        repeat_forever: repeat.forever,
         priority: urgent ? "high" : "normal",
         items,
         note: note.trim() || null,
@@ -142,6 +174,14 @@ export function ConfirmSheet({
     }
   }
 
+  const titles: Record<Exclude<Panel, null>, string> = {
+    who: "Кому",
+    when: "Когда",
+    repeat: "Повтор",
+    note: "Заметка",
+    more: "Ещё",
+  };
+
   return createPortal(
     <div className="fixed inset-0 z-40 flex flex-col justify-end bg-black/35" onClick={onCancel}>
       <div
@@ -150,270 +190,309 @@ export function ConfirmSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-ink-3/40" />
-        <p className="font-display text-lg font-bold">{heading}</p>
-        {draft.clarifying_question && !draft.due_at && (
-          <p className="mt-1 text-sm font-medium text-warn">{draft.clarifying_question}</p>
-        )}
 
-        <Label>Что сделать</Label>
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          maxLength={300}
-          className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base outline-none focus:border-accent"
-        />
-
-        <Label>Кому</Label>
-        <div className="flex flex-wrap gap-2">
-          {doers.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => setAssignee(m.id)}
-              className={`flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-sm font-medium ${
-                assignee === m.id ? "border-accent bg-accent-soft" : "border-line bg-surface-2"
-              }`}
-            >
-              <Avatar member={m} members={members} size={26} />
-              {m.id === meId ? "Я" : m.name}
-            </button>
-          ))}
-        </div>
-
-        {canAddParticipants && (
+        {panel === null ? (
           <>
-            <Label>Кто ещё участвует</Label>
-            <div className="flex flex-wrap gap-2">
-              {members
-                .filter((m) => m.id !== assignee)
-                .map((m) => {
-                  const on = participants.includes(m.id);
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() =>
-                        setParticipants(on ? participants.filter((id) => id !== m.id) : [...participants, m.id])
-                      }
-                      className={`flex h-9 items-center gap-1.5 rounded-full border pr-3 pl-1 text-sm font-medium ${
-                        on ? "border-accent bg-accent-soft" : "border-line bg-surface-2"
-                      }`}
-                    >
-                      <Avatar member={m} members={members} size={26} />
-                      {m.id === meId ? "Я" : m.name}
-                      {on && " ✓"}
-                    </button>
-                  );
-                })}
-            </div>
-          </>
-        )}
-
-        <Label>День</Label>
-        <div className="flex flex-wrap gap-2">
-          {DAYS.map(([label, value]) => (
-            <Chip key={label} on={date === value()} onClick={() => setDate(value())}>
-              {label}
-            </Chip>
-          ))}
-          <label className={`flex h-9 items-center rounded-full border px-3 text-sm font-medium ${
-            date && !DAYS.some(([, v]) => v() === date) ? "border-transparent bg-accent text-accent-ink" : "border-line bg-surface-2"
-          }`}>
+            <p className="font-display text-lg font-bold">{heading}</p>
+            {draft.clarifying_question && !draft.due_at && (
+              <p className="mt-1 text-sm font-medium text-warn">{draft.clarifying_question}</p>
+            )}
             <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              aria-label="Выбрать дату"
-              className="w-[118px] bg-transparent text-sm outline-none"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={300}
+              aria-label="Что сделать"
+              className="mt-3 h-12 w-full rounded-xl border border-line bg-bg px-3 text-base font-semibold outline-none focus:border-accent"
             />
-          </label>
-          <Chip on={!date} onClick={() => setDate("")}>
-            Без срока
-          </Chip>
-        </div>
-
-        {date && (
-          <>
-            <Label>Время</Label>
-            <div className="flex flex-wrap gap-2">
-              {TIMES.map(([label, value]) => (
-                <Chip key={label} on={time === value} onClick={() => setTime(value)}>
-                  {label}
-                </Chip>
-              ))}
-              <label className={`flex h-9 items-center rounded-full border px-3 text-sm font-medium ${
-                time && !TIMES.some(([, v]) => v === time) ? "border-transparent bg-accent text-accent-ink" : "border-line bg-surface-2"
-              }`}>
-                <input
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  aria-label="Точное время"
-                  className="w-[74px] bg-transparent text-sm outline-none"
-                />
-              </label>
+            <div className="mt-2">
+              <Row label="Кому" value={whoText} muted={!assignee} onClick={() => setPanel("who")} />
+              <Row
+                label="Когда"
+                value={dueAt ? formatSpan(dueAt, endsAt) : "без срока"}
+                muted={!dueAt}
+                onClick={() => setPanel("when")}
+              />
+              <Row
+                label="Повтор"
+                value={repeat.recurrence === "none" ? "нет" : describeRepeat(repeat.recurrence, repeat.days, repeat.forever ? null : repeat.until)}
+                muted={repeat.recurrence === "none"}
+                onClick={() => setPanel("repeat")}
+              />
+              <Row label="Заметка" value={note.trim() || "добавить"} muted={!note.trim()} onClick={() => setPanel("note")} />
+              <Row
+                label="Ещё"
+                value={extras.length ? extras.join(", ") : "срочно, список, файлы"}
+                muted={!extras.length}
+                onClick={() => setPanel("more")}
+              />
             </div>
 
-            {showEnd ? (
-              <>
-                <Label>До скольки</Label>
-                <div className="flex flex-wrap gap-2">
-                  {([[30, "30 мин"], [60, "1 час"], [120, "2 часа"]] as const).map(([minutes, label]) => (
-                    <Chip key={minutes} on={end === addToTime(startTime, minutes)} onClick={() => setEnd(addToTime(startTime, minutes))}>
-                      {label}
-                    </Chip>
-                  ))}
-                  <label className={`flex h-9 items-center rounded-full border px-3 text-sm font-medium ${
-                    end && ![30, 60, 120].some((m) => addToTime(startTime, m) === end)
-                      ? "border-transparent bg-accent text-accent-ink"
-                      : "border-line bg-surface-2"
-                  }`}>
-                    <input
-                      type="time"
-                      value={end}
-                      onChange={(e) => setEnd(e.target.value)}
-                      aria-label="Время окончания"
-                      className="w-[74px] bg-transparent text-sm outline-none"
-                    />
-                  </label>
-                  <Chip
-                    on={false}
-                    onClick={() => {
-                      setShowEnd(false);
-                      setEnd("");
-                    }}
-                  >
-                    Без окончания
-                  </Chip>
-                </div>
-              </>
-            ) : (
+            {error && <p className="mt-3 text-sm text-warn">{error}</p>}
+            <div className="mt-4 flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setShowEnd(true);
-                  setEnd(addToTime(startTime, 60));
-                }}
-                className="mt-3 text-sm font-medium text-accent"
+                onClick={() => void send()}
+                disabled={busy}
+                className="h-12 rounded-2xl bg-accent font-semibold text-accent-ink active:opacity-80 disabled:opacity-50"
               >
-                + до скольки
+                {busy ? "Отправляем…" : !assignee ? "Сохранить" : assignee === meId ? "Записать себе" : `Отправить: ${target?.name ?? ""}`}
               </button>
-            )}
-          </>
-        )}
-
-        {more ? (
-          <>
-          <Label>Повтор</Label>
-          <div className="flex flex-wrap gap-2">
-            {REPEATS.map(([value, label]) => (
-              <Chip key={value} on={repeat === value} onClick={() => setRepeat(value)}>
-                {label}
-              </Chip>
-            ))}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Chip on={urgent} onClick={() => setUrgent(!urgent)}>
-              {urgent ? "✓ Срочно" : "Срочно"}
-            </Chip>
-          </div>
-
-          <Label>Заметка</Label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            maxLength={2000}
-            rows={2}
-            placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
-            className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
-          />
-          {repeat !== "none" && note.trim() && (
-            <label className="mt-2 flex items-center gap-2.5 text-sm">
-              <input
-                type="checkbox"
-                checked={noteAll}
-                onChange={(e) => setNoteAll(e.target.checked)}
-                className="h-5 w-5 accent-[var(--color-accent)]"
-              />
-              Заметка для всех повторов
-            </label>
-          )}
-
-          <Label>Список с галочками — покупки, вопросы врачу, что взять</Label>
-          <div className="flex flex-wrap gap-1.5">
-            {items.map((item, i) => (
-              <span key={`${item}-${i}`} className="flex h-8 items-center gap-1 rounded-full bg-surface-2 pr-1 pl-3 text-sm">
-                {item}
-                <button
-                  type="button"
-                  onClick={() => setItems(items.filter((_, j) => j !== i))}
-                  aria-label={`Убрать ${item}`}
-                  className="flex h-6 w-6 items-center justify-center rounded-full text-ink-3"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (newItem.trim()) setItems([...items, newItem.trim()]);
-                setNewItem("");
-              }}
-            >
-              <input
-                value={newItem}
-                onChange={(e) => setNewItem(e.target.value)}
-                placeholder="+ пункт"
-                maxLength={120}
-                className="h-8 w-28 rounded-full border border-dashed border-line bg-transparent px-3 text-sm outline-none focus:border-accent"
-              />
-            </form>
-          </div>
-
-          <Label>Файлы — код получения, фото, PDF</Label>
-          <div className="flex flex-wrap items-center gap-2">
-            {files.map((file, i) => (
-              <span key={`${file.name}-${i}`} className="flex h-9 max-w-44 items-center gap-1 rounded-xl bg-surface-2 pr-1 pl-3 text-sm">
-                <span className="truncate">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setFiles(files.filter((_, j) => j !== i))}
-                  aria-label="Убрать файл"
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-3"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-            {files.length < 5 && (
-              <AttachButton onFile={async (file) => setFiles((list) => [...list, file])} label="Прикрепить" />
-            )}
-          </div>
-
+              <button type="button" onClick={onCancel} className="h-10 text-sm font-medium text-ink-2">
+                Отмена
+              </button>
+            </div>
           </>
         ) : (
-          <button type="button" onClick={() => setMore(true)} className="mt-4 text-sm font-medium text-accent">
-            Ещё параметры: повтор, срочно, заметка, список, файлы
-          </button>
+          <>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPanel(null)}
+                className="-ml-1 h-9 px-1 text-sm font-semibold text-accent active:opacity-60"
+              >
+                ‹ Назад
+              </button>
+            </div>
+            <p className="font-display mt-1 text-lg font-bold">{titles[panel]}</p>
+            <div className="mt-3">
+              {panel === "who" && (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {doers.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setAssignee(m.id)}
+                        className={`flex h-10 items-center gap-1.5 rounded-full border pr-3 pl-1 text-sm font-medium ${
+                          assignee === m.id ? "border-accent bg-accent-soft" : "border-line bg-surface-2"
+                        }`}
+                      >
+                        <Avatar member={m} members={members} size={28} />
+                        {m.id === meId ? "Я" : m.name}
+                      </button>
+                    ))}
+                  </div>
+                  {canAddParticipants && (
+                    <>
+                      <Label>Кто ещё участвует</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {members
+                          .filter((m) => m.id !== assignee)
+                          .map((m) => {
+                            const on = participants.includes(m.id);
+                            return (
+                              <button
+                                key={m.id}
+                                type="button"
+                                onClick={() =>
+                                  setParticipants(on ? participants.filter((id) => id !== m.id) : [...participants, m.id])
+                                }
+                                className={`flex h-10 items-center gap-1.5 rounded-full border pr-3 pl-1 text-sm font-medium ${
+                                  on ? "border-accent bg-accent-soft" : "border-line bg-surface-2"
+                                }`}
+                              >
+                                <Avatar member={m} members={members} size={28} />
+                                {m.id === meId ? "Я" : m.name}
+                                {on && " ✓"}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {panel === "when" && (
+                <>
+                  <Label>День</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS.map(([label, value]) => (
+                      <Chip key={value} on={date === value} onClick={() => setDate(value)}>
+                        {label}
+                      </Chip>
+                    ))}
+                    <label
+                      className={`flex h-9 items-center rounded-full border px-3 text-sm font-medium ${
+                        date && !DAYS.some(([, v]) => v === date) ? "border-transparent bg-accent text-accent-ink" : "border-line bg-surface-2"
+                      }`}
+                    >
+                      <input
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        aria-label="Выбрать дату"
+                        className="w-[118px] bg-transparent text-sm outline-none"
+                      />
+                    </label>
+                    <Chip on={!date} onClick={() => setDate("")}>
+                      Без срока
+                    </Chip>
+                  </div>
+                  {date && (
+                    <>
+                      <Label>Время</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {TIMES.map(([label, value]) => (
+                          <Chip key={label} on={time === value} onClick={() => setTime(value)}>
+                            {label}
+                          </Chip>
+                        ))}
+                        <label
+                          className={`flex h-9 items-center rounded-full border px-3 text-sm font-medium ${
+                            time && !TIMES.some(([, v]) => v === time) ? "border-transparent bg-accent text-accent-ink" : "border-line bg-surface-2"
+                          }`}
+                        >
+                          <input
+                            type="time"
+                            value={time}
+                            onChange={(e) => setTime(e.target.value)}
+                            aria-label="Точное время"
+                            className="w-[74px] bg-transparent text-sm outline-none"
+                          />
+                        </label>
+                      </div>
+                      <Label>До скольки</Label>
+                      <div className="flex flex-wrap gap-2">
+                        <Chip
+                          on={!showEnd}
+                          onClick={() => {
+                            setShowEnd(false);
+                            setEnd("");
+                          }}
+                        >
+                          Без окончания
+                        </Chip>
+                        {([[30, "30 мин"], [60, "1 час"], [120, "2 часа"]] as const).map(([minutes, label]) => (
+                          <Chip
+                            key={minutes}
+                            on={showEnd && end === addToTime(startTime, minutes)}
+                            onClick={() => {
+                              setShowEnd(true);
+                              setEnd(addToTime(startTime, minutes));
+                            }}
+                          >
+                            {label}
+                          </Chip>
+                        ))}
+                        <label
+                          className={`flex h-9 items-center rounded-full border px-3 text-sm font-medium ${
+                            showEnd && end && ![30, 60, 120].some((m) => addToTime(startTime, m) === end)
+                              ? "border-transparent bg-accent text-accent-ink"
+                              : "border-line bg-surface-2"
+                          }`}
+                        >
+                          <input
+                            type="time"
+                            value={showEnd ? end : ""}
+                            onChange={(e) => {
+                              setShowEnd(!!e.target.value);
+                              setEnd(e.target.value);
+                            }}
+                            aria-label="Время окончания"
+                            className="w-[74px] bg-transparent text-sm outline-none"
+                          />
+                        </label>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {panel === "repeat" && <RepeatPicker value={repeat} due={dueAt} onChange={setRepeat} />}
+
+              {panel === "note" && (
+                <>
+                  <textarea
+                    autoFocus
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    maxLength={2000}
+                    rows={4}
+                    placeholder="Кабинет, адрес, что взять с собой, номер заказа…"
+                    className="w-full resize-none rounded-xl border border-line bg-bg px-3 py-2 text-base outline-none focus:border-accent"
+                  />
+                  {repeat.recurrence !== "none" && note.trim() && (
+                    <label className="mt-2 flex items-center gap-2.5 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={noteAll}
+                        onChange={(e) => setNoteAll(e.target.checked)}
+                        className="h-5 w-5 accent-[var(--color-accent)]"
+                      />
+                      Заметка для всех повторов
+                    </label>
+                  )}
+                </>
+              )}
+
+              {panel === "more" && (
+                <>
+                  <Chip on={urgent} onClick={() => setUrgent(!urgent)}>
+                    {urgent ? "✓ Срочно" : "Срочно"}
+                  </Chip>
+                  <Label>Список с галочками — покупки, вопросы врачу, что взять</Label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {items.map((item, i) => (
+                      <span key={`${item}-${i}`} className="flex h-8 items-center gap-1 rounded-full bg-surface-2 pr-1 pl-3 text-sm">
+                        {item}
+                        <button
+                          type="button"
+                          onClick={() => setItems(items.filter((_, j) => j !== i))}
+                          aria-label={`Убрать ${item}`}
+                          className="flex h-6 w-6 items-center justify-center rounded-full text-ink-3"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        if (newItem.trim()) setItems([...items, newItem.trim()]);
+                        setNewItem("");
+                      }}
+                    >
+                      <input
+                        value={newItem}
+                        onChange={(e) => setNewItem(e.target.value)}
+                        placeholder="+ пункт"
+                        maxLength={120}
+                        className="h-8 w-28 rounded-full border border-dashed border-line bg-transparent px-3 text-sm outline-none focus:border-accent"
+                      />
+                    </form>
+                  </div>
+                  <Label>Файлы — код получения, фото, PDF</Label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {files.map((file, i) => (
+                      <span key={`${file.name}-${i}`} className="flex h-9 max-w-44 items-center gap-1 rounded-xl bg-surface-2 pr-1 pl-3 text-sm">
+                        <span className="truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setFiles(files.filter((_, j) => j !== i))}
+                          aria-label="Убрать файл"
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-3"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                    {files.length < 5 && (
+                      <AttachButton onFile={async (file) => setFiles((list) => [...list, file])} label="Прикрепить" />
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPanel(null)}
+              className="mt-5 h-12 w-full rounded-2xl bg-accent font-semibold text-accent-ink active:opacity-80"
+            >
+              Готово
+            </button>
+          </>
         )}
-
-        {error && <p className="mt-3 text-sm text-warn">{error}</p>}
-
-        <div className="mt-5 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={busy}
-            className="h-12 rounded-2xl bg-accent font-semibold text-accent-ink active:opacity-80 disabled:opacity-50"
-          >
-            {busy ? "Отправляем…" : !assignee ? "Сохранить" : assignee === meId ? "Записать себе" : `Отправить: ${target?.name ?? ""}`}
-          </button>
-          <button type="button" onClick={onCancel} className="h-10 text-sm font-medium text-ink-2">
-            Отмена
-          </button>
-        </div>
       </div>
     </div>,
     document.body,

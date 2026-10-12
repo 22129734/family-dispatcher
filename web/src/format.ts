@@ -106,9 +106,74 @@ export const RECURRENCE_LABEL: Record<Task["recurrence"], string | null> = {
   none: null,
   daily: "каждый день",
   weekdays: "по будням",
+  weekends: "по выходным",
   weekly: "каждую неделю",
+  days: "по дням недели",
   monthly: "каждый месяц",
 };
+
+export const WEEKDAY_SHORT = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
+/** День недели с понедельника: 0 — пн … 6 — вс */
+export const weekdayOf = (d: Date) => (d.getDay() + 6) % 7;
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** «12 нояб» */
+export const shortDate = (isoDate: string) =>
+  new Date(`${isoDate}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }).replace(".", "");
+
+/** Срок повтора по умолчанию — как на сервере: ежедневно 2 недели, еженедельно месяц, ежемесячно полгода. */
+export function smartUntil(recurrence: Task["recurrence"], from: Date): string | null {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  if (recurrence === "daily" || recurrence === "weekdays") d.setDate(d.getDate() + 14);
+  else if (recurrence === "weekly" || recurrence === "weekends" || recurrence === "days") d.setMonth(d.getMonth() + 1);
+  else if (recurrence === "monthly") d.setMonth(d.getMonth() + 6);
+  else return null;
+  return ymd(d);
+}
+
+function fits(d: Date, recurrence: Task["recurrence"], days: number[], first: Date): boolean {
+  if (recurrence === "weekdays") return weekdayOf(d) < 5;
+  if (recurrence === "weekends") return weekdayOf(d) >= 5;
+  if (recurrence === "days") return (days.length ? days : [weekdayOf(first)]).includes(weekdayOf(d));
+  return true;
+}
+
+/** Следующие разы повтора после первого — до конца срока (включительно). */
+export function nextRepeats(
+  firstIso: string,
+  recurrence: Task["recurrence"],
+  days: number[],
+  until: string | null,
+  to: Date,
+  limit = 62,
+): Date[] {
+  if (recurrence === "none") return [];
+  const first = parseLocal(firstIso);
+  const end = until ? new Date(`${until}T23:59:59`) : to;
+  const stop = end < to ? end : to;
+  const result: Date[] = [];
+  const next = new Date(first);
+  const step = () => {
+    if (recurrence === "monthly") next.setMonth(next.getMonth() + 1);
+    else if (recurrence === "weekly") next.setDate(next.getDate() + 7);
+    else next.setDate(next.getDate() + 1);
+  };
+  step();
+  while (next <= stop && result.length < limit) {
+    if (fits(next, recurrence, days, first)) result.push(new Date(next));
+    step();
+  }
+  return result;
+}
+
+/** «по вт, чт · до 12 нояб» */
+export function describeRepeat(recurrence: Task["recurrence"], days: number[], until: string | null): string {
+  if (recurrence === "none") return "не повторять";
+  const base =
+    recurrence === "days" && days.length ? `по ${days.map((d) => WEEKDAY_SHORT[d]).join(", ")}` : RECURRENCE_LABEL[recurrence];
+  return `${base} · ${until ? `до ${shortDate(until)}` : "всегда"}`;
+}
 
 export const initials = (name: string) => name.trim().slice(0, 1).toUpperCase();
 
@@ -127,18 +192,7 @@ export const dayKey = (d: Date) =>
  */
 export function repeatsBetween(task: Task, from: Date, to: Date, limit = 62): Date[] {
   if (task.recurrence === "none" || !task.due_at || task.status === "done") return [];
-  const result: Date[] = [];
-  const next = parseLocal(task.due_at);
-  const step = () => {
-    if (task.recurrence === "monthly") next.setMonth(next.getMonth() + 1);
-    else if (task.recurrence === "weekly") next.setDate(next.getDate() + 7);
-    else next.setDate(next.getDate() + 1);
-    if (task.recurrence === "weekdays") while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
-  };
-  step();
-  while (next < to && result.length < limit) {
-    if (next >= from) result.push(new Date(next));
-    step();
-  }
-  return result;
+  return nextRepeats(task.due_at, task.recurrence, task.repeat_days ?? [], task.repeat_until ?? null, to, 400)
+    .filter((d) => d >= from)
+    .slice(0, limit);
 }

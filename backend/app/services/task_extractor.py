@@ -10,8 +10,9 @@ from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 
 from app.schemas.task import Priority, Recurrence, TaskDraft
+from app.services import repeat
 from app.services.llm_client import LLMClient
-from app.services.when import due_from_text, end_from_text
+from app.services.when import due_from_text, end_from_text, time_of
 
 _URGENT_MARKERS = ("срочно", "сегодня", "как можно скорее", "горит")
 _CAR_MARKERS = ("отвезти", "забрать", "привезти", "заехать", "довезти")
@@ -40,6 +41,7 @@ _RECURRENCE_MARKERS = {
     ),
     Recurrence.MONTHLY: ("каждый месяц", "ежемесячно", "раз в месяц"),
 }
+_WEEKEND_MARKERS = ("по выходным", "каждые выходные", "каждую субботу и воскресенье")
 _RELATIVE_DAYS = {"сегодня": 0, "завтра": 1, "послезавтра": 2}
 # «Купи молоко, хлеб и яйца» → список покупок (правила — подстраховка, основное — LLM)
 _BUY_RE = re.compile(
@@ -93,9 +95,8 @@ class TaskExtractor:
 
         rules = self._from_rules(message, now, members or [])
         payload = self._client.extract_task(message, now.isoformat(), author, members)
-        if payload:
-            return self._merge(self._from_payload(payload, now), rules)
-        return rules
+        draft = self._merge(self._from_payload(payload, now), rules) if payload else rules
+        return _align_first(draft, message.lower())
 
     @staticmethod
     def _merge(llm: TaskDraft, rules: TaskDraft) -> TaskDraft:
@@ -125,6 +126,17 @@ class TaskExtractor:
             updates["note"] = rules.note
         if not llm.participants and rules.participants:
             updates["participants"] = rules.participants
+        if rules.recurrence in (Recurrence.DAYS, Recurrence.WEEKENDS) and llm.recurrence in (
+            Recurrence.NONE,
+            Recurrence.WEEKLY,
+        ):
+            # «по вторникам и четвергам» модель часто сводит к «каждую неделю» — уточняем
+            updates["recurrence"] = rules.recurrence
+            updates["repeat_days"] = rules.repeat_days
+        if not llm.repeat_days and rules.repeat_days and "repeat_days" not in updates:
+            updates["repeat_days"] = rules.repeat_days
+        if llm.repeat_until is None and rules.repeat_until is not None:
+            updates["repeat_until"] = rules.repeat_until
         if rules.ends_at and rules.due_at and not llm.ends_at:
             # «с 9 до 10»: модель могла принять «до 10» за срок — начало берём у правил
             due = updates.get("due_at") or llm.due_at
@@ -180,6 +192,8 @@ class TaskExtractor:
             participants=[
                 str(p).strip() for p in payload.get("participants") or [] if str(p).strip()
             ][:10],
+            repeat_days=_weekday_list(payload.get("repeat_days")),
+            repeat_until=_date_or_none(payload.get("repeat_until")),
         )
 
     def _from_rules(self, message: str, now: datetime, members: list[str]) -> TaskDraft:
@@ -190,8 +204,17 @@ class TaskExtractor:
             if any(marker in lowered for marker in markers):
                 recurrence = value
                 break
+        repeat_days = repeat.days_from_text(lowered)
+        if any(m in lowered for m in _WEEKEND_MARKERS):
+            recurrence, repeat_days = Recurrence.WEEKENDS, []
+        elif len(repeat_days) >= 2:
+            recurrence = Recurrence.DAYS
 
         due_at = due_from_text(lowered, now)
+        if due_at is None and recurrence != Recurrence.NONE:
+            # «по вторникам и четвергам в 18» — первый раз в ближайший такой день
+            at = time_of(lowered) or (18, 0)
+            due_at = repeat.first_due(recurrence.value, repeat_days, at, now)
 
         priority = Priority.HIGH if any(m in lowered for m in _URGENT_MARKERS) else Priority.NORMAL
 
@@ -199,6 +222,10 @@ class TaskExtractor:
             title=message.strip().rstrip("."),
             due_at=due_at,
             ends_at=end_from_text(message, due_at),
+            repeat_days=repeat_days if recurrence == Recurrence.DAYS else [],
+            repeat_until=repeat.until_from_text(lowered, now)
+            if recurrence != Recurrence.NONE
+            else None,
             priority=priority,
             recurrence=recurrence,
             requires_car=any(marker in lowered for marker in _CAR_MARKERS),
@@ -275,6 +302,47 @@ class TaskExtractor:
                 return name
         if _SELF_RE.search(lowered):
             return "self"
+        return None
+
+
+def _align_first(draft: TaskDraft, lowered: str) -> TaskDraft:
+    """Первый раз повтора — в один из названных дней, а не «сегодня в 18»."""
+    if draft.due_at is None or draft.recurrence == Recurrence.NONE:
+        return draft
+    days = draft.repeat_days
+    recurrence = draft.recurrence.value
+    if draft.recurrence == Recurrence.WEEKLY:
+        named = repeat.days_from_text(lowered)
+        if len(named) == 1:
+            days, recurrence = named, "days"
+    aligned = repeat.align(draft.due_at, recurrence, days)
+    if aligned == draft.due_at:
+        return draft
+    shift = aligned - draft.due_at
+    return draft.model_copy(
+        update={"due_at": aligned, "ends_at": draft.ends_at + shift if draft.ends_at else None}
+    )
+
+
+_WD = {"пн": 0, "вт": 1, "ср": 2, "чт": 3, "пт": 4, "сб": 5, "вс": 6}
+
+
+def _weekday_list(raw: object) -> list[int]:
+    if not isinstance(raw, list):
+        return []
+    days = set()
+    for value in raw:
+        if isinstance(value, int) and 0 <= value <= 6:
+            days.add(value)
+        elif isinstance(value, str) and value.strip().lower()[:2] in _WD:
+            days.add(_WD[value.strip().lower()[:2]])
+    return sorted(days)
+
+
+def _date_or_none(raw: object):
+    try:
+        return date_parser.isoparse(str(raw)).date() if raw else None
+    except (ValueError, TypeError):
         return None
 
 

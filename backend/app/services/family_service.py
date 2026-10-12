@@ -9,7 +9,7 @@
 и из кнопок push-уведомления, поэтому живут здесь, а не в роутерах.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func, select, update
@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ComponentCallRow, EventRow, FamilyRow, MemberRow, PhoneInviteRow, TaskRow
 from app.schemas.task import TaskDraft
+from app.services import repeat
 from app.services.when import plain_title
 
 # Кто может брать поручения: взрослые и подростки
@@ -194,16 +195,55 @@ def frequent(db: Session, member: MemberRow, days: int = 90, limit: int = 5):
     ]
 
 
-def next_due(due_at: datetime | None, recurrence: str, now: datetime) -> datetime | None:
-    """Срок следующего повтора: шагаем от прежнего срока, пока не окажемся в будущем."""
-    step = _RECURRENCE_STEP.get(recurrence)
+def next_due(
+    due_at: datetime | None,
+    recurrence: str,
+    now: datetime,
+    days: list[int] | None = None,
+    until: date | None = None,
+) -> datetime | None:
+    """Срок следующего повтора: шагаем от прежнего срока, пока не окажемся в будущем.
+
+    None — повтора нет или он закончился (следующий раз позже repeat_until).
+    """
+    step = repeat.step(recurrence)
     if step is None:
         return None
     due = due_at or now.replace(hour=_DEFAULT_HOUR, minute=0, second=0, microsecond=0)
     due += step
-    while due <= now or (recurrence == "weekdays" and due.weekday() >= 5):
-        due += step if recurrence != "weekdays" else relativedelta(days=1)
+    while due <= now or not repeat.fits(due, recurrence, days, due_at):
+        due += step
+    if until is not None and due.date() > until:
+        return None
     return due
+
+
+def set_repeat(
+    task: TaskRow,
+    recurrence: str,
+    days: list[int] | None,
+    until: date | None,
+    forever: bool,
+) -> None:
+    """Повтор с днями и сроком; срок не назвали и не «всегда» — подбираем по частоте."""
+    task.recurrence = recurrence
+    if recurrence == "none":
+        task.repeat_days, task.repeat_until = [], None
+        return
+    task.repeat_days = (
+        sorted({d for d in (days or []) if 0 <= d <= 6}) if recurrence == "days" else []
+    )
+    if recurrence == "days" and not task.repeat_days and task.due_at:
+        task.repeat_days = [task.due_at.weekday()]
+    if task.due_at:
+        # Первый раз — в подходящий день повтора
+        aligned = repeat.align(task.due_at, recurrence, task.repeat_days)
+        if aligned != task.due_at and task.ends_at:
+            task.ends_at += aligned - task.due_at
+        task.due_at = aligned
+    task.repeat_until = (
+        None if forever else until or repeat.smart_until(recurrence, task.due_at or datetime.now())
+    )
 
 
 class TaskActionError(Exception):
@@ -295,6 +335,9 @@ def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> T
         ends_at=draft.ends_at,
         priority=draft.priority.value,
         recurrence=draft.recurrence.value,
+        repeat_days=draft.repeat_days,
+        repeat_until=draft.repeat_until
+        or repeat.smart_until(draft.recurrence.value, draft.due_at or datetime.now()),
         requires_car=draft.requires_car,
         location=draft.location,
         clarifying_question=draft.clarifying_question,
@@ -372,7 +415,7 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
     task.accepted_at = task.accepted_at or now
     task.feedback = None  # замечание «не выполнено» снято — дело сделано заново
 
-    due = next_due(task.due_at, task.recurrence, now)
+    due = next_due(task.due_at, task.recurrence, now, task.repeat_days, task.repeat_until)
     if due is not None:
         # Следующая — тому же исполнителю, снова ждёт ответа
         members = {m.id: m for m in member.family.members}
@@ -388,6 +431,8 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             ends_at=due + (task.ends_at - task.due_at) if task.ends_at and task.due_at else None,
             priority=task.priority,
             recurrence=task.recurrence,
+            repeat_days=list(task.repeat_days or []),
+            repeat_until=task.repeat_until,
             requires_car=task.requires_car,
             location=task.location,
             # Тот же список покупок — снова не отмеченный

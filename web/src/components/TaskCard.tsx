@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { Member, Recurrence, Task, TaskItem } from "../api";
-import { endIso, formatSpan, fromInputValue, RECURRENCE_LABEL, toInputValue } from "../format";
+import type { Member, Task, TaskItem } from "../api";
+import { endIso, formatSpan, fromInputValue, RECURRENCE_LABEL, shortDate, toInputValue, WEEKDAY_SHORT } from "../format";
+import { RepeatPicker, type RepeatValue } from "./RepeatPicker";
 import { Avatar } from "./ui";
 import { AttachButton, FileStrip, PICKUP_RE } from "./TaskFiles";
 
@@ -22,7 +23,7 @@ interface Props {
   onDue: (iso: string | null) => void;
   onEnd: (iso: string | null) => void;
   onParticipants: (ids: string[]) => void;
-  onRepeat: (recurrence: Recurrence) => void;
+  onRepeat: (value: RepeatValue) => void;
   onItems: (items: TaskItem[]) => void;
   onDelete: () => void;
   onCopy: () => void;
@@ -32,13 +33,6 @@ interface Props {
   onThank?: () => void;
 }
 
-const REPEAT_OPTIONS: [Recurrence, string][] = [
-  ["none", "Не повторять"],
-  ["daily", "Каждый день"],
-  ["weekdays", "По будням"],
-  ["weekly", "Каждую неделю"],
-  ["monthly", "Каждый месяц"],
-];
 
 /** Статус поручения так, как его видит автор. */
 function statusLabel(task: Task, assignee: Member | undefined, meId: string) {
@@ -101,7 +95,25 @@ export function TaskCard(props: Props) {
   const [more, setMore] = useState(task.recurrence !== "none" || !!task.note);
   // Посылка с маркетплейса без кода получения — подскажем прикрепить
   const askForCode = !done && task.files.length === 0 && PICKUP_RE.test(task.title);
-  const recurrence = RECURRENCE_LABEL[task.recurrence];
+  // «по вт, чт до 12 нояб» — коротко в строке срока
+  const recurrence =
+    task.recurrence === "none"
+      ? null
+      : (task.recurrence === "days" && task.repeat_days.length
+          ? `по ${task.repeat_days.map((d) => WEEKDAY_SHORT[d]).join(", ")}`
+          : RECURRENCE_LABEL[task.recurrence]) + (task.repeat_until ? ` до ${shortDate(task.repeat_until)}` : "");
+  // Повтор скоро закончится — предложим продлить
+  const endsSoon =
+    !done &&
+    task.recurrence !== "none" &&
+    !!task.repeat_until &&
+    new Date(`${task.repeat_until}T23:59:59`).getTime() - Date.now() < 4 * 86_400_000;
+  const repeatValue: RepeatValue = {
+    recurrence: task.recurrence,
+    days: task.repeat_days,
+    until: task.repeat_until,
+    forever: task.recurrence !== "none" && !task.repeat_until,
+  };
   const status = statusLabel(task, assignee, meId);
   const needsMyAnswer = mine && task.status === "new";
   // «Сделано» уже нажали, но ещё можно вернуть — карточка зелёная
@@ -132,6 +144,29 @@ export function TaskCard(props: Props) {
               {withNames && <span>· вместе: {withNames}</span>}
             </p>
             {status && !props.pending && <p className={`mt-1 text-sm font-medium ${status.tone}`}>{status.text}</p>}
+          {endsSoon && (
+            <span className="mt-1 block text-sm text-warn">
+              Повтор заканчивается {shortDate(task.repeat_until!)} ·{" "}
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const next = new Date(`${task.repeat_until}T00:00:00`);
+                  next.setMonth(next.getMonth() + 1);
+                  const pad = (n: number) => String(n).padStart(2, "0");
+                  props.onRepeat({
+                    ...repeatValue,
+                    until: `${next.getFullYear()}-${pad(next.getMonth() + 1)}-${pad(next.getDate())}`,
+                    forever: false,
+                  });
+                }}
+                className="font-semibold text-accent underline"
+              >
+                продлить на месяц
+              </span>
+            </span>
+          )}
             {task.note && !open && (
               <p className="mt-1.5 line-clamp-2 w-fit rounded-lg bg-surface-2 px-2 py-1 text-sm text-ink-2">📝 {task.note}</p>
             )}
@@ -426,19 +461,7 @@ export function TaskCard(props: Props) {
                 <>
               <div>
                 <span className="mb-1 block text-xs font-medium text-ink-3">Повторять</span>
-                <div className="flex flex-wrap gap-2">
-                  {REPEAT_OPTIONS.map(([value, label]) => (
-                    <button
-                      key={value}
-                      onClick={() => props.onRepeat(value)}
-                      className={`h-9 rounded-full border px-3 text-sm ${
-                        task.recurrence === value ? "border-accent bg-accent-soft" : "border-line"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <RepeatPicker value={repeatValue} due={task.due_at} onChange={props.onRepeat} />
               </div>
 
               <label className="block">

@@ -25,6 +25,8 @@ export interface Draft {
   title: string;
   due_at: string | null;
   recurrence: Recurrence;
+  repeat_days: number[];
+  repeat_until: string | null;
   priority: "low" | "normal" | "high";
   items: string[];
   requires_car: boolean;
@@ -75,6 +77,9 @@ export interface NewTask {
   due_at: string | null;
   assignee_id?: string | null;
   recurrence?: Recurrence;
+  repeat_days?: number[];
+  repeat_until?: string | null;
+  repeat_forever?: boolean;
   priority?: "low" | "normal" | "high";
   items?: string[];
   requires_car?: boolean;
@@ -158,7 +163,7 @@ export interface Family {
   members: Member[];
 }
 
-export type Recurrence = "none" | "daily" | "weekdays" | "weekly" | "monthly";
+export type Recurrence = "none" | "daily" | "weekdays" | "weekends" | "weekly" | "days" | "monthly";
 
 export interface Task {
   id: string;
@@ -169,6 +174,10 @@ export interface Task {
   duration_minutes: number;
   priority: "low" | "normal" | "high";
   recurrence: Recurrence;
+  /** «По дням недели»: 0 — пн … 6 — вс */
+  repeat_days: number[];
+  /** До какого числа повторять (YYYY-MM-DD); null — всегда */
+  repeat_until: string | null;
   requires_car: boolean;
   location: string | null;
   clarifying_question: string | null;
@@ -310,7 +319,7 @@ export const api = {
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
-  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "note" | "note_repeat" | "participants">>) =>
+  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "repeat_days" | "repeat_until" | "note" | "note_repeat" | "participants">> & { repeat_forever?: boolean }) =>
     patch<Task>(`/tasks/${id}`, changes),
   setItems: (id: string, items: TaskItem[]) => request<Task>(`/tasks/${id}/items`, { method: "PUT", body: JSON.stringify({ items }) }),
   accept: (id: string) => post<Task>(`/tasks/${id}/accept`),

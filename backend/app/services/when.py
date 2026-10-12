@@ -118,7 +118,7 @@ def end_from_text(text: str, due: datetime | None) -> datetime | None:
     return due + duration if duration else None
 
 
-def _time_of(text: str) -> tuple[int, int] | None:
+def time_of(text: str) -> tuple[int, int] | None:
     span = _range_of(text)
     if span:
         return span[0]
@@ -139,7 +139,7 @@ def _time_of(text: str) -> tuple[int, int] | None:
 def due_from_text(text: str, now: datetime) -> datetime | None:
     """Срок из фразы или None, если ни дня, ни времени не сказано."""
     lowered = text.lower()
-    time = _time_of(lowered)
+    time = time_of(lowered)
     day: datetime | None = None
 
     for word, offset in _RELATIVE_DAYS:

@@ -1,6 +1,7 @@
+import type { RepeatValue } from "../components/RepeatPicker";
 import { Hint, useHint } from "../components/Hint";
 import { useMemo, useState, type ReactNode } from "react";
-import type { Family, Member, Recurrence, Task, TaskItem } from "../api";
+import type { Family, Member, Task, TaskItem } from "../api";
 import { isAlone } from "../share";
 import { InviteSpouseCard } from "../components/InviteSpouseCard";
 import { NotifyBanner } from "../components/NotifyBanner";
@@ -27,7 +28,7 @@ export interface TaskActions {
   /** «Спасибо» близкому за сделанное */
   thank: (id: string) => void;
   undo: (id: string) => void;
-  repeat: (id: string, recurrence: Recurrence) => void;
+  repeat: (id: string, value: RepeatValue) => void;
   items: (id: string, items: TaskItem[]) => void;
   remove: (id: string) => void;
   /** «Повторить»: шторка с теми же полями, день выбирают заново */

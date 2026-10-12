@@ -850,3 +850,64 @@ def test_schedule_parsed_as_batch_and_created_with_one_push(
     assert [t["title"] for t in created] == ["Зал", "Зал", "Зал"]
     assert all(t["assignee_id"] == family["dad_id"] and t["ends_at"] for t in created)
     assert [(m, msg.title) for m, msg in sent] == [(family["dad_id"], "Мама просит: 3 дела")]
+
+
+def test_repeat_days_until_and_smart_default(client: TestClient, family: dict[str, str]) -> None:
+    from app.services.family_service import next_due
+
+    # «по вторникам и четвергам до 30 октября» — фраза разбирается в дни и срок
+    draft = client.post(
+        "/api/v1/tasks/parse",
+        json={
+            "message": "Олег, по вторникам и четвергам в 18 забирать Машу с хоккея до 30 октября"
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    assert (draft["recurrence"], draft["repeat_days"]) == ("days", [1, 3])
+    assert draft["repeat_until"].endswith("-10-30")
+
+    # Срок не назвали — подставили сами: еженедельно — на месяц
+    start = datetime(2026, 10, 13, 18, 0)
+    task = client.post(
+        "/api/v1/tasks",
+        json={"title": "Зал", "due_at": start.isoformat(), "recurrence": "weekly"},
+        headers=auth(family["mom"]),
+    ).json()
+    assert task["repeat_until"] == "2026-11-13"
+    forever = client.post(
+        "/api/v1/tasks",
+        json={
+            "title": "Цветы",
+            "due_at": start.isoformat(),
+            "recurrence": "weekly",
+            "repeat_forever": True,
+        },
+        headers=auth(family["mom"]),
+    ).json()
+    assert forever["repeat_until"] is None
+
+    # Дни недели и окончание повтора
+    tue = datetime(2026, 10, 13, 18, 0)
+    assert next_due(tue, "days", tue, [1, 3]) == datetime(2026, 10, 15, 18, 0)
+    assert next_due(datetime(2026, 10, 15, 18, 0), "days", tue, [1, 3]) == datetime(
+        2026, 10, 20, 18, 0
+    )
+    assert next_due(datetime(2026, 10, 10, 9, 0), "weekends", tue) == datetime(2026, 10, 17, 9, 0)
+    from datetime import date
+
+    assert next_due(tue, "weekly", tue, until=date(2026, 10, 19)) is None  # повтор закончился
+
+
+def test_first_repeat_lands_on_named_day() -> None:
+    from app.services.task_extractor import TaskExtractor
+    from tests.test_task_extractor import OfflineClient
+
+    monday = datetime(2026, 10, 12, 10, 0)
+    draft = TaskExtractor(client=OfflineClient()).extract(
+        "по вторникам и четвергам в 18 забирать Машу", now=monday
+    )
+    assert draft.due_at == datetime(2026, 10, 13, 18, 0)
+    weekly = TaskExtractor(client=OfflineClient()).extract(
+        "по средам в 19 полить цветы", now=monday
+    )
+    assert weekly.due_at == datetime(2026, 10, 14, 19, 0)
