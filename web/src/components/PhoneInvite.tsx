@@ -1,5 +1,4 @@
-import qrcode from "qrcode-generator";
-import { useMemo, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { api } from "../api";
 import { formatPhone } from "../screens/PhoneLogin";
 
@@ -39,8 +38,7 @@ export function PhoneInvite({ onInvited }: { onInvited: () => void }) {
 
   return (
     <section>
-      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">По номеру телефона</h2>
-      <p className="mt-1 text-sm text-ink-2">Самый надёжный способ: близкий войдёт со своим номером — и он уже в семье.</p>
+      <p className="text-sm text-ink-2">Самый надёжный способ: близкий войдёт со своим номером — и он уже в семье.</p>
       <form onSubmit={submit} className="mt-3 space-y-2">
         <input
           type="tel"
@@ -70,25 +68,6 @@ export function PhoneInvite({ onInvited }: { onInvited: () => void }) {
       </form>
       {done && <p className="mt-2 rounded-xl bg-ok-soft px-3 py-2 text-sm text-ok">{done}</p>}
       {error && <p className="mt-2 text-sm text-warn">{error}</p>}
-    </section>
-  );
-}
-
-/** QR-код приглашения: близкий рядом — наводит камеру и открывает ссылку. */
-export function InviteQr({ url }: { url: string }) {
-  const src = useMemo(() => {
-    const qr = qrcode(0, "M");
-    qr.addData(url);
-    qr.make();
-    return qr.createDataURL(6, 2);
-  }, [url]);
-  return (
-    <section className="flex items-center gap-4">
-      <img src={src} alt="QR-код приглашения" className="h-32 w-32 shrink-0 rounded-xl bg-white p-1" />
-      <div>
-        <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">QR-код</h2>
-        <p className="mt-1 text-sm text-ink-2">Близкий рядом? Пусть наведёт камеру телефона на код и откроет ссылку.</p>
-      </div>
     </section>
   );
 }
@@ -123,8 +102,7 @@ export function RecommendSms() {
 
   return (
     <section>
-      <h2 className="text-xs font-semibold tracking-wide text-ink-3 uppercase">СМС знакомому</h2>
-      <p className="mt-1 text-sm text-ink-2">Отправим СМС со ссылкой от вашего имени — до 3 в день.</p>
+      <p className="text-sm text-ink-2">Отправим СМС со ссылкой от вашего имени — до 3 в день.</p>
       <form onSubmit={submit} className="mt-3 flex gap-2">
         <input
           type="tel"
