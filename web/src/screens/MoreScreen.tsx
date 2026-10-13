@@ -44,7 +44,7 @@ const TEAM: Contact[] = [
   { name: "Илья", role: "разработчик", tone: "tone-d", links: [["Почта", "mailto:onepeople458@gmail.com"]] },
 ];
 
-type Sub = "reminders" | "theme" | "confirm" | "participants" | "install" | "account" | "voice" | "team" | null;
+type Sub = "name" | "reminders" | "theme" | "confirm" | "participants" | "install" | "account" | "voice" | "team" | null;
 
 const buildDate = new Date(__BUILD_TIME__);
 const VERSION = buildDate.toLocaleString("ru-RU", {
@@ -130,6 +130,7 @@ export function MoreScreen({
 
   if (sub) {
     const titles: Record<Exclude<Sub, null>, string> = {
+      name: "Ваше имя",
       reminders: "Напоминания",
       theme: "Оформление",
       confirm: "Перед отправкой просьбы",
@@ -148,6 +149,15 @@ export function MoreScreen({
           <h1 className="font-display mt-1 text-2xl font-bold">{titles[sub]}</h1>
         </header>
 
+        {sub === "name" && (
+          <NameSetting
+            initial={meRow?.name ?? me.name}
+            onSaved={() => {
+              onProfileChange();
+              setSub(null);
+            }}
+          />
+        )}
         {sub === "reminders" && <Reminders initial={remind} onChange={setRemind} />}
         {sub === "theme" && <ThemePicker />}
         {sub === "confirm" && <ConfirmModeSetting initial={confirmMode} onChange={setConfirmMode} />}
@@ -217,6 +227,7 @@ export function MoreScreen({
       <Hint id="more">Настройки, помощь и контакты команды. Нажмите на строку, чтобы открыть.</Hint>
 
       <Group title="Настройки">
+        <Row label="Ваше имя" value={meRow?.name ?? me.name} onClick={() => setSub("name")} />
         <Row label="Напоминания" value={remindLabel} onClick={() => setSub("reminders")} />
         <Row label="Оформление" value={themeLabel} onClick={() => setSub("theme")} />
         <Row label="Перед отправкой просьбы" value={confirmLabel} onClick={() => setSub("confirm")} />
@@ -290,6 +301,46 @@ function Row({ label, value = "", onClick, href }: { label: string; value?: stri
     <button onClick={onClick} className={cls}>
       {inner}
     </button>
+  );
+}
+
+/** Имя, которое видят близкие: в карточках, уведомлениях и приглашениях. */
+function NameSetting({ initial, onSaved }: { initial: string; onSaved: () => void }) {
+  const [name, setName] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const clean = name.trim();
+
+  async function save() {
+    if (!clean || clean === initial) return onSaved();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.updateMe({ name: clean });
+      onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <p className="text-sm text-ink-2">Так вас видят близкие — в делах, уведомлениях и приглашениях.</p>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && void save()}
+        maxLength={80}
+        autoFocus
+        aria-label="Ваше имя"
+        className="h-12 w-full rounded-2xl border border-line bg-surface px-4 text-base outline-none focus:border-accent"
+      />
+      {error && <p className="text-sm text-warn">{error}</p>}
+      <Button className="w-full" disabled={!clean || busy} onClick={() => void save()}>
+        Сохранить
+      </Button>
+    </section>
   );
 }
 

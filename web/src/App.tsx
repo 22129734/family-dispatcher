@@ -234,8 +234,9 @@ function Main() {
 
 function Home({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("today");
-  const me = session.member;
   const [family, setFamily] = useState<Family | null>(null);
+  // Из семьи — свежее: имя могли поменять в «Ещё»
+  const me = family?.members.find((m) => m.id === session.member.id) ?? session.member;
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
