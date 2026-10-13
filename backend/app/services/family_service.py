@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ComponentCallRow, EventRow, FamilyRow, MemberRow, PhoneInviteRow, TaskRow
 from app.schemas.task import TaskDraft
-from app.services import repeat
+from app.services import repeat, shopping
 from app.services.when import plain_title
 
 # Кто может брать поручения: взрослые и подростки
@@ -341,7 +341,7 @@ def task_from_draft(draft: TaskDraft, family: FamilyRow, author: MemberRow) -> T
         requires_car=draft.requires_car,
         location=draft.location,
         clarifying_question=draft.clarifying_question,
-        items=[{"text": text, "done": False} for text in draft.items],
+        items=shopping.with_groups([{"text": text, "done": False} for text in draft.items]),
         note=draft.note,
         participants=[],
     )
@@ -436,7 +436,10 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
             requires_car=task.requires_car,
             location=task.location,
             # Тот же список покупок — снова не отмеченный
-            items=[{"text": item["text"], "done": False} for item in task.items or []],
+            items=[
+                {"text": item["text"], "done": False, "group": item.get("group")}
+                for item in task.items or []
+            ],
             # Заметка «только для этого раза» в следующий повтор не переходит
             note=task.note if task.note_repeat else None,
             note_repeat=task.note_repeat,

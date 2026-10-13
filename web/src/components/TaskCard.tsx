@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { Member, Task, TaskItem } from "../api";
 import { endIso, formatSpan, fromInputValue, RECURRENCE_LABEL, shortDate, toInputValue, WEEKDAY_SHORT } from "../format";
 import { RepeatPicker, type RepeatValue } from "./RepeatPicker";
@@ -605,22 +605,64 @@ export function TaskCard(props: Props) {
 
 /** Список покупок: отмечает любой в семье, пункт можно добавить. Длинный — свёрнут. */
 const ITEMS_SHOWN = 2;
+// Отмеченное уходит вниз не сразу — чтобы было видно, что галочка встала
+const SETTLE_MS = 2000;
+
+// Отделы — в порядке обхода магазина (как на сервере, services/shopping.py)
+const GROUP_ORDER = [
+  "Овощи и фрукты",
+  "Хлеб и выпечка",
+  "Молочное и яйца",
+  "Мясо и рыба",
+  "Бакалея",
+  "Замороженное",
+  "Напитки",
+  "Сладкое и снеки",
+  "Детское",
+  "Бытовая химия",
+  "Гигиена и аптека",
+  "Для дома",
+  "Другое",
+];
+const groupRank = (group: string | null | undefined) => {
+  const rank = GROUP_ORDER.indexOf(group || "Другое");
+  return rank < 0 ? GROUP_ORDER.length : rank;
+};
 
 function Items({ task, canEdit, onItems }: { task: Task; canEdit: boolean; onItems: (items: TaskItem[]) => void }) {
   const [adding, setAdding] = useState("");
   const [expanded, setExpanded] = useState(false);
+  // Только что отмеченные: пока стоят на прежнем месте — номер пункта и прежнее состояние
+  const [settling, setSettling] = useState<Map<number, boolean>>(new Map());
   const left = task.items.filter((i) => !i.done).length;
-  // Сначала то, что ещё не куплено; номер — исходный, чтобы отметка попала в нужный пункт
-  const ordered = task.items
-    .map((item, index) => ({ item, index }))
-    .sort((a, b) => Number(a.item.done) - Number(b.item.done));
+  const placedDone = (index: number, item: TaskItem) => (settling.has(index) ? settling.get(index)! : item.done);
+
+  const rows = task.items.map((item, index) => ({ item, index, done: placedDone(index, item) }));
+  // Что осталось — по отделам, в порядке магазина; купленное — внизу
+  const todo = rows.filter((r) => !r.done).sort((a, b) => groupRank(a.item.group) - groupRank(b.item.group) || a.index - b.index);
+  const bought = rows.filter((r) => r.done);
+  const groupsUsed = new Set(todo.map((r) => r.item.group || "Другое"));
+  const withHeaders = groupsUsed.size >= 2;
+
   // Сворачиваем, только если прячется хотя бы два пункта — «и ещё 1» короче показать
   const collapsible = task.items.length > ITEMS_SHOWN + 1;
-  const shown = collapsible && !expanded ? ordered.slice(0, ITEMS_SHOWN) : ordered;
-  const hidden = task.items.length - shown.length;
+  const collapsed = collapsible && !expanded;
+  const hidden = collapsed ? task.items.length - Math.min(ITEMS_SHOWN, todo.length || ITEMS_SHOWN) : 0;
 
-  const toggle = (index: number) =>
+  function toggle(index: number) {
+    const before = task.items[index].done;
+    setSettling((current) => new Map(current).set(index, current.has(index) ? current.get(index)! : before));
+    window.setTimeout(
+      () =>
+        setSettling((current) => {
+          const next = new Map(current);
+          next.delete(index);
+          return next;
+        }),
+      SETTLE_MS,
+    );
     onItems(task.items.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
+  }
 
   function add() {
     const text = adding.trim();
@@ -629,32 +671,56 @@ function Items({ task, canEdit, onItems }: { task: Task; canEdit: boolean; onIte
     setAdding("");
   }
 
+  const row = ({ item, index }: { item: TaskItem; index: number }) => (
+    <li key={`${item.text}-${index}`}>
+      <button
+        disabled={!canEdit}
+        onClick={() => toggle(index)}
+        className="flex w-full items-center gap-2.5 rounded-lg py-1.5 text-left active:bg-surface-2"
+      >
+        <span
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 text-[11px] transition ${
+            item.done ? "border-ok bg-ok text-white" : "border-ink-3"
+          }`}
+          aria-hidden
+        >
+          {item.done ? "✓" : ""}
+        </span>
+        <span className={item.done ? "text-ink-3 line-through" : ""}>{item.text}</span>
+      </button>
+    </li>
+  );
+
+  const header = (title: string) => (
+    <li key={`h-${title}`} className="pt-2 pb-0.5 text-[11px] font-bold tracking-wide text-ink-3 uppercase first:pt-0">
+      {title}
+    </li>
+  );
+
+  let list: ReactNode[];
+  if (collapsed) {
+    list = (todo.length ? todo : bought).slice(0, ITEMS_SHOWN).map(row);
+  } else {
+    list = [];
+    let lastGroup: string | null = null;
+    for (const r of todo) {
+      const group = r.item.group || "Другое";
+      if (withHeaders && group !== lastGroup) list.push(header(group));
+      lastGroup = group;
+      list.push(row(r));
+    }
+    if (bought.length) {
+      if (todo.length) list.push(header(`Куплено · ${bought.length}`));
+      list.push(...bought.map(row));
+    }
+  }
+
   return (
     <div className="mt-2">
       <p className="mb-1 text-xs font-medium text-ink-3">
         {left ? `Осталось ${left} из ${task.items.length}` : "Всё куплено"}
       </p>
-      <ul className="space-y-0.5">
-        {shown.map(({ item, index }) => (
-          <li key={`${item.text}-${index}`}>
-            <button
-              disabled={!canEdit}
-              onClick={() => toggle(index)}
-              className="flex w-full items-center gap-2.5 rounded-lg py-1.5 text-left active:bg-surface-2"
-            >
-              <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 text-[11px] ${
-                  item.done ? "border-ok bg-ok text-white" : "border-ink-3"
-                }`}
-                aria-hidden
-              >
-                {item.done ? "✓" : ""}
-              </span>
-              <span className={item.done ? "text-ink-3 line-through" : ""}>{item.text}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      <ul className="space-y-0.5">{list}</ul>
       {collapsible && (
         <button
           onClick={() => setExpanded(!expanded)}

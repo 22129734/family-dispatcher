@@ -236,6 +236,61 @@ class LLMClient:
             logger.exception("Не удалось разобрать задачу моделью")
             return None
 
+    def group_items(self, texts: list[str], groups: list[str]) -> dict[str, str] | None:
+        """Разложить пункты списка покупок по отделам магазина: {пункт: отдел}."""
+        if not self.enabled or not texts:
+            return None
+        function = {
+            "name": "group_items",
+            "description": "Отдел магазина для каждого пункта списка покупок",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "text": {"type": "string", "description": "Пункт как в списке"},
+                                "group": {"type": "string", "enum": groups},
+                            },
+                            "required": ["text", "group"],
+                        },
+                    }
+                },
+                "required": ["items"],
+            },
+        }
+        try:
+            data = self._chat(
+                "group_items",
+                {
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "Ты помогаешь семье в магазине. Для каждого пункта списка выбери "
+                                "отдел супермаркета, где его ищут. Не покупка (дело, вопрос, "
+                                f"документ) — «{groups[-1]}». Пункты не меняй и не пропускай."
+                            ),
+                        },
+                        {"role": "user", "content": "\n".join(texts)},
+                    ],
+                    "tools": [{"type": "function", "function": function}],
+                    "tool_choice": {"type": "function", "function": {"name": "group_items"}},
+                    "temperature": 0,
+                },
+            )
+            arguments = _tool_arguments(data, "group_items") or {}
+        except LLMError:
+            logger.exception("Не удалось разложить список по отделам")
+            return None
+        return {
+            str(row.get("text", "")).strip(): str(row.get("group", ""))
+            for row in arguments.get("items") or []
+            if isinstance(row, dict)
+        }
+
 
 def _tool_arguments(data: dict, name: str) -> dict | None:
     try:

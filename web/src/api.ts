@@ -109,6 +109,8 @@ export interface TaskFile {
 export interface TaskItem {
   text: string;
   done: boolean;
+  /** Отдел магазина («Овощи и фрукты»); null — ещё не разложили */
+  group?: string | null;
 }
 
 export interface Session {

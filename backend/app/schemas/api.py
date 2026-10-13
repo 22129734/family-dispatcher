@@ -160,6 +160,8 @@ class TaskItem(BaseModel):
 
     text: str = Field(min_length=1, max_length=120)
     done: bool = False
+    # Отдел магазина — чтобы идти по отделам; пусто — ещё не разложили
+    group: str | None = Field(default=None, max_length=40)
 
 
 class ItemsRequest(BaseModel):

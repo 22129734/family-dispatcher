@@ -50,7 +50,16 @@ from app.schemas.api import (
     WeekOut,
 )
 from app.services import family_service as fs
-from app.services import files, metrics, multi_tasks, notifications, phone_auth, repeat, sms
+from app.services import (
+    files,
+    metrics,
+    multi_tasks,
+    notifications,
+    phone_auth,
+    repeat,
+    shopping,
+    sms,
+)
 from app.services.family_service import TaskActionError
 from app.services.task_extractor import TaskExtractor
 
@@ -131,6 +140,12 @@ def _describe_changes(task: TaskRow, changes: dict) -> list[str]:
     if "priority" in changes:
         parts.append("срочно" if task.priority == "high" else "уже не срочно")
     return parts
+
+
+def _group_later(background: BackgroundTasks, task: TaskRow) -> None:
+    """Пункты, которые словарь не разложил по отделам, — модели, в фоне."""
+    if shopping.needs_llm(task.items or []):
+        background.add_task(shopping.fill_groups, task.id)
 
 
 def _clean_participants(member: MemberRow, ids: list[str], assignee_id: str | None) -> list[str]:
@@ -465,6 +480,7 @@ def dispatch(
     db.flush()
     fs.track(db, member, "task_dispatched", source=payload.source, assigned=bool(task.assignee_id))
     db.commit()
+    _group_later(background, task)
     _notify_assignee(background, task, member)
     _notify_participants(background, task, member, task.participants)
     return task
@@ -592,9 +608,9 @@ def create_task(
         requires_car=payload.requires_car,
         recurrence=payload.recurrence.value,
         priority=payload.priority,
-        items=[
-            {"text": text.strip()[:120], "done": False} for text in payload.items if text.strip()
-        ],
+        items=shopping.with_groups(
+            [{"text": text.strip()[:120], "done": False} for text in payload.items if text.strip()]
+        ),
         note=(payload.note or "").strip() or None,
         note_repeat=payload.note_repeat,
     )
@@ -620,6 +636,7 @@ def create_task(
         # Через шторку проверки — тот же главный сценарий, что и /tasks/dispatch
         fs.track(db, member, "task_dispatched", source=payload.source, confirmed=True)
     db.commit()
+    _group_later(background, task)
     if not payload.defer_notify:
         _notify_assignee(background, task, member)
         _notify_participants(background, task, member, task.participants)
@@ -869,10 +886,11 @@ def set_items(
     """Список покупок: отметить купленное, добавить или убрать пункт. Доступен всей семье."""
     task = _family_task(db, member, task_id)
     before = {item["text"]: item.get("done", False) for item in task.items or []}
-    task.items = [item.model_dump() for item in payload.items]
+    task.items = shopping.with_groups([item.model_dump() for item in payload.items])
     checked = sum(1 for item in payload.items if item.done and not before.get(item.text, False))
     fs.track(db, member, "task_items_updated", count=len(payload.items), checked=checked)
     db.commit()
+    _group_later(background, task)
     # Отметки «купил» — не правка; новые пункты — правка
     added = [item.text for item in payload.items if item.text not in before]
     if added:

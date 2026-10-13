@@ -487,3 +487,39 @@ def test_edits_notify_the_other_side_only(
     calls.clear()
     client.patch(f"/api/v1/tasks/{own['id']}", json={"note": "кактус"}, headers=auth(family["mom"]))
     assert calls == []
+
+
+def test_shopping_list_is_grouped_by_department(client: TestClient, family: dict[str, str]) -> None:
+    from app.services import shopping
+
+    task = client.post(
+        "/api/v1/tasks",
+        json={"title": "Купить продукты", "items": ["батат", "Сыр", "чёрный хлеб", "паспорт"]},
+        headers=auth(family["mom"]),
+    ).json()
+    groups = {i["text"]: i["group"] for i in task["items"]}
+    assert groups == {
+        "батат": "Овощи и фрукты",
+        "Сыр": "Молочное и яйца",
+        "чёрный хлеб": "Хлеб и выпечка",
+        "паспорт": None,  # словарь не знает — разложит модель в фоне
+    }
+
+    # Новый пункт в списке тоже получает отдел, отметки сохраняют свой
+    items = [*task["items"], {"text": "Синергетик", "done": False}]
+    items[0]["done"] = True
+    updated = client.put(
+        f"/api/v1/tasks/{task['id']}/items", json={"items": items}, headers=auth(family["mom"])
+    ).json()
+    assert updated["items"][0] == {"text": "батат", "done": True, "group": "Овощи и фрукты"}
+    assert updated["items"][-1]["group"] == "Бытовая химия"
+
+    # Модель доразложила незнакомое; ответ вне списка отделов — «Другое»
+    class FakeClient:
+        def group_items(self, texts: list[str], groups: list[str]) -> dict[str, str]:
+            assert texts == ["паспорт"] and groups[-1] == shopping.OTHER
+            return {"паспорт": "Документы"}
+
+    shopping.fill_groups(task["id"], client=FakeClient())  # type: ignore[arg-type]
+    view = client.get("/api/v1/tasks", headers=auth(family["mom"])).json()[0]
+    assert {i["text"]: i["group"] for i in view["items"]}["паспорт"] == shopping.OTHER
