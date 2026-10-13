@@ -219,6 +219,21 @@ def comment_message(task: TaskRow, who: MemberRow, text: str) -> PushMessage:
     )
 
 
+def edit_message(task: TaskRow, who: MemberRow, changes: list[str]) -> PushMessage:
+    """Автору или исполнителю: другой изменил дело — что именно поменялось."""
+    return PushMessage(
+        title=f"{who.name} изменил(а) дело",
+        body=f"{task.title}\n{'; '.join(changes)}" if changes else task.title,
+        url="/",
+        # Несколько правок подряд (заметку печатают) — одно уведомление, последнее
+        tag=f"task-{task.id}-edit",
+    )
+
+
+def describe_when(due: datetime | None) -> str:
+    return f"срок: {_when(due, datetime.now())}" if due else "срок убран"
+
+
 def answer_message(task: TaskRow, who: MemberRow, kind: str) -> PushMessage:
     """Автору: исполнитель ответил «Беру» / «Не могу» или отметил «Сделано»."""
     verb = {"accepted": "берёт", "declined": "не может", "done": "сделал(а)"}[kind]

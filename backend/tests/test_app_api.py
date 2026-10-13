@@ -439,3 +439,51 @@ def test_task_chat_and_path_done(client: TestClient, family: dict[str, str]) -> 
 def test_hints_off_is_saved(client: TestClient, family: dict[str, str]) -> None:
     me = client.patch("/api/v1/me", json={"hints_off": True}, headers=auth(family["mom"])).json()
     assert me["hints_off"] is True
+
+
+def test_edits_notify_the_other_side_only(
+    client: TestClient, family: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.services import notifications
+
+    calls: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(
+        notifications, "deliver", lambda mid, msg: calls.append((mid, msg.title, msg.body))
+    )
+    task = client.post(
+        "/api/v1/tasks", json={"title": "Купить подарок"}, headers=auth(family["mom"])
+    ).json()
+    calls.clear()
+    url = f"/api/v1/tasks/{task['id']}"
+
+    # Автор поправил — исполнителю
+    client.patch(url, json={"note": "Лего"}, headers=auth(family["mom"]))
+    assert calls == [(family["dad_id"], "Мама изменил(а) дело", "Купить подарок\nзаметка: Лего")]
+    # Исполнитель поправил — автору
+    calls.clear()
+    client.put(
+        f"{url}/items",
+        json={"items": [{"text": "открытка", "done": False}]},
+        headers=auth(family["dad"]),
+    )
+    assert [(c[0], c[2]) for c in calls] == [
+        (family["mom_id"], "Купить подарок\nв списке: открытка")
+    ]
+    # Отметка «купил» — не правка
+    calls.clear()
+    client.put(
+        f"{url}/items",
+        json={"items": [{"text": "открытка", "done": True}]},
+        headers=auth(family["dad"]),
+    )
+    assert calls == []
+
+    # Своё дело самому себе — без уведомлений
+    own = client.post(
+        "/api/v1/tasks",
+        json={"title": "Полить цветы", "assignee_id": family["mom_id"]},
+        headers=auth(family["mom"]),
+    ).json()
+    calls.clear()
+    client.patch(f"/api/v1/tasks/{own['id']}", json={"note": "кактус"}, headers=auth(family["mom"]))
+    assert calls == []

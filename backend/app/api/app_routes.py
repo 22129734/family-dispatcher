@@ -101,6 +101,38 @@ def _notify_participants(
             )
 
 
+def _notify_edit(
+    background: BackgroundTasks, task: TaskRow, editor: MemberRow, changes: list[str]
+) -> None:
+    """Дело поменяли — второму из пары «автор — исполнитель». Своё себе — без уведомлений."""
+    if not changes or task.status == "done" or task.created_by_id == task.assignee_id:
+        return
+    message = notifications.edit_message(task, editor, changes)
+    for member_id in {task.created_by_id, task.assignee_id} - {editor.id, None}:
+        background.add_task(notifications.deliver, member_id, message)
+
+
+def _describe_changes(task: TaskRow, changes: dict) -> list[str]:
+    """Что поменялось — коротко, для текста уведомления."""
+    parts: list[str] = []
+    if "title" in changes and changes["title"]:
+        parts.append("новое название")
+    if "due_at" in changes or "ends_at" in changes:
+        parts.append(notifications.describe_when(task.due_at))
+    if "note" in changes:
+        note = " ".join((task.note or "").split())
+        parts.append(
+            f"заметка: {note[:80]}{'…' if len(note) > 80 else ''}" if note else "заметка убрана"
+        )
+    if {"recurrence", "repeat_days", "repeat_until", "repeat_forever"} & changes.keys():
+        parts.append("повтор изменён")
+    if "participants" in changes:
+        parts.append("участники изменены")
+    if "priority" in changes:
+        parts.append("срочно" if task.priority == "high" else "уже не срочно")
+    return parts
+
+
 def _clean_participants(member: MemberRow, ids: list[str], assignee_id: str | None) -> list[str]:
     """Только члены этой семьи, без исполнителя и повторов."""
     family_ids = {m.id for m in member.family.members}
@@ -617,6 +649,8 @@ def update_task(
     task = _family_task(db, member, task_id)
     changes = payload.model_dump(exclude_unset=True)
     fields = ",".join(sorted(changes))
+    requested = dict(changes)
+    before_assignee = task.assignee_id
     if "due_at" in changes or "ends_at" in changes:
         due = changes.get("due_at", task.due_at)
         if "ends_at" in changes:
@@ -680,6 +714,9 @@ def update_task(
     db.commit()
     if "assignee_id" in payload.model_dump(exclude_unset=True):
         _notify_assignee(background, task, member)
+    if task.assignee_id == before_assignee:
+        # Новому исполнителю и так придёт поручение целиком
+        _notify_edit(background, task, member, _describe_changes(task, requested))
     _notify_participants(background, task, member, added)
     return task
 
@@ -822,7 +859,13 @@ def family_week(member: CurrentMember, db: DbSession) -> WeekOut:
 
 
 @router.put("/tasks/{task_id}/items", response_model=TaskOut, tags=["tasks"])
-def set_items(task_id: str, payload: ItemsRequest, member: CurrentMember, db: DbSession) -> TaskRow:
+def set_items(
+    task_id: str,
+    payload: ItemsRequest,
+    member: CurrentMember,
+    db: DbSession,
+    background: BackgroundTasks,
+) -> TaskRow:
     """Список покупок: отметить купленное, добавить или убрать пункт. Доступен всей семье."""
     task = _family_task(db, member, task_id)
     before = {item["text"]: item.get("done", False) for item in task.items or []}
@@ -830,12 +873,21 @@ def set_items(task_id: str, payload: ItemsRequest, member: CurrentMember, db: Db
     checked = sum(1 for item in payload.items if item.done and not before.get(item.text, False))
     fs.track(db, member, "task_items_updated", count=len(payload.items), checked=checked)
     db.commit()
+    # Отметки «купил» — не правка; новые пункты — правка
+    added = [item.text for item in payload.items if item.text not in before]
+    if added:
+        shown = ", ".join(added[:4]) + ("…" if len(added) > 4 else "")
+        _notify_edit(background, task, member, [f"в списке: {shown}"])
     return task
 
 
 @router.post("/tasks/{task_id}/files", response_model=TaskOut, status_code=201, tags=["tasks"])
 async def attach_file(
-    task_id: str, upload: UploadFile, member: CurrentMember, db: DbSession
+    task_id: str,
+    upload: UploadFile,
+    member: CurrentMember,
+    db: DbSession,
+    background: BackgroundTasks,
 ) -> TaskRow:
     """Прикрепить фото, скриншот или PDF — например, QR-код получения с Ozon или WB."""
     task = _family_task(db, member, task_id)
@@ -859,6 +911,7 @@ async def attach_file(
     fs.track(db, member, "task_file_added", content_type=content_type)
     db.commit()
     db.refresh(task)
+    _notify_edit(background, task, member, [f"прикреплён файл: {name}"])
     return task
 
 
