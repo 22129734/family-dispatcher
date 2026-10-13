@@ -603,13 +603,31 @@ export function TaskCard(props: Props) {
   );
 }
 
-/** Список покупок: отмечает любой в семье, пункт можно добавить. */
+/** Список покупок: отмечает любой в семье, пункт можно добавить. Длинный — свёрнут. */
+const ITEMS_SHOWN = 2;
+
 function Items({ task, canEdit, onItems }: { task: Task; canEdit: boolean; onItems: (items: TaskItem[]) => void }) {
   const [adding, setAdding] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const left = task.items.filter((i) => !i.done).length;
+  // Сначала то, что ещё не куплено; номер — исходный, чтобы отметка попала в нужный пункт
+  const ordered = task.items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => Number(a.item.done) - Number(b.item.done));
+  // Сворачиваем, только если прячется хотя бы два пункта — «и ещё 1» короче показать
+  const collapsible = task.items.length > ITEMS_SHOWN + 1;
+  const shown = collapsible && !expanded ? ordered.slice(0, ITEMS_SHOWN) : ordered;
+  const hidden = task.items.length - shown.length;
 
   const toggle = (index: number) =>
     onItems(task.items.map((item, i) => (i === index ? { ...item, done: !item.done } : item)));
+
+  function add() {
+    const text = adding.trim();
+    if (!text) return;
+    onItems([...task.items, { text, done: false }]);
+    setAdding("");
+  }
 
   return (
     <div className="mt-2">
@@ -617,7 +635,7 @@ function Items({ task, canEdit, onItems }: { task: Task; canEdit: boolean; onIte
         {left ? `Осталось ${left} из ${task.items.length}` : "Всё куплено"}
       </p>
       <ul className="space-y-0.5">
-        {task.items.map((item, index) => (
+        {shown.map(({ item, index }) => (
           <li key={`${item.text}-${index}`}>
             <button
               disabled={!canEdit}
@@ -637,24 +655,53 @@ function Items({ task, canEdit, onItems }: { task: Task; canEdit: boolean; onIte
           </li>
         ))}
       </ul>
-      {canEdit && (
+      {collapsible && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          className="mt-0.5 flex h-8 items-center gap-1.5 text-sm text-ink-2 active:opacity-60"
+        >
+          {expanded ? (
+            <span className="font-semibold text-accent">Свернуть ▴</span>
+          ) : (
+            <>
+              и ещё {hidden} {hidden % 10 === 1 && hidden % 100 !== 11 ? "позиция" : [2, 3, 4].includes(hidden % 10) && ![12, 13, 14].includes(hidden % 100) ? "позиции" : "позиций"}
+              <span className="font-semibold text-accent">· Развернуть ▾</span>
+            </>
+          )}
+        </button>
+      )}
+      {canEdit && (!collapsible || expanded) && (
         <form
-          className="mt-1"
+          className="mt-1 flex items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            const text = adding.trim();
-            if (!text) return;
-            onItems([...task.items, { text, done: false }]);
-            setAdding("");
+            add();
           }}
         >
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-lg leading-none text-ink-3" aria-hidden>
+            +
+          </span>
           <input
             value={adding}
             onChange={(e) => setAdding(e.target.value)}
+            // На iPhone «Готово» на клавиатуре не отправляет форму — сохраняем, когда уходят из поля
+            onBlur={add}
+            enterKeyHint="enter"
             maxLength={120}
-            placeholder="+ добавить в список"
-            className="h-9 w-full rounded-lg border border-transparent bg-transparent px-1 text-sm outline-none focus:border-line"
+            placeholder="Добавить в список"
+            aria-label="Добавить в список"
+            className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1 text-base outline-none focus:border-line"
           />
+          {adding.trim() && (
+            <button
+              type="submit"
+              onMouseDown={(e) => e.preventDefault()}
+              className="h-9 shrink-0 rounded-xl bg-accent px-3 text-sm font-semibold text-accent-ink active:opacity-80"
+            >
+              Добавить
+            </button>
+          )}
         </form>
       )}
     </div>
