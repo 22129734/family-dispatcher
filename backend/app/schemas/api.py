@@ -323,6 +323,7 @@ class BatchItemOut(BaseModel):
     due_at: datetime | None
     ends_at: datetime | None = None
     note: str | None = None
+    items: list[str] = []
 
 
 class BatchItemIn(BaseModel):
@@ -330,6 +331,7 @@ class BatchItemIn(BaseModel):
     due_at: datetime | None = None
     ends_at: datetime | None = None
     note: str | None = Field(default=None, max_length=2000)
+    items: list[str] = Field(default_factory=list, max_length=100)
 
 
 class BatchCreateRequest(BaseModel):

@@ -576,3 +576,38 @@ def test_tasks_from_screenshot(
         headers=auth(family["mom"]),
     )
     assert empty.status_code == 422
+
+
+def test_screenshot_list_becomes_items(
+    client: TestClient, family: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api import app_routes
+
+    class FakeClient:
+        vision_enabled = True
+
+        def tasks_from_image(self, *args):
+            return [
+                {"title": "Купить продукты", "items": ["батат", " ", "Ватные палочки"]},
+                {"title": "Поехать в Тутаев", "due_at": "2026-10-17T13:00"},
+            ]
+
+    monkeypatch.setattr(app_routes, "LLMClient", FakeClient)
+    draft = client.post(
+        "/api/v1/tasks/parse-image",
+        files={"upload": ("s.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")},
+        headers=auth(family["mom"]),
+    ).json()
+    assert draft["items"] == ["батат", "Ватные палочки"]
+    assert [b["items"] for b in draft["batch"]] == [["батат", "Ватные палочки"], []]
+
+    created = client.post(
+        "/api/v1/tasks/batch",
+        json={"tasks": draft["batch"], "assignee_id": family["mom_id"], "source": "text"},
+        headers=auth(family["mom"]),
+    ).json()
+    assert [(i["text"], i["group"]) for i in created[0]["items"]] == [
+        ("батат", "Овощи и фрукты"),
+        ("Ватные палочки", "Гигиена и аптека"),
+    ]
+    assert created[1]["items"] == []

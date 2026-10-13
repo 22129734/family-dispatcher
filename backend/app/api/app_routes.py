@@ -616,6 +616,7 @@ async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) 
                 "due_at": due,
                 "ends_at": _valid_end(due, _when_or_none(raw.get("ends_at"))),
                 "note": str(raw.get("note") or "").strip()[:2000] or None,
+                "items": [str(i).strip()[:120] for i in raw.get("items") or [] if str(i).strip()],
                 "assignee": _member_by_ref(member, raw.get("assignee")),
             }
         )
@@ -631,7 +632,7 @@ async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) 
         ends_at=first["ends_at"],
         recurrence="none",
         priority="normal",
-        items=[],
+        items=first["items"],
         requires_car=False,
         note=first["note"],
         assignee_id=assignee.id if assignee else None,
@@ -640,7 +641,13 @@ async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) 
         # Со скриншота — всегда показываем, что поняли: распознавание могло ошибиться
         unclear=True,
         batch=[
-            BatchItemOut(title=t["title"], due_at=t["due_at"], ends_at=t["ends_at"], note=t["note"])
+            BatchItemOut(
+                title=t["title"],
+                due_at=t["due_at"],
+                ends_at=t["ends_at"],
+                note=t["note"],
+                items=t["items"],
+            )
             for t in tasks
         ]
         if len(tasks) >= 2
@@ -666,6 +673,9 @@ def create_batch(
             due_at=item.due_at,
             ends_at=_valid_end(item.due_at, item.ends_at) if item.ends_at else None,
             note=(item.note or "").strip() or None,
+            items=shopping.with_groups(
+                [{"text": t.strip()[:120], "done": False} for t in item.items if t.strip()]
+            ),
         )
         if assignee is not None:
             fs.assign(task, assignee, member, None)
@@ -677,6 +687,8 @@ def create_batch(
     db.flush()
     fs.track(db, member, "task_dispatched", source=payload.source, batch=len(created))
     db.commit()
+    for task in created:
+        _group_later(background, task)
     target = created[0].assignee_id
     if target and target != member.id and all(t.assignee_id == target for t in created):
         background.add_task(

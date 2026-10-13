@@ -42,7 +42,13 @@ export function BatchSheet({
     setError(null);
     try {
       const tasks = await api.createBatch({
-        tasks: chosen.map(({ title, due_at, ends_at, note }) => ({ title: title.trim(), due_at, ends_at, note })),
+        tasks: chosen.map(({ title, due_at, ends_at, note, items }) => ({
+          title: title.trim(),
+          due_at,
+          ends_at,
+          note,
+          items: items ?? [],
+        })),
         assignee_id: assignee,
         source,
         source_text: text,
@@ -107,6 +113,11 @@ export function BatchSheet({
                 />
                 <p className="text-sm text-ink-2">{formatSpan(row.due_at, row.ends_at)}</p>
                 {row.note && <p className="mt-1 text-sm text-ink-3">📝 {row.note}</p>}
+                {!!row.items?.length && (
+                  <p className="mt-1 line-clamp-2 text-sm text-ink-3">
+                    🛒 {row.items.length}: {row.items.join(", ")}
+                  </p>
+                )}
               </div>
             </li>
           ))}

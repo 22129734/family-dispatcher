@@ -50,6 +50,8 @@ export interface BatchItem {
   due_at: string | null;
   ends_at: string | null;
   note: string | null;
+  /** Пункты списка — например, покупки со скриншота */
+  items?: string[];
 }
 
 export interface InviteInfo {
