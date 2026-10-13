@@ -16,6 +16,7 @@ import { ConfirmSheet } from "./components/ConfirmSheet";
 import { BatchSheet } from "./components/BatchSheet";
 import { ChatSheet } from "./components/ChatSheet";
 import { prepareFile } from "./components/TaskFiles";
+import { useBackClose } from "./backButton";
 import { Tour, tourDismissed } from "./components/Tour";
 import { Composer } from "./components/Composer";
 import { dismissAllHints, dismissHint, Hint } from "./components/Hint";
@@ -237,6 +238,8 @@ function Main() {
 
 function Home({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>("today");
+  // «Назад» с другой вкладки — на «Дела»; с «Дел» — выход, как обычно
+  useBackClose(tab !== "today", () => setTab("today"));
   const [family, setFamily] = useState<Family | null>(null);
   // Из семьи — свежее: имя могли поменять в «Ещё»
   const me = family?.members.find((m) => m.id === session.member.id) ?? session.member;

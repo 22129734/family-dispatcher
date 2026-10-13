@@ -8,6 +8,7 @@ import { SetPin } from "./SetPin";
 import { InstallCard } from "../components/InstallCard";
 import { VoiceFeedback } from "../components/VoiceFeedback";
 import { platform } from "../push";
+import { useBackClose } from "../backButton";
 
 const SUPPORT_EMAIL = "family-dispatcher@yandex.ru";
 const TESTERS_GROUP = "https://max.ru/join/q1xQqMBZWi_VmWKnjUzJgoQeHkbnfyuzjgYbbu9YV9Q";
@@ -86,6 +87,9 @@ export function MoreScreen({
   const [hintsReset, setHintsReset] = useState(false);
   // Экран второго уровня: строки «Ещё» открывают каждая свой
   const [sub, setSub] = useState<Sub>(null);
+  // «Назад» на телефоне: из раздела — в «Ещё», а не выход из приложения
+  useBackClose(sub !== null, () => setSub(null));
+  useBackClose(changingPin, () => setChangingPin(false));
   const meRow = family?.members.find((m) => m.id === me.id);
   const [remind, setRemind] = useState(meRow?.remind_before_min ?? me.remind_before_min);
   const [confirmMode, setConfirmMode] = useState<ConfirmMode>(meRow?.confirm_mode ?? "auto");

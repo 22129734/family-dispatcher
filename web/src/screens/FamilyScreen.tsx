@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { api, type Family, type Member, type PhoneInvite as PhoneInviteRow, type WeekStats } from "../api";
 import { PhoneInvite, RecommendSms } from "../components/PhoneInvite";
 import { SharePanel } from "../components/SharePanel";
+import { useBackClose } from "../backButton";
 import { Avatar } from "../components/ui";
 import { plural } from "./Today";
 import { familyInviteText, familyInviteUrl, SHARE_ORIGIN } from "../share";
@@ -14,6 +15,7 @@ type Sheet = "invite" | "recommend" | null;
 
 export function FamilyScreen({ family, me }: { family: Family; me: Member }) {
   const [sheet, setSheet] = useState<Sheet>(null);
+  useBackClose(sheet !== null, () => setSheet(null));
   const alone = family.members.length < 2;
   const [week, setWeek] = useState<WeekStats | null>(null);
   useEffect(() => {

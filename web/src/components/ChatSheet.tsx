@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, type Comment, type Member, type Task } from "../api";
 import { formatSpan, parseLocal } from "../format";
+import { useBackClose } from "../backButton";
 
 const SEEN_KEY = "fd.chat";
 // Пока переписка открыта — подтягиваем ответы, не дожидаясь общего обновления
@@ -52,6 +53,7 @@ export function ChatSheet({
   onSent: () => void;
 }) {
   const [comments, setComments] = useState<Comment[] | null>(null);
+  useBackClose(true, onClose);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

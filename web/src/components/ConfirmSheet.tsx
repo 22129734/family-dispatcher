@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { api, type Draft, type Member, type Task } from "../api";
 import { addToTime, describeRepeat, endIso, formatSpan } from "../format";
 import { RepeatPicker, type RepeatValue } from "./RepeatPicker";
+import { useBackClose } from "../backButton";
 import { AttachButton } from "./TaskFiles";
 import { Avatar } from "./ui";
 
@@ -91,6 +92,9 @@ export function ConfirmSheet({
   onSent: (task: Task) => void;
 }) {
   const [panel, setPanel] = useState<Panel>(null);
+  // «Назад»: из панели — к строкам, со строк — закрыть шторку
+  useBackClose(true, onCancel);
+  useBackClose(panel !== null, () => setPanel(null));
   const [title, setTitle] = useState(draft.title);
   const [assignee, setAssignee] = useState<string | null>(draft.assignee_id);
   const [participants, setParticipants] = useState<string[]>(draft.participant_ids ?? []);

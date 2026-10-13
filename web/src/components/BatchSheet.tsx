@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { api, type BatchItem, type Member, type Task } from "../api";
 import { formatSpan } from "../format";
 import { Avatar } from "./ui";
+import { useBackClose } from "../backButton";
 
 /**
  * В сообщении несколько дел — расписание на неделю или список. Показываем их отдельно:
@@ -28,6 +29,7 @@ export function BatchSheet({
   onSent: (tasks: Task[]) => void;
 }) {
   const [rows, setRows] = useState(items.map((item) => ({ ...item, on: true })));
+  useBackClose(true, onCancel);
   const [assignee, setAssignee] = useState<string | null>(assigneeId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
