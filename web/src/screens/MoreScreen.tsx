@@ -254,6 +254,7 @@ export function MoreScreen({
           onClick={() => {
             resetHints();
             setHintsReset(true);
+            void api.updateMe({ hints_off: false }).catch(() => undefined);
           }}
         />
       </Group>

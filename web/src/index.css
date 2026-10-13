@@ -366,3 +366,12 @@ h1 {
 }
 .slide-up { animation: slide-up 0.22s ease-out; }
 .slide-down { animation: slide-down 0.22s ease-out; }
+
+/* Обучение при первом входе: подсвеченное дело — над затемнением */
+[data-tour-on] {
+  position: relative;
+  z-index: 26;
+  /* Карточки полупрозрачные — без сплошного фона сквозь них видно затемнение */
+  background-color: var(--surface-solid);
+  box-shadow: 0 0 0 3px var(--surface-solid), 0 0 0 7px color-mix(in srgb, var(--accent) 70%, transparent);
+}

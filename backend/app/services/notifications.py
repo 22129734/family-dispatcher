@@ -208,6 +208,17 @@ def rejected_message(task: TaskRow, author: MemberRow) -> PushMessage:
     )
 
 
+def comment_message(task: TaskRow, who: MemberRow, text: str) -> PushMessage:
+    """Участникам дела: новое сообщение в переписке — открывается сразу на ней."""
+    short = " ".join(text.split())
+    return PushMessage(
+        title=f"{who.name}: {task.title[:60]}",
+        body=short[:140] + ("…" if len(short) > 140 else ""),
+        url=f"/?chat={task.id}",
+        tag=f"task-{task.id}-chat",
+    )
+
+
 def answer_message(task: TaskRow, who: MemberRow, kind: str) -> PushMessage:
     """Автору: исполнитель ответил «Беру» / «Не могу» или отметил «Сделано»."""
     verb = {"accepted": "берёт", "declined": "не может", "done": "сделал(а)"}[kind]

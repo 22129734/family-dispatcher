@@ -21,6 +21,7 @@ from app.models import (
     PhoneInviteRow,
     PushSubscriptionRow,
     SessionRow,
+    TaskCommentRow,
     TaskFileRow,
     TaskRow,
 )
@@ -42,6 +43,7 @@ def _drop_members(db: Session, member_ids: list[str]) -> None:
     db.execute(delete(PhoneInviteRow).where(PhoneInviteRow.invited_by_id.in_(member_ids)))
     db.execute(delete(PushSubscriptionRow).where(PushSubscriptionRow.member_id.in_(member_ids)))
     db.execute(delete(EventRow).where(EventRow.member_id.in_(member_ids)))
+    db.execute(delete(TaskCommentRow).where(TaskCommentRow.member_id.in_(member_ids)))
     db.execute(
         update(ComponentCallRow)
         .where(ComponentCallRow.member_id.in_(member_ids))

@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
  */
 
 export type HintId = "mic" | "card" | "calendar" | "family" | "more";
+const ALL: HintId[] = ["mic", "card", "calendar", "family", "more"];
 
 const KEY = "fd.hints";
 const EVENT = "fd-hints";
@@ -27,7 +28,21 @@ function writeSeen(seen: Set<string>) {
   window.dispatchEvent(new Event(EVENT));
 }
 
-export const hintSeen = (id: HintId) => readSeen().has(id);
+// Пока идёт обучение при первом входе — подсказки не показываем, чтобы не мешали
+let suppressed = false;
+
+export function suppressHints(value: boolean) {
+  if (suppressed === value) return;
+  suppressed = value;
+  window.dispatchEvent(new Event(EVENT));
+}
+
+export const hintSeen = (id: HintId) => suppressed || readSeen().has(id);
+
+/** «Нет, разберусь» после обучения — все подсказки сразу закрыты. */
+export function dismissAllHints() {
+  writeSeen(new Set(ALL));
+}
 
 export function dismissHint(id: HintId) {
   const seen = readSeen();

@@ -47,3 +47,20 @@ def real_users(db: Session) -> tuple[int, int]:
     members = db.scalars(select(MemberRow).where(MemberRow.id.in_(users))).all()
     in_pairs = sum(1 for m in members if len(m.family.members) > 1)
     return len(members), in_pairs
+
+
+def path_done(db: Session, member_ids: list[str]) -> set[str]:
+    """Кто из этих людей уже прошёл целевой сценарий — им обучение при входе не нужно."""
+    if not member_ids:
+        return set()
+    doers = db.scalars(
+        select(EventRow.member_id)
+        .where(EventRow.member_id.in_(member_ids), EventRow.name.in_(SCENARIO_EVENTS))
+        .distinct()
+    )
+    authors = db.scalars(
+        select(TaskRow.created_by_id)
+        .where(TaskRow.created_by_id.in_(member_ids), TaskRow.status == "done")
+        .distinct()
+    )
+    return set(doers) | set(authors)

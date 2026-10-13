@@ -395,3 +395,47 @@ def test_theme_is_saved_per_member(client: TestClient, family: dict[str, str]) -
         client.patch("/api/v1/me", json={"theme": "neon"}, headers=auth(family["mom"])).status_code
         == 422
     )
+
+
+def test_task_chat_and_path_done(client: TestClient, family: dict[str, str]) -> None:
+    task = client.post(
+        "/api/v1/tasks", json={"title": "Купить подарок Маше"}, headers=auth(family["mom"])
+    ).json()
+    members = client.get("/api/v1/family", headers=auth(family["dad"])).json()["members"]
+    assert not any(m["path_done"] for m in members)
+
+    url = f"/api/v1/tasks/{task['id']}/comments"
+    asked = client.post(url, json={"text": " Какой именно? "}, headers=auth(family["dad"])).json()
+    assert [(c["member_id"], c["text"]) for c in asked] == [(family["dad_id"], "Какой именно?")]
+    client.post(url, json={"text": "Лего, до 3000"}, headers=auth(family["mom"]))
+    assert len(client.get(url, headers=auth(family["dad"])).json()) == 2
+    assert client.post(url, json={"text": "   "}, headers=auth(family["dad"])).status_code == 422
+
+    view = client.get("/api/v1/tasks", headers=auth(family["dad"])).json()[0]
+    assert (view["comments_count"], view["last_comment_by_id"]) == (2, family["mom_id"])
+
+    # Чужая семья переписку не видит
+    other = client.post(
+        "/api/v1/families",
+        json={"member_name": "Сосед"},
+        headers=auth(login(client, "89990000077")),
+    ).json()
+    assert client.get(url, headers=auth(other["token"])).status_code == 404
+
+    # Папа взял дело — путь пройден; мама — когда дело сделают
+    client.post(f"/api/v1/tasks/{task['id']}/accept", headers=auth(family["dad"]))
+    passed = {
+        m["id"]: m["path_done"]
+        for m in client.get("/api/v1/family", headers=auth(family["mom"])).json()["members"]
+    }
+    assert passed == {family["dad_id"]: True, family["mom_id"]: False}
+
+    # Удаление дела убирает и переписку
+    assert (
+        client.delete(f"/api/v1/tasks/{task['id']}", headers=auth(family["mom"])).status_code == 204
+    )
+
+
+def test_hints_off_is_saved(client: TestClient, family: dict[str, str]) -> None:
+    me = client.patch("/api/v1/me", json={"hints_off": True}, headers=auth(family["mom"])).json()
+    assert me["hints_off"] is True

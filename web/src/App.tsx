@@ -14,8 +14,10 @@ import {
 import { parseLocal, plainTitle } from "./format";
 import { ConfirmSheet } from "./components/ConfirmSheet";
 import { BatchSheet } from "./components/BatchSheet";
+import { ChatSheet } from "./components/ChatSheet";
+import { Tour, tourDismissed } from "./components/Tour";
 import { Composer } from "./components/Composer";
-import { dismissHint, Hint } from "./components/Hint";
+import { dismissAllHints, dismissHint, Hint } from "./components/Hint";
 import { FamilyScreen } from "./screens/FamilyScreen";
 import { CalendarScreen } from "./screens/CalendarScreen";
 import { MoreScreen } from "./screens/MoreScreen";
@@ -296,6 +298,22 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
 
   const alone = isAlone(family, me.id);
 
+  // Выбрал(а) «Нет, разберусь» на другом устройстве — подсказки закрыты и здесь
+  useEffect(() => {
+    if (me.hints_off) dismissAllHints();
+  }, [me.hints_off]);
+
+  // Обучение при первом входе — пока человек не прошёл путь «поручила — сделано»
+  const [tourClosed, setTourClosed] = useState(() => tourDismissed(session.member.id));
+  const [tourTaskId, setTourTaskId] = useState<string | null>(null);
+  const tourNeeded = !tourClosed && !loading && !!family && me.path_done === false;
+  // Начатое обучение доводим до вопроса о подсказках, даже если путь уже засчитан
+  const [tourStarted, setTourStarted] = useState(false);
+  useEffect(() => {
+    if (tourNeeded) setTourStarted(true);
+  }, [tourNeeded]);
+  const tourOn = !tourClosed && (tourNeeded || tourStarted);
+
   const memberName = (id: string | null) =>
     id === me.id ? "вам" : (family?.members.find((m) => m.id === id)?.name ?? "никому");
 
@@ -402,12 +420,21 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       void run(async () => replace(await api.setItems(id, items)));
     },
     copy: (task) => copyTask(task, plainTitle(task.title)),
+    chat: (task) => setChatId(task.id),
     remove: (id) =>
       run(async () => {
         setTasks((list) => list.filter((t) => t.id !== id));
         await api.remove(id);
       }),
   };
+
+  // Переписка по делу; из уведомления приходит ссылка /?chat=<id>
+  const [chatId, setChatId] = useState<string | null>(() => {
+    const id = new URLSearchParams(window.location.search).get("chat");
+    if (id) window.history.replaceState(null, "", window.location.pathname);
+    return id;
+  });
+  const chatTask = chatId ? tasks.find((t) => t.id === chatId) : undefined;
 
   // Голос — главная кнопка в центре меню; работает с любой вкладки
   const speech = useSpeech((spoken) => void send(spoken, "voice"));
@@ -477,6 +504,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
 
   function announce(task: Task) {
     dismissHint("mic");
+    setTourTaskId(task.id);
     loadFrequent();
     setTasks((list) => [task, ...list.filter((t) => t.id !== task.id)]);
     setTab("today");
@@ -531,6 +559,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         return;
       }
       const task = await api.dispatch(text, source);
+      setTourTaskId(task.id);
       setTasks((list) => [task, ...list]);
       setTab("today");
       const assignee = family?.members.find((m) => m.id === task.assignee_id);
@@ -600,6 +629,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           onCancel={() => setBatch(null)}
           onSent={(created) => {
             setBatch(null);
+            setTourTaskId(created[0]?.id ?? null);
             setTasks((list) => [...created, ...list]);
             loadFrequent();
             notify(`Создано дел: ${created.length}`);
@@ -624,6 +654,31 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             announce(task);
             void refresh();
           }}
+        />
+      )}
+
+      {tourOn && (
+        <Tour
+          me={me}
+          members={family?.members ?? [me]}
+          tasks={tasks}
+          createdId={tourTaskId}
+          isPending={(id) => pendingIds.includes(id)}
+          paused={!!confirm || !!batch || !!chatTask || sending || tab !== "today"}
+          onClose={() => setTourClosed(true)}
+        />
+      )}
+
+      {chatTask && (
+        <ChatSheet
+          task={chatTask}
+          members={family?.members ?? [me]}
+          meId={me.id}
+          onClose={() => {
+            setChatId(null);
+            void refresh();
+          }}
+          onSent={() => void refresh()}
         />
       )}
 
@@ -676,10 +731,10 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           </div>
         )}
         <nav className="glass pointer-events-auto mt-2 grid h-16 grid-cols-5 items-center rounded-[26px] px-1 shadow-lg">
-          <TabButton active={tab === "today"} onClick={() => setTab("today")} label="Дела">
+          <TabButton active={tab === "today"} onClick={() => setTab("today")} label="Дела" locked={tourOn}>
             <path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" />
           </TabButton>
-          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} label="Календарь">
+          <TabButton active={tab === "calendar"} onClick={() => setTab("calendar")} label="Календарь" locked={tourOn}>
             <path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
           </TabButton>
           <div className="flex justify-center">
@@ -703,10 +758,10 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
               )}
             </button>
           </div>
-          <TabButton active={tab === "family"} onClick={() => setTab("family")} label="Семья" dot={alone}>
+          <TabButton active={tab === "family"} onClick={() => setTab("family")} label="Семья" dot={alone} locked={tourOn}>
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
           </TabButton>
-          <TabButton active={tab === "more"} onClick={() => setTab("more")} label="Ещё">
+          <TabButton active={tab === "more"} onClick={() => setTab("more")} label="Ещё" locked={tourOn}>
             <path d="M5 12h.01M12 12h.01M19 12h.01" />
           </TabButton>
         </nav>
@@ -721,6 +776,7 @@ function TabButton({
   label,
   children,
   dot = false,
+  locked = false,
 }: {
   active: boolean;
   onClick: () => void;
@@ -728,11 +784,14 @@ function TabButton({
   children: React.ReactNode;
   /** Точка-напоминание: на вкладке есть важное несделанное действие */
   dot?: boolean;
+  /** Идёт обучение при первом входе — вкладки недоступны, только поле ввода и микрофон */
+  locked?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${
+      disabled={locked}
+      className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold disabled:opacity-35 ${
         active ? "text-accent" : "text-ink-3"
       }`}
     >

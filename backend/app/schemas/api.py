@@ -37,6 +37,9 @@ class MemberOut(BaseModel):
     theme: str | None = None
     confirm_mode: str | None = None
     allow_participants: bool = False
+    hints_off: bool = False
+    # Прошёл ли путь «поручила — сделано» хотя бы раз: иначе при входе — обучение
+    path_done: bool = False
     # Есть ли у человека устройство с push — второй супруг должен видеть, что уведомления не дойдут
     notifications: bool = False
 
@@ -50,6 +53,7 @@ class UpdateMemberRequest(BaseModel):
     remind_before_min: Literal[0, 15, 30, 60, 120, 1440] | None = None
     theme: Literal["dawn", "lavender", "night", "graphite", "mint"] | None = None
     confirm_mode: Literal["auto", "always", "never"] | None = None
+    hints_off: bool | None = None
     allow_participants: bool | None = None
 
 
@@ -211,9 +215,24 @@ class TaskOut(BaseModel):
     note_repeat: bool = True
     feedback_at: datetime | None = None
     thanked_at: datetime | None = None
+    comments_count: int = 0
+    last_comment_by_id: str | None = None
     created_at: datetime
     accepted_at: datetime | None
     completed_at: datetime | None
+
+
+class CommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    member_id: str
+    text: str
+    created_at: datetime
+
+
+class CommentRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
 
 
 class FrequentOut(BaseModel):
@@ -394,6 +413,9 @@ ClientEvent = Literal[
     "push_permission_granted",
     "push_permission_denied",
     "push_enable_failed",
+    "tour_step",  # обучение при первом входе: какой шаг показан
+    "tour_later",
+    "hints_choice",  # после обучения: показывать подсказки дальше или нет
 ]
 
 

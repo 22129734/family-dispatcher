@@ -3,6 +3,7 @@ import type { Member, Task, TaskItem } from "../api";
 import { endIso, formatSpan, fromInputValue, RECURRENCE_LABEL, shortDate, toInputValue, WEEKDAY_SHORT } from "../format";
 import { RepeatPicker, type RepeatValue } from "./RepeatPicker";
 import { Avatar } from "./ui";
+import { chatUnread } from "./ChatSheet";
 import { AttachButton, FileStrip, PICKUP_RE } from "./TaskFiles";
 
 interface Props {
@@ -31,6 +32,8 @@ interface Props {
   pending?: boolean;
   onUndo?: () => void;
   onThank?: () => void;
+  /** Переписка по делу: уточнить у автора или ответить исполнителю */
+  onChat?: () => void;
 }
 
 
@@ -120,9 +123,17 @@ export function TaskCard(props: Props) {
   const finished = done || !!props.pending;
   // «Готово» — у своих дел; у сделанного — чтобы вернуть в работу
   const showDone = !needsMyAnswer && (done ? mine || author : mine || (!task.assignee_id && author));
+  // Переписка — когда в деле есть кто-то кроме меня или в ней уже что-то написано
+  const shared =
+    (!!task.assignee_id && task.assignee_id !== task.created_by_id) ||
+    task.participants.length > 0 ||
+    task.comments_count > 0;
+  const unread = chatUnread(task, meId);
+  const showChat = !!props.onChat && shared && !props.pending && !(needsMyAnswer && task.comments_count === 0);
 
   return (
     <li
+      data-tour={`task-${task.id}`}
       className={`appear rounded-2xl border transition ${
         props.pending
           ? "border-ok/40 bg-ok-soft"
@@ -171,6 +182,22 @@ export function TaskCard(props: Props) {
               <p className="mt-1.5 line-clamp-2 w-fit rounded-lg bg-surface-2 px-2 py-1 text-sm text-ink-2">📝 {task.note}</p>
             )}
           </button>
+
+          {showChat && (
+            <button
+              onClick={props.onChat}
+              className={`mt-2 flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium active:opacity-70 ${
+                unread ? "bg-accent text-accent-ink" : "bg-surface-2 text-ink-2"
+              }`}
+            >
+              💬{" "}
+              {task.comments_count > 0
+                ? `Переписка · ${task.comments_count}${unread ? " · новое" : ""}`
+                : author
+                  ? "Написать"
+                  : "Уточнить"}
+            </button>
+          )}
 
           {task.files.length > 0 && (
             <div className="mt-2">
@@ -235,6 +262,11 @@ export function TaskCard(props: Props) {
           <button onClick={props.onAccept} className="h-11 flex-1 rounded-xl bg-accent font-semibold text-accent-ink active:opacity-80">
             Беру
           </button>
+          {props.onChat && task.comments_count === 0 && (
+            <button onClick={props.onChat} className="h-11 rounded-xl bg-surface-2 px-4 font-medium active:opacity-70">
+              Уточнить
+            </button>
+          )}
           <button onClick={() => setDeclining(true)} className="h-11 rounded-xl bg-surface-2 px-4 font-medium active:opacity-70">
             Не могу
           </button>

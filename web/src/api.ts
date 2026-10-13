@@ -16,6 +16,10 @@ export interface Member {
   notifications: boolean;
   /** Несколько участников в деле; по умолчанию выключено — один исполнитель */
   allow_participants: boolean;
+  /** После обучения выбрал(а) «Нет, разберусь» — подсказки не показываем */
+  hints_off: boolean;
+  /** Прошёл(ла) путь «поручила — сделано» — обучение при входе не нужно */
+  path_done: boolean;
 }
 
 export type ConfirmMode = "auto" | "always" | "never";
@@ -196,6 +200,9 @@ export interface Task {
   feedback_at: string | null;
   /** Автор сказал «спасибо» за сделанное */
   thanked_at: string | null;
+  /** Переписка в деле: сколько сообщений и кто написал последним */
+  comments_count: number;
+  last_comment_by_id: string | null;
   /** Окончание, если его назвали («с 9 до 10»); null — дело без продолжительности */
   ends_at: string | null;
   /** Заметка: кабинет, адрес, что взять — подробности, которые не влезают в название */
@@ -208,6 +215,13 @@ export interface Task {
   completed_at: string | null;
 }
 
+export interface Comment {
+  id: string;
+  member_id: string;
+  text: string;
+  created_at: string;
+}
+
 export type ClientEvent =
   | "app_open"
   | "screen_view"
@@ -218,7 +232,10 @@ export type ClientEvent =
   | "push_prompt_shown"
   | "push_permission_granted"
   | "push_permission_denied"
-  | "push_enable_failed";
+  | "push_enable_failed"
+  | "tour_step"
+  | "tour_later"
+  | "hints_choice";
 
 const TOKEN_KEY = "fd.token";
 
@@ -304,7 +321,7 @@ export const api = {
   join: (code: string, member_name: string, role: Role) =>
     post<Session>(`/invites/${code}/join`, { member_name, role }),
   me: () => request<Session>("/me"),
-  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme" | "confirm_mode" | "allow_participants">>) =>
+  updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme" | "confirm_mode" | "allow_participants" | "hints_off">>) =>
     patch<Member>("/me", changes),
   family: () => request<Family>("/family"),
 
@@ -314,6 +331,8 @@ export const api = {
   createBatch: (body: { tasks: BatchItem[]; assignee_id: string | null; source: "text" | "voice"; source_text: string }) =>
     post<Task[]>("/tasks/batch", body),
   thank: (id: string) => post<Task>(`/tasks/${id}/thanks`),
+  comments: (id: string) => request<Comment[]>(`/tasks/${id}/comments`),
+  addComment: (id: string, text: string) => post<Comment[]>(`/tasks/${id}/comments`, { text }),
   familyWeek: () => request<WeekStats>("/family/week"),
   parseTask: (message: string, source: "text" | "voice") => post<Draft>("/tasks/parse", { message, source }),
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),

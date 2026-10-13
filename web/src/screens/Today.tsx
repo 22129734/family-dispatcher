@@ -6,6 +6,7 @@ import { isAlone } from "../share";
 import { InviteSpouseCard } from "../components/InviteSpouseCard";
 import { NotifyBanner } from "../components/NotifyBanner";
 import { TaskCard } from "../components/TaskCard";
+import { chatUnread } from "../components/ChatSheet";
 import { bucketOf, formatSpan, parseLocal } from "../format";
 
 export interface TaskActions {
@@ -33,6 +34,8 @@ export interface TaskActions {
   remove: (id: string) => void;
   /** «Повторить»: шторка с теми же полями, день выбирают заново */
   copy: (task: Task) => void;
+  /** Переписка по делу */
+  chat: (task: Task) => void;
 }
 
 export function Today({
@@ -113,6 +116,7 @@ export function Today({
       pending={actions.isPending(task.id)}
       onUndo={() => actions.undo(task.id)}
       onThank={() => actions.thank(task.id)}
+      onChat={() => actions.chat(task)}
     />
   );
 
@@ -147,7 +151,7 @@ export function Today({
         {askMe.length > 0 && (
           <Section title="Ждут вашего ответа" count={askMe.length} accent>
             {askMe.map((task) => (
-              <AskCard key={task.id} task={task} members={members} actions={actions} />
+              <AskCard key={task.id} task={task} members={members} meId={meId} actions={actions} />
             ))}
           </Section>
         )}
@@ -209,7 +213,17 @@ function Section({
 }
 
 /** Просьба, которая ждёт ответа: крупно, с «Беру» и «Не могу» — не перепутать с остальными делами. */
-function AskCard({ task, members, actions }: { task: Task; members: Member[]; actions: TaskActions }) {
+function AskCard({
+  task,
+  members,
+  meId,
+  actions,
+}: {
+  task: Task;
+  members: Member[];
+  meId: string;
+  actions: TaskActions;
+}) {
   const [declining, setDeclining] = useState(false);
   const [reason, setReason] = useState("");
   const author = members.find((m) => m.id === task.created_by_id)?.name ?? "Близкий";
@@ -219,7 +233,7 @@ function AskCard({ task, members, actions }: { task: Task; members: Member[]; ac
     task.files.length > 0 && `📎 ${task.files.length}`,
   ].filter(Boolean);
   return (
-    <li className="bg-hero appear rounded-[24px] p-4 text-white shadow-lg">
+    <li data-tour={`task-${task.id}`} className="bg-hero appear rounded-[24px] p-4 text-white shadow-lg">
       <p className="text-[11px] font-bold tracking-wider uppercase opacity-90">
         {overdue ? `${author} просит · просрочено` : `${author} просит`}
       </p>
@@ -229,6 +243,15 @@ function AskCard({ task, members, actions }: { task: Task; members: Member[]; ac
         {extra.length > 0 && ` · ${extra.join(" · ")}`}
       </p>
       {task.note && <p className="mt-2 line-clamp-2 rounded-xl bg-white/20 px-2.5 py-1.5 text-sm">📝 {task.note}</p>}
+      {task.comments_count > 0 && (
+        <button
+          onClick={() => actions.chat(task)}
+          className="mt-2 flex h-8 items-center rounded-full bg-white/25 px-3 text-sm font-semibold active:opacity-80"
+        >
+          💬 Переписка · {task.comments_count}
+          {chatUnread(task, meId) && " · новое"}
+        </button>
+      )}
       {declining ? (
         <form
           className="mt-3 space-y-2"
@@ -266,6 +289,14 @@ function AskCard({ task, members, actions }: { task: Task; members: Member[]; ac
           >
             Беру
           </button>
+          {task.comments_count === 0 && (
+            <button
+              onClick={() => actions.chat(task)}
+              className="h-11 flex-1 rounded-xl bg-white/25 font-semibold active:opacity-80"
+            >
+              Уточнить
+            </button>
+          )}
           <button
             onClick={() => setDeclining(true)}
             className="h-11 flex-1 rounded-xl bg-white/25 font-semibold active:opacity-80"

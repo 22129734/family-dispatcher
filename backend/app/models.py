@@ -122,6 +122,8 @@ class MemberRow(Base):
     confirm_mode: Mapped[str | None] = mapped_column(String(8), nullable=True)
     # Несколько участников в деле («мы с мужем в кино»); по умолчанию — один исполнитель
     allow_participants: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # После обучения при первом входе человек выбрал «Нет, разберусь» — подсказки не показываем
+    hints_off: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
     family: Mapped[FamilyRow] = relationship(back_populates="members")
@@ -188,6 +190,21 @@ class TaskRow(Base):
     files: Mapped[list["TaskFileRow"]] = relationship(
         order_by="TaskFileRow.created_at", cascade="all, delete-orphan", passive_deletes=True
     )
+    # Переписка в деле: исполнитель уточняет у автора, автор отвечает
+    comments: Mapped[list["TaskCommentRow"]] = relationship(
+        order_by="TaskCommentRow.created_at",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+
+    @property
+    def comments_count(self) -> int:
+        return len(self.comments)
+
+    @property
+    def last_comment_by_id(self) -> str | None:
+        return self.comments[-1].member_id if self.comments else None
 
 
 class PhoneInviteRow(Base):
@@ -217,6 +234,18 @@ class TaskFileRow(Base):
     name: Mapped[str] = mapped_column(String(200))
     content_type: Mapped[str] = mapped_column(String(80))
     size: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class TaskCommentRow(Base):
+    """Сообщение в переписке по делу: «Какой именно подарок?» — «Лего, до 3000»."""
+
+    __tablename__ = "task_comments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"), index=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id"))
+    text: Mapped[str] = mapped_column(String(1000))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
 
 

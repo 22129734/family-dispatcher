@@ -16,12 +16,15 @@ from app.models import (
     MemberRow,
     PhoneInviteRow,
     PushSubscriptionRow,
+    TaskCommentRow,
     TaskFileRow,
     TaskRow,
 )
 from app.schemas.api import (
     BatchCreateRequest,
     BatchItemOut,
+    CommentOut,
+    CommentRequest,
     CreateFamilyRequest,
     CreateTaskRequest,
     DeclineRequest,
@@ -47,7 +50,7 @@ from app.schemas.api import (
     WeekOut,
 )
 from app.services import family_service as fs
-from app.services import files, multi_tasks, notifications, phone_auth, repeat, sms
+from app.services import files, metrics, multi_tasks, notifications, phone_auth, repeat, sms
 from app.services.family_service import TaskActionError
 from app.services.task_extractor import TaskExtractor
 
@@ -371,13 +374,16 @@ def get_family(member: CurrentMember, db: DbSession) -> FamilyOut:
             select(PushSubscriptionRow.member_id).where(PushSubscriptionRow.member_id.in_(ids))
         )
     )
+    passed = metrics.path_done(db, ids)
     return FamilyOut(
         id=family.id,
         name=family.name,
         invite_code=family.invite_code,
         ref_code=family.ref_code,
         members=[
-            MemberOut.model_validate(m).model_copy(update={"notifications": m.id in with_push})
+            MemberOut.model_validate(m).model_copy(
+                update={"notifications": m.id in with_push, "path_done": m.id in passed}
+            )
             for m in family.members
         ],
     )
@@ -780,6 +786,33 @@ def thank_task(
             notifications.deliver, task.assignee_id, notifications.thanks_message(task, member)
         )
     return task
+
+
+@router.get("/tasks/{task_id}/comments", response_model=list[CommentOut], tags=["tasks"])
+def list_comments(task_id: str, member: CurrentMember, db: DbSession) -> list[TaskCommentRow]:
+    return _family_task(db, member, task_id).comments
+
+
+@router.post("/tasks/{task_id}/comments", response_model=list[CommentOut], tags=["tasks"])
+def add_comment(
+    task_id: str,
+    payload: CommentRequest,
+    member: CurrentMember,
+    db: DbSession,
+    background: BackgroundTasks,
+) -> list[TaskCommentRow]:
+    """Сообщение в переписке по делу — остальным участникам дела уведомление."""
+    task = _family_task(db, member, task_id)
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Пустое сообщение")
+    task.comments.append(TaskCommentRow(member_id=member.id, text=text))
+    fs.track(db, member, "task_commented", author=task.created_by_id == member.id)
+    db.commit()
+    message = notifications.comment_message(task, member, text)
+    for member_id in {task.created_by_id, task.assignee_id, *task.participants} - {member.id, None}:
+        background.add_task(notifications.deliver, member_id, message)
+    return task.comments
 
 
 @router.get("/family/week", response_model=WeekOut, tags=["family"])
