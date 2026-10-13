@@ -44,7 +44,7 @@ const TEAM: Contact[] = [
   { name: "Илья", role: "разработчик", tone: "tone-d", links: [["Почта", "mailto:onepeople458@gmail.com"]] },
 ];
 
-type Sub = "name" | "reminders" | "theme" | "confirm" | "participants" | "install" | "account" | "voice" | "team" | null;
+type Sub = "name" | "chrome" | "reminders" | "theme" | "confirm" | "participants" | "install" | "account" | "voice" | "team" | null;
 
 const buildDate = new Date(__BUILD_TIME__);
 const VERSION = buildDate.toLocaleString("ru-RU", {
@@ -131,6 +131,7 @@ export function MoreScreen({
   if (sub) {
     const titles: Record<Exclude<Sub, null>, string> = {
       name: "Ваше имя",
+      chrome: "Уведомление Chrome «скопировать URL»",
       reminders: "Напоминания",
       theme: "Оформление",
       confirm: "Перед отправкой просьбы",
@@ -165,6 +166,7 @@ export function MoreScreen({
           <ParticipantsSetting value={allowParticipants} onChange={setAllowParticipants} onSaved={onProfileChange} />
         )}
         {sub === "install" && <InstallCard always />}
+        {sub === "chrome" && <ChromeNotice />}
         {sub === "account" && (
           <section className="space-y-2">
             <Button variant="soft" className="w-full" onClick={() => setChangingPin(true)}>
@@ -242,6 +244,9 @@ export function MoreScreen({
 
       <Group title="Помощь">
         <Row label="Надиктовать отзыв" value="голосом" onClick={() => setSub("voice")} />
+        {platform().android && (
+          <Row label="Висит уведомление Chrome" value="как убрать" onClick={() => setSub("chrome")} />
+        )}
         <Row label="Написать в поддержку" value="письмо" onClick={mail} />
         <Row
           label="Группа тестировщиков в Max"
@@ -302,6 +307,40 @@ function Row({ label, value = "", onClick, href }: { label: string; value?: stri
     <button onClick={onClick} className={cls}>
       {inner}
     </button>
+  );
+}
+
+/**
+ * На телефонах без сервисов Google (Honor, Huawei) Chrome ставит не приложение, а ярлык —
+ * и пока он открыт, держит служебное уведомление «Нажмите, чтобы скопировать URL».
+ * Убрать его из сайта нельзя — только выключить эту категорию уведомлений Chrome.
+ */
+function ChromeNotice() {
+  return (
+    <section className="space-y-3 text-[15px] leading-snug">
+      <p className="text-ink-2">
+        На некоторых телефонах (например, Honor и Huawei) Chrome, пока открыт Диспетчер, показывает уведомление
+        «Нажмите, чтобы скопировать URL этого приложения». Это служебное уведомление самого Chrome — Диспетчер его не
+        присылает и убрать сам не может.
+      </p>
+      <div className="glass rounded-2xl p-4">
+        <p className="font-semibold">Как убрать</p>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-ink-2">
+          <li>Потяните шторку уведомлений вниз.</li>
+          <li>Задержите палец на уведомлении «Диспетчер — Нажмите, чтобы скопировать URL».</li>
+          <li>
+            Откройте настройки этого уведомления и выключите <b className="font-medium text-ink">только его категорию</b>.
+            Название зависит от телефона — например, «Веб-приложения».
+          </li>
+        </ol>
+      </div>
+      <p className="rounded-2xl bg-warn-soft px-4 py-3 text-sm">
+        Не выключайте все уведомления Chrome — иначе перестанут приходить просьбы близких.
+      </p>
+      <p className="text-sm text-ink-2">
+        Другой способ — открывать Диспетчер в браузере, без значка на экране: тогда этого уведомления нет.
+      </p>
+    </section>
   );
 }
 

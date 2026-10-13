@@ -74,6 +74,12 @@ export function InstallCard({ always = false }: { always?: boolean }) {
           </li>
         </ol>
       )}
+      {always && platform().android && (
+        <p className="mt-3 text-xs text-ink-3">
+          На Honor и Huawei Chrome может показывать уведомление «скопировать URL», пока открыт Диспетчер. Как его
+          убрать — в «Ещё → Висит уведомление Chrome».
+        </p>
+      )}
       {!always && (
         <button onClick={hide} className="mt-2 text-xs text-ink-3">
           Не сейчас
