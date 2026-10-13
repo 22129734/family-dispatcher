@@ -26,6 +26,8 @@ interface SpeechState {
   listening: boolean;
   interim: string;
   error: string | null;
+  /** Выключить микрофон, ничего не отправляя */
+  cancel: () => void;
 }
 
 /** Поле для дела текстом. Голос — большая кнопка в центре меню, здесь — что она слышит. */
@@ -38,6 +40,7 @@ export function Composer({
   frequent = [],
   onFrequent,
   onImage,
+  highlight = false,
 }: {
   onSend: (text: string, source: "text" | "voice") => Promise<void>;
   busy: boolean;
@@ -51,6 +54,8 @@ export function Composer({
   onFrequent?: (item: Frequent) => void;
   /** Скрепка: скриншот записи из другого приложения — ИИ превратит его в дела */
   onImage?: (file: File) => void;
+  /** Обучение при первом входе: поле — над затемнением, сплошное и обведённое */
+  highlight?: boolean;
 }) {
   const picker = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
@@ -86,10 +91,17 @@ export function Composer({
   return (
     <div>
       {(speech.listening || speech.interim) && (
-        <p className="glass appear mb-2 rounded-2xl px-4 py-2.5 text-sm">
-          <span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-accent align-middle" />
-          {speech.interim || "Слушаю — скажите, что нужно сделать…"}
-        </p>
+        <div className="glass appear mb-2 flex items-center gap-2 rounded-2xl py-1.5 pr-1.5 pl-4 text-sm">
+          <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-accent" />
+          <p className="min-w-0 flex-1 py-1">{speech.interim || "Слушаю — скажите, что нужно сделать…"}</p>
+          <button
+            type="button"
+            onClick={speech.cancel}
+            className="h-9 shrink-0 rounded-xl bg-surface-2 px-3 font-semibold text-ink-2 active:opacity-70"
+          >
+            Отменить
+          </button>
+        </div>
       )}
       {speech.error && <p className="glass mb-2 rounded-2xl px-4 py-2 text-sm text-warn">{speech.error}</p>}
       {frequent.length > 0 && !text && !speech.listening && (
@@ -107,7 +119,14 @@ export function Composer({
           ))}
         </div>
       )}
-      <form onSubmit={submit} className={`glass flex items-end gap-2 rounded-[22px] p-1.5 shadow-md ${onImage ? "pl-1.5" : "pl-4"}`}>
+      <form
+        onSubmit={submit}
+        // Полупрозрачное поле над затемнением на части телефонов выглядит серым — при обучении сплошное
+        style={highlight ? { background: "var(--surface-solid)" } : undefined}
+        className={`glass flex items-end gap-2 rounded-[22px] p-1.5 shadow-md ${onImage ? "pl-1.5" : "pl-4"} ${
+          highlight ? "ring-4 ring-accent/70" : ""
+        }`}
+      >
         {onImage && (
           <>
             <button

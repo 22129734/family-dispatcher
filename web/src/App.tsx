@@ -463,6 +463,17 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     assigneeId: string | null;
   } | null>(null);
 
+  // Высота нижней панели (поле, «Частые дела», меню) — уведомления ставим над ней, а не поверх
+  const dock = useRef<HTMLDivElement>(null);
+  const [dockHeight, setDockHeight] = useState(176);
+  useEffect(() => {
+    const el = dock.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setDockHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // «Частые дела» над полем ввода — обновляем после каждой новой просьбы
   const [frequent, setFrequent] = useState<Frequent[]>([]);
   const loadFrequent = useCallback(() => {
@@ -714,7 +725,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       )}
 
       {undo && (
-        <div className="fixed inset-x-0 bottom-44 z-30 flex justify-center px-4">
+        <div className="fixed inset-x-0 z-30 flex justify-center px-4" style={{ bottom: dockHeight + 8 }}>
           <div className="appear flex w-full max-w-sm items-center gap-3 rounded-2xl bg-ink py-2 pr-2 pl-4 text-sm text-bg shadow-lg">
             <span className="min-w-0 flex-1 truncate">Готово: {undo.title}</span>
             <button
@@ -728,12 +739,12 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       )}
 
       {toast && !undo && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-44 z-30 flex justify-center px-4">
+        <div className="pointer-events-none fixed inset-x-0 z-30 flex justify-center px-4" style={{ bottom: dockHeight + 8 }}>
           <p className="appear max-w-sm rounded-2xl bg-ink px-4 py-2.5 text-center text-sm text-bg shadow-lg">{toast}</p>
         </div>
       )}
 
-      <div className="pb-safe pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-3 pb-3">
+      <div ref={dock} className="pb-safe pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-3 pb-3">
         {tab === "today" && (
           <div className="pointer-events-auto">
             <Hint id="mic" className="mb-2">
@@ -748,6 +759,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
               frequent={frequent}
               onFrequent={(item) => copyTask(item.task, item.title)}
               onImage={(file) => void sendImage(file)}
+              highlight={tourOn && !tourTaskId}
             />
           </div>
         )}
