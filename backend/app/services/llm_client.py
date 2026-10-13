@@ -8,6 +8,7 @@
 вызов фундаментальной модели и навык — системный промпт с инструментами над ней.
 """
 
+import base64
 import json
 import logging
 
@@ -125,6 +126,52 @@ EXTRACT_SYSTEM_PROMPT = (
 )
 
 
+IMAGE_TASKS_FUNCTION = {
+    "name": "tasks_from_screenshot",
+    "description": "Дела семьи со скриншота: записи, визиты, занятия",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "tasks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Коротко, что за дело: «Маникюр с покрытием гель-лаком»",
+                        },
+                        "due_at": {"type": "string", "description": "Начало, ISO без зоны"},
+                        "ends_at": {"type": "string", "description": "Окончание, если указано"},
+                        "note": {
+                            "type": "string",
+                            "description": "Мастер или врач, адрес, кабинет, цена, телефон",
+                        },
+                        "assignee": {
+                            "type": "string",
+                            "description": "Кто пойдёт: «self» — автор, имя из семьи или пусто",
+                        },
+                    },
+                    "required": ["title"],
+                },
+            }
+        },
+        "required": ["tasks"],
+    },
+}
+
+IMAGE_SYSTEM_PROMPT = (
+    "Ты — диспетчер домашних дел русскоязычной семьи. На скриншоте — записи или события "
+    "из другого приложения (салон, клиника, секция, доставка). Выпиши каждую запись "
+    "отдельным делом и вызови tasks_from_screenshot. Не выдумывай того, чего нет на экране. "
+    "Год не указан — ближайшая будущая дата. "
+    "Кто пойдёт: если на скриншоте имя клиента совпадает с членом семьи — он; маникюр, "
+    "педикюр, брови, ресницы, эпиляция, косметолог, гинеколог — женщина семьи "
+    "(пол определи по имени; автор-женщина — «self»); барбершоп — мужчина; "
+    "иначе оставь пустым."
+)
+
+
 class LLMError(Exception):
     """Ответ модели не удалось получить или разобрать."""
 
@@ -147,7 +194,11 @@ class LLMClient:
     def enabled(self) -> bool:
         return self._settings.llm_enabled
 
-    def _chat(self, skill: str, body: dict) -> dict:
+    @property
+    def vision_enabled(self) -> bool:
+        return bool(self._settings.llm_api_key and self._settings.vision_model)
+
+    def _chat(self, skill: str, body: dict, timeout_s: float | None = None) -> dict:
         """Запрос к модели: одна повторная попытка, если не удалось подключиться.
 
         Подключение ждём недолго (CONNECT_TIMEOUT_S): сеть моргнула — сразу пробуем ещё раз,
@@ -157,7 +208,7 @@ class LLMClient:
         with telemetry.track_call(Kind.SKILL, skill):
             for attempt in range(1, LLM_ATTEMPTS + 1):
                 try:
-                    return self._attempt(body)
+                    return self._attempt(body, timeout_s)
                 except _RetryableLLMError as exc:
                     if attempt == LLM_ATTEMPTS:
                         raise LLMError(str(exc)) from exc
@@ -166,14 +217,16 @@ class LLMClient:
                 "LLM недоступен"
             )  # pragma: no cover — цикл всегда возвращает или бросает
 
-    def _attempt(self, body: dict) -> dict:
+    def _attempt(self, body: dict, timeout_s: float | None = None) -> dict:
         settings = self._settings
         with telemetry.track_call(Kind.LLM, "chat.completions") as call:
-            call.model = settings.llm_model
+            call.model = body.get("model") or settings.llm_model
             try:
                 with httpx.Client(
                     base_url=settings.llm_base_url,
-                    timeout=httpx.Timeout(settings.llm_timeout_s, connect=CONNECT_TIMEOUT_S),
+                    timeout=httpx.Timeout(
+                        timeout_s or settings.llm_timeout_s, connect=CONNECT_TIMEOUT_S
+                    ),
                     transport=self._transport,
                 ) as client:
                     response = client.post(
@@ -290,6 +343,56 @@ class LLMClient:
             for row in arguments.get("items") or []
             if isinstance(row, dict)
         }
+
+    def tasks_from_image(
+        self,
+        image: bytes,
+        content_type: str,
+        now_iso: str,
+        author: str,
+        members: list[str],
+    ) -> list[dict] | None:
+        """Дела со скриншота другого приложения: записи к мастеру, к врачу, занятия."""
+        if not self.vision_enabled:
+            return None
+        url = f"data:{content_type};base64,{base64.b64encode(image).decode()}"
+        family = "; ".join(members) or "других членов семьи нет"
+        try:
+            data = self._chat(
+                "tasks_from_image",
+                {
+                    "model": self._settings.vision_model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                f"{IMAGE_SYSTEM_PROMPT}\nСейчас: {now_iso}. "
+                                f"Автор: {author}. Семья: {family}."
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Скриншот из другого приложения"},
+                                {"type": "image_url", "image_url": {"url": url}},
+                            ],
+                        },
+                    ],
+                    "tools": [{"type": "function", "function": IMAGE_TASKS_FUNCTION}],
+                    "tool_choice": {
+                        "type": "function",
+                        "function": {"name": "tasks_from_screenshot"},
+                    },
+                    "temperature": 0,
+                },
+                timeout_s=self._settings.vision_timeout_s,
+            )
+            arguments = _tool_arguments(data, "tasks_from_screenshot") or {}
+        except LLMError:
+            logger.exception("Не удалось разобрать скриншот")
+            return None
+        found = arguments.get("tasks") or []
+        return [t for t in found if isinstance(t, dict) and t.get("title")]
 
 
 def _tool_arguments(data: dict, name: str) -> dict | None:

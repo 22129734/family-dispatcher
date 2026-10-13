@@ -37,6 +37,7 @@ export function Composer({
   spouse,
   frequent = [],
   onFrequent,
+  onImage,
 }: {
   onSend: (text: string, source: "text" | "voice") => Promise<void>;
   busy: boolean;
@@ -48,7 +49,10 @@ export function Composer({
   /** «Частые дела»: в одно касание — шторка с заполненными полями */
   frequent?: Frequent[];
   onFrequent?: (item: Frequent) => void;
+  /** Скрепка: скриншот записи из другого приложения — ИИ превратит его в дела */
+  onImage?: (file: File) => void;
 }) {
+  const picker = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
@@ -103,7 +107,34 @@ export function Composer({
           ))}
         </div>
       )}
-      <form onSubmit={submit} className="glass flex items-end gap-2 rounded-[22px] p-1.5 pl-4 shadow-md">
+      <form onSubmit={submit} className={`glass flex items-end gap-2 rounded-[22px] p-1.5 shadow-md ${onImage ? "pl-1.5" : "pl-4"}`}>
+        {onImage && (
+          <>
+            <button
+              type="button"
+              onClick={() => picker.current?.click()}
+              disabled={busy}
+              aria-label="Дела со скриншота"
+              title="Скриншот записи из другого приложения"
+              className="flex h-10 w-9 shrink-0 items-center justify-center rounded-2xl text-ink-3 active:bg-surface-2 disabled:opacity-40"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            </button>
+            <input
+              ref={picker}
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) onImage(file);
+              }}
+            />
+          </>
+        )}
         <textarea
           ref={field}
           value={text}

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 
@@ -61,6 +62,7 @@ from app.services import (
     sms,
 )
 from app.services.family_service import TaskActionError
+from app.services.llm_client import LLMClient
 from app.services.task_extractor import TaskExtractor
 
 router = APIRouter(prefix="/api/v1")
@@ -548,6 +550,101 @@ def parse_task(payload: DispatchRequest, member: CurrentMember) -> DraftOut:
         rationale=why,
         clarifying_question=draft.clarifying_question,
         unclear=draft.due_at is None or assignee is None or bool(draft.clarifying_question),
+    )
+
+
+ROLE_WORD = {"adult": "взрослый", "teen": "подросток", "child": "ребёнок"}
+
+
+def _when_or_none(value: object) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(value)).replace(tzinfo=None) if value else None
+    except ValueError:
+        return None
+
+
+def _member_by_ref(member: MemberRow, ref: object) -> MemberRow | None:
+    """«self» или имя из семьи → участник; иначе None."""
+    wanted = str(ref or "").strip().lower()
+    if wanted == "self":
+        return member
+    return next((m for m in member.family.members if m.name.strip().lower() == wanted), None)
+
+
+@router.post("/tasks/parse-image", response_model=DraftOut, tags=["tasks"])
+async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) -> DraftOut:
+    """Дела со скриншота другого приложения — в шторку проверки, как разобранная фраза."""
+    data = await upload.read(files.MAX_BYTES + 1)
+    content_type = (upload.content_type or "").split(";")[0].strip().lower()
+    try:
+        files.check(content_type, data, 0)
+    except files.FileError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    if not content_type.startswith("image/"):
+        raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "Нужен скриншот или фото")
+    client = LLMClient()
+    if not client.vision_enabled:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Распознавание скриншотов сейчас недоступно"
+        )
+    others = [
+        f"{m.name} ({ROLE_WORD.get(m.role, m.role)})"
+        for m in member.family.members
+        if m.id != member.id
+    ]
+    found = await run_in_threadpool(
+        client.tasks_from_image,
+        data,
+        content_type,
+        datetime.now().isoformat(timespec="minutes"),
+        member.name,
+        others,
+    )
+    fs.track(db, member, "task_parsed_image", count=len(found or []))
+    db.commit()
+    if not found:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Не нашли на скриншоте дел — попробуйте другой или напишите текстом",
+        )
+    tasks = []
+    for raw in found:
+        due = _when_or_none(raw.get("due_at"))
+        tasks.append(
+            {
+                "title": str(raw["title"]).strip()[:300],
+                "due_at": due,
+                "ends_at": _valid_end(due, _when_or_none(raw.get("ends_at"))),
+                "note": str(raw.get("note") or "").strip()[:2000] or None,
+                "assignee": _member_by_ref(member, raw.get("assignee")),
+            }
+        )
+    # Исполнитель: кого назвала модель, иначе — по общему правилу семьи
+    assignee = next((t["assignee"] for t in tasks if t["assignee"]), None)
+    why: str | None = "Со скриншота"
+    if assignee is None:
+        assignee, why = fs.default_assignee(member.family, member, False)
+    first = tasks[0]
+    return DraftOut(
+        title=first["title"],
+        due_at=first["due_at"],
+        ends_at=first["ends_at"],
+        recurrence="none",
+        priority="normal",
+        items=[],
+        requires_car=False,
+        note=first["note"],
+        assignee_id=assignee.id if assignee else None,
+        rationale=why,
+        clarifying_question=None,
+        # Со скриншота — всегда показываем, что поняли: распознавание могло ошибиться
+        unclear=True,
+        batch=[
+            BatchItemOut(title=t["title"], due_at=t["due_at"], ends_at=t["ends_at"], note=t["note"])
+            for t in tasks
+        ]
+        if len(tasks) >= 2
+        else [],
     )
 
 

@@ -348,6 +348,12 @@ export const api = {
   done: (id: string) => post<Task>(`/tasks/${id}/done`),
   reopen: (id: string) => post<Task>(`/tasks/${id}/reopen`),
   reject: (id: string, comment: string | null) => post<Task>(`/tasks/${id}/reject`, { comment }),
+  /** Дела со скриншота другого приложения — разобранные, ещё не созданные */
+  parseImage: (file: File) => {
+    const form = new FormData();
+    form.append("upload", file, file.name);
+    return request<Draft>("/tasks/parse-image", { method: "POST", body: form });
+  },
   attach: (id: string, file: File) => {
     const form = new FormData();
     form.append("upload", file, file.name);

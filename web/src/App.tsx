@@ -15,6 +15,7 @@ import { parseLocal, plainTitle } from "./format";
 import { ConfirmSheet } from "./components/ConfirmSheet";
 import { BatchSheet } from "./components/BatchSheet";
 import { ChatSheet } from "./components/ChatSheet";
+import { prepareFile } from "./components/TaskFiles";
 import { Tour, tourDismissed } from "./components/Tour";
 import { Composer } from "./components/Composer";
 import { dismissAllHints, dismissHint, Hint } from "./components/Hint";
@@ -520,6 +521,25 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     );
   }
 
+  /** Скриншот записи из другого приложения → дела в шторке проверки. */
+  async function sendImage(file: File) {
+    setSending(true);
+    notify("Смотрим скриншот…");
+    try {
+      const draft = await api.parseImage(await prepareFile(file));
+      setToast(null);
+      if (draft.batch.length >= 2) {
+        setBatch({ items: draft.batch, text: "Со скриншота", source: "text", assigneeId: draft.assignee_id });
+      } else {
+        setConfirm({ draft, text: draft.title, source: "text", heading: "Со скриншота" });
+      }
+    } catch (err) {
+      notify((err as Error).message);
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function send(text: string, source: "text" | "voice") {
     // Режим из профиля: never — сразу, always — всегда шторка, auto (по умолчанию) — если неясно
     const mode = family?.members.find((m) => m.id === me.id)?.confirm_mode ?? "auto";
@@ -727,6 +747,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
               spouse={family?.members.find((m) => m.id !== me.id && m.role === "adult")?.name ?? null}
               frequent={frequent}
               onFrequent={(item) => copyTask(item.task, item.title)}
+              onImage={(file) => void sendImage(file)}
             />
           </div>
         )}

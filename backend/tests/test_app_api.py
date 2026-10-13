@@ -523,3 +523,56 @@ def test_shopping_list_is_grouped_by_department(client: TestClient, family: dict
     shopping.fill_groups(task["id"], client=FakeClient())  # type: ignore[arg-type]
     view = client.get("/api/v1/tasks", headers=auth(family["mom"])).json()[0]
     assert {i["text"]: i["group"] for i in view["items"]}["паспорт"] == shopping.OTHER
+
+
+def test_tasks_from_screenshot(
+    client: TestClient, family: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api import app_routes
+
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+    seen: dict = {}
+
+    class FakeClient:
+        vision_enabled = True
+
+        def tasks_from_image(self, image, content_type, now_iso, author, members):
+            seen.update(author=author, members=members, content_type=content_type)
+            return [
+                {
+                    "title": "Маникюр с покрытием",
+                    "due_at": "2026-10-14T17:40:00",
+                    "ends_at": "2026-10-14T19:40:00",
+                    "note": "Таня Молькова, пр. Машиностроителей, 48А",
+                    "assignee": "self",
+                },
+                {"title": "Педикюр", "due_at": "2026-10-21T10:00", "assignee": "self"},
+            ]
+
+    monkeypatch.setattr(app_routes, "LLMClient", FakeClient)
+    draft = client.post(
+        "/api/v1/tasks/parse-image",
+        files={"upload": ("shot.png", png, "image/png")},
+        headers=auth(family["mom"]),
+    ).json()
+    assert seen == {"author": "Мама", "members": ["Папа (взрослый)"], "content_type": "image/png"}
+    assert draft["assignee_id"] == family["mom_id"] and draft["unclear"] is True
+    assert [(b["title"], b["due_at"], b["ends_at"]) for b in draft["batch"]] == [
+        ("Маникюр с покрытием", "2026-10-14T17:40:00", "2026-10-14T19:40:00"),
+        ("Педикюр", "2026-10-21T10:00:00", None),
+    ]
+
+    # Не картинка — отказ; ничего не нашли — понятная ошибка
+    pdf = client.post(
+        "/api/v1/tasks/parse-image",
+        files={"upload": ("a.pdf", b"%PDF-1.4 x", "application/pdf")},
+        headers=auth(family["mom"]),
+    )
+    assert pdf.status_code == 415
+    monkeypatch.setattr(FakeClient, "tasks_from_image", lambda self, *a: [])
+    empty = client.post(
+        "/api/v1/tasks/parse-image",
+        files={"upload": ("shot.png", png, "image/png")},
+        headers=auth(family["mom"]),
+    )
+    assert empty.status_code == 422
