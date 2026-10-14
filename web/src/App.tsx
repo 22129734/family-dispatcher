@@ -466,6 +466,26 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     assigneeId: string | null;
   } | null>(null);
 
+  // Клавиатура телефона: на iPhone (и в Chrome на Android) она не уменьшает страницу, а наезжает
+  // на закреплённую снизу панель. Поднимаем панель над клавиатурой и прячем меню, пока печатают
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      // Меньше 80 px — это не клавиатура, а панель браузера
+      setKeyboard(covered > 80 ? Math.round(covered) : 0);
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
   // Высота нижней панели (поле, «Частые дела», меню) — уведомления ставим над ней, а не поверх
   const dock = useRef<HTMLDivElement>(null);
   const [dockHeight, setDockHeight] = useState(176);
@@ -747,7 +767,11 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         </div>
       )}
 
-      <div ref={dock} className="pb-safe pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-3 pb-3">
+      <div
+        ref={dock}
+        style={keyboard ? { bottom: keyboard, paddingBottom: 8 } : undefined}
+        className={`pointer-events-none fixed inset-x-0 bottom-0 z-20 mx-auto max-w-md px-3 pb-3 ${keyboard ? "" : "pb-safe"}`}
+      >
         {tab === "today" && (
           <div className="pointer-events-auto">
             <Hint id="mic" className="mb-2">
@@ -766,7 +790,11 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
             />
           </div>
         )}
-        <nav className="glass pointer-events-auto mt-2 grid h-16 grid-cols-5 items-center rounded-[26px] px-1 shadow-lg">
+        <nav
+          className={`glass pointer-events-auto mt-2 grid h-16 grid-cols-5 items-center rounded-[26px] px-1 shadow-lg ${
+            keyboard ? "hidden" : ""
+          }`}
+        >
           <TabButton active={tab === "today"} onClick={() => setTab("today")} label="Дела" locked={tourOn}>
             <path d="M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" />
           </TabButton>
