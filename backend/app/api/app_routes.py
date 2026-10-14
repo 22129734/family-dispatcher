@@ -623,8 +623,10 @@ async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) 
     now = datetime.now()
     for raw in found:
         due = _when_or_none(raw.get("due_at"))
-        if due is None and raw.get("pickup"):
+        if raw.get("pickup"):
+            # Код получения действует только сегодня — срок со скриншота (хранение до…) не берём
             due = pickup_due(now)
+            raw = {**raw, "ends_at": None}
         tasks.append(
             {
                 "title": str(raw["title"]).strip()[:300],

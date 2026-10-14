@@ -616,10 +616,17 @@ def test_screenshot_list_becomes_items(
 def test_pickup_code_screenshot_is_attached(
     client: TestClient, family: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from datetime import datetime
+
     from app.api import app_routes
 
     found = [
-        {"title": "Забрать посылку Ozon", "note": "Код получения: 4 5631 * 7774", "pickup": True}
+        {
+            "title": "Забрать посылку Ozon",
+            "note": "Код получения: 4 5631 * 7774",
+            "pickup": True,
+            "due_at": "2026-10-25T21:00",  # «хранится до» — не срок дела: код действует сегодня
+        }
     ]
 
     class FakeClient:
@@ -632,6 +639,7 @@ def test_pickup_code_screenshot_is_attached(
     shot = {"upload": ("code.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")}
     draft = client.post("/api/v1/tasks/parse-image", files=shot, headers=auth(family["mom"])).json()
     assert (draft["title"], draft["attach_image"]) == ("Забрать посылку Ozon", True)
+    assert draft["due_at"][:10] == app_routes.pickup_due(datetime.now()).isoformat()[:10]
 
     # Обычная запись (не код получения) — скриншот к делу не прикрепляем
     found[0] = {"title": "Маникюр", "due_at": "2026-10-14T17:40"}
