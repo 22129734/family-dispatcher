@@ -563,6 +563,18 @@ def _when_or_none(value: object) -> datetime | None:
         return None
 
 
+def pickup_due(now: datetime) -> datetime:
+    """Срок «Забрать посылку»: в будни — сегодня в 18:00, в выходные — через час.
+
+    В будни после 18:00 «сегодня в 18» уже прошло — тоже через час. Округляем до 5 минут.
+    """
+    evening = now.replace(hour=18, minute=0, second=0, microsecond=0)
+    if now.weekday() < 5 and now < evening:
+        return evening
+    later = now.replace(second=0, microsecond=0) + timedelta(hours=1)
+    return later + timedelta(minutes=(5 - later.minute % 5) % 5)
+
+
 def _member_by_ref(member: MemberRow, ref: object) -> MemberRow | None:
     """«self» или имя из семьи → участник; иначе None."""
     wanted = str(ref or "").strip().lower()
@@ -608,8 +620,11 @@ async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) 
             "Не нашли на скриншоте дел — попробуйте другой или напишите текстом",
         )
     tasks = []
+    now = datetime.now()
     for raw in found:
         due = _when_or_none(raw.get("due_at"))
+        if due is None and raw.get("pickup"):
+            due = pickup_due(now)
         tasks.append(
             {
                 "title": str(raw["title"]).strip()[:300],

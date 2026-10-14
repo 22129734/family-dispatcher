@@ -638,3 +638,16 @@ def test_pickup_code_screenshot_is_attached(
     shot = {"upload": ("code.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")}
     draft = client.post("/api/v1/tasks/parse-image", files=shot, headers=auth(family["mom"])).json()
     assert draft["attach_image"] is False
+
+
+def test_pickup_due_weekday_evening_weekend_hour() -> None:
+    from datetime import datetime
+
+    from app.api.app_routes import pickup_due
+
+    # Вторник утром — сегодня в 18:00
+    assert pickup_due(datetime(2026, 10, 13, 10, 7)) == datetime(2026, 10, 13, 18, 0)
+    # Вторник в 19:02 — 18:00 прошло, через час, округлено до 5 минут
+    assert pickup_due(datetime(2026, 10, 13, 19, 2)) == datetime(2026, 10, 13, 20, 5)
+    # Суббота — через час
+    assert pickup_due(datetime(2026, 10, 17, 12, 30)) == datetime(2026, 10, 17, 13, 30)
