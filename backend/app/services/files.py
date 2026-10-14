@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.config import get_settings
 from app.models import TaskFileRow
+from app.services import telemetry
 
 MAX_BYTES = 10 * 1024 * 1024  # 10 МБ: телефонное фото после сжатия на клиенте — 0,3–1 МБ
 MAX_PER_TASK = 5
@@ -51,7 +52,8 @@ def check(content_type: str, data: bytes, already: int) -> None:
 
 
 def save(file: TaskFileRow, data: bytes) -> None:
-    path_of(file).write_bytes(data)
+    with telemetry.track_call(telemetry.Kind.STORAGE, "save"):
+        path_of(file).write_bytes(data)
 
 
 def remove(file: TaskFileRow) -> None:

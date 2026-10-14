@@ -659,3 +659,34 @@ def test_pickup_due_weekday_evening_weekend_hour() -> None:
     assert pickup_due(datetime(2026, 10, 13, 19, 2)) == datetime(2026, 10, 13, 20, 5)
     # Суббота — через час
     assert pickup_due(datetime(2026, 10, 17, 12, 30)) == datetime(2026, 10, 17, 13, 30)
+
+
+def test_api_requests_are_counted_except_auto_refresh(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    """Действие в приложении — обращение к API решения; обновление по таймеру — нет."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import ComponentCallRow
+    from app.services import telemetry
+
+    telemetry.flush_api()
+    with SessionLocal() as db:
+        db.query(ComponentCallRow).filter(ComponentCallRow.kind == "api").delete()
+        db.commit()
+
+    client.get("/api/v1/tasks", headers=auth(family["mom"]))
+    client.get("/api/v1/tasks", headers={**auth(family["mom"]), "X-Auto": "1"})
+    client.post("/api/v1/events", json={"name": "app_open"}, headers=auth(family["mom"]))
+    client.get("/api/v1/tasks/nope/comments", headers=auth(family["mom"]))
+    client.get("/api/v1/tasks")  # без входа — не пользователь
+    assert telemetry.flush_api() == 2
+
+    with SessionLocal() as db:
+        rows = db.scalars(select(ComponentCallRow).where(ComponentCallRow.kind == "api")).all()
+    assert [(r.operation, r.status, r.error_code) for r in rows] == [
+        ("GET /api/v1/tasks", "ok", None),
+        ("GET /api/v1/tasks/{task_id}/comments", "error", "http_404"),
+    ]
+    assert all(r.member_id and r.family_id for r in rows)

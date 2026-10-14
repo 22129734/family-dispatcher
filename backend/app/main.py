@@ -1,4 +1,6 @@
 import asyncio
+import contextlib
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -10,13 +12,25 @@ from fastapi.staticfiles import StaticFiles
 from app.api import analytics, app_routes, auth_routes, push_routes, support_routes
 from app.config import get_settings
 from app.db import API_CONCURRENCY, SessionLocal, init_db
+from app.services import telemetry
 from app.services.link_preview import personalize
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    flusher = asyncio.create_task(_flush_api_calls())
     yield
+    flusher.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await flusher
+    await asyncio.to_thread(telemetry.flush_api)
+
+
+async def _flush_api_calls() -> None:
+    while True:
+        await asyncio.sleep(5)
+        await asyncio.to_thread(telemetry.flush_api)
 
 
 settings = get_settings()
@@ -36,6 +50,27 @@ app.add_middleware(
 
 
 _api_slots = asyncio.Semaphore(API_CONCURRENCY)
+
+# Служебные запросы — не действие в сценарии: свои события аналитики и выгрузки
+_NOT_COUNTED = ("/api/v1/events", "/api/v1/analytics")
+
+
+@app.middleware("http")
+async def count_api(request: Request, call_next) -> Response:
+    """Запрос приложения к API решения — обращение к компоненту (см. telemetry.note_api)."""
+    started = time.perf_counter()
+    response = await call_next(request)
+    actor = getattr(request.state, "actor", None)
+    if (
+        actor is not None
+        and request.headers.get("x-auto") != "1"
+        and not request.url.path.startswith(_NOT_COUNTED)
+    ):
+        route = request.scope.get("route")
+        operation = f"{request.method} {getattr(route, 'path', request.url.path)}"
+        ms = int((time.perf_counter() - started) * 1000)
+        telemetry.note_api(operation, response.status_code, ms, actor)
+    return response
 
 
 @app.middleware("http")
@@ -131,6 +166,6 @@ if (_dist / "index.html").is_file():
         if path.startswith("join/") or ref:
             # Ссылка-приглашение: имя пригласившего — в карточку ссылки в мессенджере
             html = (_dist / "index.html").read_text(encoding="utf-8")
-            with SessionLocal() as db:
+            with SessionLocal() as db, telemetry.track_call(telemetry.Kind.PREVIEW, "invite_card"):
                 return HTMLResponse(personalize(html, path, ref, db))
         return FileResponse(_dist / "index.html")

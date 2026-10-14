@@ -258,9 +258,9 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     toastTimer.current = window.setTimeout(() => setToast(null), 4000);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (auto = false) => {
     try {
-      const [f, t] = await Promise.all([api.family(), api.tasks(7)]);
+      const [f, t] = await Promise.all([api.family(auto), api.tasks(7, auto)]);
       const previous = seen.current;
       const justDone = previous
         ? t.find(
@@ -291,7 +291,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     api.track(platform().standalone ? "pwa_opened" : "app_open");
     void syncPush();
     void refresh();
-    const timer = window.setInterval(() => document.visibilityState === "visible" && void refresh(), REFRESH_MS);
+    const timer = window.setInterval(() => document.visibilityState === "visible" && void refresh(true), REFRESH_MS);
     const onVisible = () => document.visibilityState === "visible" && void refresh();
     document.addEventListener("visibilitychange", onVisible);
     return () => {

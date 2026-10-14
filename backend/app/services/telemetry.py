@@ -12,11 +12,15 @@
 
 import hashlib
 import logging
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import datetime
+
+from sqlalchemy import insert
 
 from app.config import get_settings
 from app.db import SessionLocal
@@ -38,6 +42,11 @@ class Kind:
     SMS = "sms"  # СМС-приглашение в семью
     REMINDER = "reminder"  # фоновая система напоминаний
     ESCALATION = "escalation"
+    API = "api"  # API решения: действие пользователя в приложении (создать дело, «Сделано»…)
+    RULES = "rules"  # инструмент: разбор фразы правилами (сроки, повтор, список)
+    CATALOG = "catalog"  # инструмент: словарь отделов магазина для списка покупок
+    STORAGE = "storage"  # хранилище файлов: фото и скриншоты в деле
+    PREVIEW = "preview"  # карточка ссылки-приглашения для мессенджера
 
 
 @dataclass
@@ -139,3 +148,51 @@ def track_call(kind: str, operation: str) -> Iterator[CallResult]:
             tokens_out=result.tokens_out,
             model=result.model,
         )
+
+
+# ---------- Запросы приложения к API решения ----------
+# Их много (десятки на пользователя в день), поэтому пишем не по одному, а пачкой раз
+# в несколько секунд (main.py). Фоновые обновления экрана по таймеру не считаются —
+# клиент помечает их заголовком X-Auto, это не действие человека.
+
+_api_calls: list[dict] = []
+_api_lock = threading.Lock()
+
+
+def note_api(operation: str, status_code: int, latency_ms: int, actor: Actor) -> None:
+    ok = status_code < 400
+    with _api_lock:
+        _api_calls.append(
+            {
+                "created_at": datetime.now(),
+                "kind": Kind.API,
+                "operation": operation[:60],
+                "status": "ok" if ok else "error",
+                "error_code": None if ok else f"http_{status_code}",
+                "latency_ms": latency_ms,
+                "member_id": actor.member_id,
+                "family_id": actor.family_id,
+            }
+        )
+
+
+def flush_api() -> int:
+    """Записать накопленные запросы к API одной вставкой; вернуть их число."""
+    from app.models import ComponentCallRow
+
+    with _api_lock:
+        rows = _api_calls[:]
+        _api_calls.clear()
+    if not rows:
+        return 0
+    session = SessionLocal()
+    try:
+        session.execute(insert(ComponentCallRow), rows)
+        session.commit()
+    except Exception:
+        logger.exception("Не удалось записать %s запросов к API", len(rows))
+        session.rollback()
+        return 0
+    finally:
+        session.close()
+    return len(rows)

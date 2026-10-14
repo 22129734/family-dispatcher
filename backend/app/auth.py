@@ -11,7 +11,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -87,6 +87,7 @@ def member_of(db: Session, account: AccountRow) -> MemberRow | None:
 
 
 def current_member(
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
     account: Annotated[AccountRow, Depends(current_account)],
 ) -> MemberRow:
@@ -96,6 +97,7 @@ def current_member(
             status.HTTP_409_CONFLICT, "Сначала создайте семью или войдите по приглашению"
         )
     telemetry.set_actor(member.id, member.family_id)
+    request.state.actor = telemetry.Actor(member.id, member.family_id)
     return member
 
 

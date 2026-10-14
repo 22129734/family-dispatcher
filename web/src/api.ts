@@ -299,6 +299,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.status === 204 ? (undefined as T) : response.json();
 }
 
+// Обновление экрана по таймеру — не действие человека: сервер не считает его обращением
+const AUTO = { headers: { "X-Auto": "1" } };
+
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
 const patch = <T>(path: string, body: unknown) =>
@@ -329,15 +332,15 @@ export const api = {
   me: () => request<Session>("/me"),
   updateMe: (changes: Partial<Pick<Member, "name" | "remind_before_min" | "theme" | "confirm_mode" | "allow_participants" | "hints_off">>) =>
     patch<Member>("/me", changes),
-  family: () => request<Family>("/family"),
+  family: (auto = false) => request<Family>("/family", auto ? AUTO : {}),
 
-  tasks: (doneDays = 1) => request<Task[]>(`/tasks?include_done_days=${doneDays}`),
+  tasks: (doneDays = 1, auto = false) => request<Task[]>(`/tasks?include_done_days=${doneDays}`, auto ? AUTO : {}),
   createTask: (task: NewTask) => post<Task>("/tasks", task),
   frequent: () => request<Frequent[]>("/tasks/frequent"),
   createBatch: (body: { tasks: BatchItem[]; assignee_id: string | null; source: "text" | "voice"; source_text: string }) =>
     post<Task[]>("/tasks/batch", body),
   thank: (id: string) => post<Task>(`/tasks/${id}/thanks`),
-  comments: (id: string) => request<Comment[]>(`/tasks/${id}/comments`),
+  comments: (id: string, auto = false) => request<Comment[]>(`/tasks/${id}/comments`, auto ? AUTO : {}),
   addComment: (id: string, text: string) => post<Comment[]>(`/tasks/${id}/comments`, { text }),
   familyWeek: () => request<WeekStats>("/family/week"),
   parseTask: (message: string, source: "text" | "voice") => post<Draft>("/tasks/parse", { message, source }),

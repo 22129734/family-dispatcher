@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from dateutil import parser as date_parser
 
 from app.schemas.task import Priority, Recurrence, TaskDraft
-from app.services import repeat
+from app.services import repeat, telemetry
 from app.services.llm_client import LLMClient
 from app.services.when import due_from_text, end_from_text, time_of
 
@@ -93,7 +93,8 @@ class TaskExtractor:
         """members — имена остальных членов семьи: по ним понимаем, кому адресовано дело."""
         now = now or datetime.now()
 
-        rules = self._from_rules(message, now, members or [])
+        with telemetry.track_call(telemetry.Kind.RULES, "parse"):
+            rules = self._from_rules(message, now, members or [])
         payload = self._client.extract_task(message, now.isoformat(), author, members)
         draft = self._merge(self._from_payload(payload, now), rules) if payload else rules
         return _align_first(draft, message.lower())

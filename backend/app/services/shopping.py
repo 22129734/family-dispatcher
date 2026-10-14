@@ -10,6 +10,7 @@ import re
 
 from app.db import SessionLocal
 from app.models import TaskRow
+from app.services import telemetry
 from app.services.llm_client import LLMClient
 
 logger = logging.getLogger(__name__)
@@ -289,11 +290,10 @@ def rule_group(text: str) -> str | None:
 
 def with_groups(items: list[dict]) -> list[dict]:
     """Проставить отдел по словарю тем пунктам, у которых его ещё нет."""
-    result = []
-    for item in items:
-        group = item.get("group") or rule_group(item["text"])
-        result.append({**item, "group": group})
-    return result
+    if all(item.get("group") for item in items):
+        return [dict(item) for item in items]
+    with telemetry.track_call(telemetry.Kind.CATALOG, "group"):
+        return [{**item, "group": item.get("group") or rule_group(item["text"])} for item in items]
 
 
 def needs_llm(items: list[dict]) -> bool:

@@ -64,9 +64,9 @@ export function ChatSheet({
   const otherId = author ? task.assignee_id : task.created_by_id;
   const other = otherId && otherId !== meId ? nameOf(otherId) : null;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (auto = false) => {
     try {
-      const list = await api.comments(task.id);
+      const list = await api.comments(task.id, auto);
       setComments(list);
       markSeen(meId, task.id, list.length);
     } catch (err) {
@@ -76,7 +76,7 @@ export function ChatSheet({
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => document.visibilityState === "visible" && void load(), POLL_MS);
+    const timer = window.setInterval(() => document.visibilityState === "visible" && void load(true), POLL_MS);
     return () => window.clearInterval(timer);
   }, [load]);
 
