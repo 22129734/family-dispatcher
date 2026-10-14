@@ -584,6 +584,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   }
 
   async function send(text: string, source: "text" | "voice") {
+    // Дело отправлено — прошлая ошибка распознавания больше не актуальна
+    speech.clearError();
     // Режим из профиля: never — сразу, always — всегда шторка, auto (по умолчанию) — если неясно
     const mode = family?.members.find((m) => m.id === me.id)?.confirm_mode ?? "auto";
     // Длинное или многострочное сообщение — возможно, несколько дел: разбираем даже в режиме «сразу»

@@ -28,6 +28,8 @@ interface SpeechState {
   error: string | null;
   /** Выключить микрофон, ничего не отправляя */
   cancel: () => void;
+  /** Убрать сообщение об ошибке распознавания */
+  clearError: () => void;
 }
 
 /** Поле для дела текстом. Голос — большая кнопка в центре меню, здесь — что она слышит. */
@@ -103,7 +105,16 @@ export function Composer({
           </button>
         </div>
       )}
-      {speech.error && <p className="glass mb-2 rounded-2xl px-4 py-2 text-sm text-warn">{speech.error}</p>}
+      {speech.error && (
+        <button
+          type="button"
+          onClick={speech.clearError}
+          className="glass mb-2 flex w-full items-center gap-2 rounded-2xl px-4 py-2 text-left text-sm text-warn"
+        >
+          <span className="min-w-0 flex-1">{speech.error}</span>
+          <span className="shrink-0 text-ink-3" aria-label="Закрыть">✕</span>
+        </button>
+      )}
       {frequent.length > 0 && !text && !speech.listening && (
         <div className="no-scrollbar mb-2 -mx-3 flex gap-1.5 overflow-x-auto px-3" aria-label="Частые дела">
           {frequent.map((item) => (
@@ -158,7 +169,10 @@ export function Composer({
           ref={field}
           value={text}
           rows={1}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (speech.error) speech.clearError();
+          }}
           onKeyDown={(e) => {
             // Enter — отправить; Shift+Enter — новая строка. Вставка сохраняет переносы
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {

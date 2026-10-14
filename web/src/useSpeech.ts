@@ -84,8 +84,10 @@ export function useSpeech(onFinal: (text: string) => void) {
     };
     rec.onaudiostart = () => window.clearTimeout(timer.current);
     rec.onerror = (event) => {
+      // Речь уже распознана — сбой в конце (сеть, «нет речи») не показываем: дело уйдёт как обычно
+      const heard = (finalText.current || lastText.current).trim();
       if (event.error === "not-allowed" || event.error === "service-not-allowed") setError(DENIED);
-      else if (event.error !== "no-speech" && event.error !== "aborted") setError("Не удалось распознать речь — попробуйте ещё раз");
+      else if (!heard && event.error !== "no-speech" && event.error !== "aborted") setError("Не удалось распознать речь — попробуйте ещё раз");
       finish(rec);
     };
     rec.onend = () => finish(rec);
@@ -161,5 +163,14 @@ export function useSpeech(onFinal: (text: string) => void) {
     [],
   );
 
-  return { supported, listening, interim, error, start, stop, cancel };
+  // Сообщение об ошибке не висит вечно: через 6 секунд прячем (кроме «микрофон запрещён» — там нужен шаг)
+  useEffect(() => {
+    if (!error || error === DENIED) return;
+    const hide = window.setTimeout(() => setError(null), 6000);
+    return () => window.clearTimeout(hide);
+  }, [error]);
+
+  const clearError = useCallback(() => setError(null), []);
+
+  return { supported, listening, interim, error, start, stop, cancel, clearError };
 }
