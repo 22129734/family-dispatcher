@@ -611,3 +611,30 @@ def test_screenshot_list_becomes_items(
         ("Ватные палочки", "Гигиена и аптека"),
     ]
     assert created[1]["items"] == []
+
+
+def test_pickup_code_screenshot_is_attached(
+    client: TestClient, family: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api import app_routes
+
+    found = [
+        {"title": "Забрать посылку Ozon", "note": "Код получения: 4 5631 * 7774", "pickup": True}
+    ]
+
+    class FakeClient:
+        vision_enabled = True
+
+        def tasks_from_image(self, *args):
+            return found
+
+    monkeypatch.setattr(app_routes, "LLMClient", FakeClient)
+    shot = {"upload": ("code.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")}
+    draft = client.post("/api/v1/tasks/parse-image", files=shot, headers=auth(family["mom"])).json()
+    assert (draft["title"], draft["attach_image"]) == ("Забрать посылку Ozon", True)
+
+    # Обычная запись (не код получения) — скриншот к делу не прикрепляем
+    found[0] = {"title": "Маникюр", "due_at": "2026-10-14T17:40"}
+    shot = {"upload": ("code.png", b"\x89PNG\r\n\x1a\n" + b"0" * 64, "image/png")}
+    draft = client.post("/api/v1/tasks/parse-image", files=shot, headers=auth(family["mom"])).json()
+    assert draft["attach_image"] is False

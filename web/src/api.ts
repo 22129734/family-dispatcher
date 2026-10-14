@@ -43,6 +43,8 @@ export interface Draft {
   unclear: boolean;
   /** Несколько дел в одном сообщении — расписание или список */
   batch: BatchItem[];
+  /** Скриншот кода получения посылки — прикрепить его к делу, чтобы показать на пункте */
+  attach_image?: boolean;
 }
 
 export interface BatchItem {

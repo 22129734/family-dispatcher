@@ -618,6 +618,7 @@ async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) 
                 "note": str(raw.get("note") or "").strip()[:2000] or None,
                 "items": [str(i).strip()[:120] for i in raw.get("items") or [] if str(i).strip()],
                 "assignee": _member_by_ref(member, raw.get("assignee")),
+                "pickup": bool(raw.get("pickup")),
             }
         )
     # Исполнитель: кого назвала модель, иначе — по общему правилу семьи
@@ -640,6 +641,7 @@ async def parse_image(upload: UploadFile, member: CurrentMember, db: DbSession) 
         clarifying_question=None,
         # Со скриншота — всегда показываем, что поняли: распознавание могло ошибиться
         unclear=True,
+        attach_image=len(tasks) == 1 and first["pickup"],
         batch=[
             BatchItemOut(
                 title=t["title"],

@@ -456,6 +456,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     heading?: string;
     startTime?: string;
     durationMin?: number | null;
+    /** Прикрепить к созданному делу (скриншот кода получения) */
+    attachFile?: File;
   } | null>(null);
 
   // Несколько дел в одном сообщении — шторка со списком
@@ -560,12 +562,19 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     setSending(true);
     notify("Смотрим скриншот…");
     try {
-      const draft = await api.parseImage(await prepareFile(file));
+      const prepared = await prepareFile(file);
+      const draft = await api.parseImage(prepared);
       setToast(null);
       if (draft.batch.length >= 2) {
         setBatch({ items: draft.batch, text: "Со скриншота", source: "text", assigneeId: draft.assignee_id });
       } else {
-        setConfirm({ draft, text: draft.title, source: "text", heading: "Со скриншота" });
+        setConfirm({
+          draft,
+          text: draft.title,
+          source: "text",
+          heading: "Со скриншота",
+          attachFile: draft.attach_image ? prepared : undefined,
+        });
       }
     } catch (err) {
       notify((err as Error).message);
@@ -704,9 +713,12 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           meId={me.id}
           onCancel={() => setConfirm(null)}
           onSent={(task) => {
+            const file = confirm.attachFile;
             setConfirm(null);
             announce(task);
-            void refresh();
+            // Код получения — сам скриншот в деле: его показывают на пункте выдачи
+            if (file) void actions.attach(task.id, file).then(() => refresh());
+            else void refresh();
           }}
         />
       )}

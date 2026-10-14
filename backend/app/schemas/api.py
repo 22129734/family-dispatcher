@@ -316,6 +316,8 @@ class DraftOut(BaseModel):
     unclear: bool
     # В сообщении несколько дел (расписание, список) — каждое отдельно
     batch: list["BatchItemOut"] = []
+    # Со скриншота кода получения посылки — сам скриншот прикрепляем к делу: показать на пункте
+    attach_image: bool = False
 
 
 class BatchItemOut(BaseModel):
