@@ -53,13 +53,17 @@ Caddy (TLS) ──► FastAPI ──► PostgreSQL
 - **Клиент:** React 19, TypeScript, Vite, Tailwind CSS 4, PWA (service worker, Web Push)
 - **Бэкенд:** Python 3.13, FastAPI, Pydantic v2, SQLAlchemy 2, Alembic, pywebpush
 - **Данные:** PostgreSQL 17
-- **ИИ:** LLM из инфраструктуры программы через OpenAI-совместимый API (GigaChat 3.5, function calling)
+- **ИИ:** LLM из инфраструктуры программы через OpenAI-совместимый API (GigaChat 3.5, function calling; Gemini 2.5 Flash — дела со скриншота)
 - **Инфраструктура:** Docker Compose, Caddy (HTTPS Let's Encrypt), VPS в России
 - **Внешние сервисы:** SMS.RU (вход звонком), push-сервисы браузеров
 
 ## Метрики
 
 Каждое действие пользователя пишется в события, каждое обращение к компоненту (LLM, push, вход и т. д.) — в журнал обращений. Отсюда считаются DAU, обращения на DAU и стоимость LLM на DAU — `GET /api/v1/analytics/daily`. Подробнее — [docs/web-mvp.md → Аналитика](docs/web-mvp.md#аналитика-и-обращения).
+
+- **Метрики первого этапа по неделям** — [docs/metrics.md](docs/metrics.md)
+- **Стоимость LLM:** ~0,08 ₽ на DAU в день, ~0,14 ₽ на целевое действие — [docs/llm-cost.md](docs/llm-cost.md)
+- **Нагрузочный тест:** 10, 20 и 50 RPS на продакшене без ошибок — [docs/load-test.md](docs/load-test.md)
 
 ---
 
