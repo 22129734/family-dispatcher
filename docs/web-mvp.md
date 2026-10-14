@@ -163,11 +163,78 @@ Dockerfile, docker-compose.yml
 
 ## Аналитика и обращения
 
-- **События** (`events`): `family_created`, `family_joined`, `task_dispatched`, `task_created`, `task_accepted`, `task_declined`, `task_done`, `task_reopened`, `task_edited`, `task_deleted`, `profile_updated`, `push_subscribed`, `push_opened` и клиентские (`app_open`, `pwa_opened`, `push_prompt_shown`, `push_permission_granted` / `denied`, `install_prompt_shown`, `install_accepted`).
-- **DAU** — уникальные участники с любым событием за сутки.
-- **Обращения** (Положение, прил. 2, п. 2.2) — вызовы компонентов из `component_calls`: `llm`, `skill`, `stt`, `push`, `vk`, `telegram`, `email`, `phone_auth`, `reminder`, `escalation`. Каждый вызов пишется через `telemetry.track_call` / `telemetry.record` с длительностью, статусом, токенами и моделью.
-- `GET /analytics/daily?days=14` — по дням: DAU, действия и действия на DAU, обращения и обращения на DAU, ошибки, разбивка по типам.
-- В CSV-выгрузках идентификаторы обезличены (хэш с солью `ANALYTICS_SALT`).
+Метрики программы — DAU и **обращения на 1 DAU** (единая метрика частотности, Положение, прил. 2, п. 2.2). Сводка по неделям — [metrics.md](metrics.md), стоимость LLM — [llm-cost.md](llm-cost.md).
+
+### Что считается обращением
+
+Обращение — вызов компонента решения в пользовательском сценарии. Каждый вызов пишется в `component_calls` через `telemetry.track_call` / `telemetry.record` ([`services/telemetry.py`](../backend/app/services/telemetry.py)).
+
+| `kind` | Компонент | Когда |
+|---|---|---|
+| `llm` | Фундаментальная модель: GigaChat 3.5, Gemini 2.5 Flash (скриншоты) | Разбор фразы в дело, дела со скриншота, группировка покупок по отделам |
+| `skill` | Навык — системный промпт и инструменты над моделью | Каждый навык: `extract_task`, `tasks_from_image`, `group_items` |
+| `rules` | Инструмент: разбор фразы правилами (сроки, повтор, список) | Каждое новое дело |
+| `catalog` | Инструмент: словарь отделов магазина | Список покупок с новыми позициями |
+| `api` | API решения | Запрос приложения по действию человека: открыл, создал дело, «Беру», «Сделано», переписка, покупки |
+| `storage` | Хранилище файлов | Фото и скриншоты в деле |
+| `preview` | Карточка ссылки-приглашения для мессенджера | Открытие ссылки `/join/…` или `/?from=…` |
+| `phone_auth`, `sms` | Внешний API SMS.RU | Вход по звонку, SMS-приглашение |
+| `push` | Web Push | Каждая доставка на устройство |
+| `email` | Почта | Обратная связь |
+| `stt` | Распознавание речи на сервере (Whisper) | Голосовая обратная связь |
+| `reminder` | Фоновая система | Напоминание к сроку и исполнителю, который не ответил на просьбу |
+
+**Не считаются:**
+- обновления экрана по таймеру — клиент помечает их заголовком `X-Auto: 1`, это не действие человека;
+- собственные события аналитики (`/api/v1/events`) и выгрузки;
+- запросы без входа в аккаунт;
+- аккаунты команды и их семей (`accounts.is_team`, Положение, п. 5.1.3) — в отчётах и метриках.
+
+Запросы к API пишутся пачкой раз в 5 секунд (`telemetry.note_api` / `flush_api`), остальные вызовы — сразу.
+
+### Что пишется по каждому вызову
+
+| Поле | Что |
+|---|---|
+| `created_at` | Дата и время |
+| `kind`, `operation` | Тип компонента и операция (для API — метод и шаблон пути, например `POST /api/v1/tasks/{task_id}/done`) |
+| `status`, `error_code` | Результат: `ok` / `error` и код (`http_404`, `ReadTimeout`, `http_410`…) |
+| `latency_ms` | Длительность |
+| `tokens_in`, `tokens_out`, `model` | Токены и модель — для LLM |
+| `cost_rub` | Стоимость вызова LLM в рублях — из заголовка шлюза программы `x-litellm-response-cost` |
+| `member_id`, `family_id` | Кто инициировал (в выгрузках — обезличенно) |
+
+### Источник трафика
+
+У аккаунта — поле `source`, откуда пришёл человек ([`services/traffic.py`](../backend/app/services/traffic.py)). Клиент запоминает первую точку входа ([`web/src/source.ts`](../web/src/source.ts)) и передаёт её при регистрации в заголовке `X-Source`.
+
+| `source` | Как определяется |
+|---|---|
+| `family_invite` | Вступил в семью по приглашению — определяет сервер |
+| `referral` | Создал семью по ссылке «Посоветуйте знакомым» (`/?from=<код>`) — определяет сервер |
+| `utm:<метка>` | Ссылка с меткой `?utm_source=<метка>` — своя метка у каждого канала продвижения |
+| `qr:<место>` | QR-код со ссылкой `?utm_source=qr_<место>` |
+| `site:<домен>` | Меток нет, браузер передал сайт перехода (`site:t.me`) |
+| `direct` | Ничего из перечисленного |
+| `unknown_before_15_10` | Пришёл до 15.10.2026, когда источник ещё не записывали, и не по приглашению или рекомендации |
+
+### События и DAU
+
+- **События** (`events`): `family_created`, `family_joined`, `task_dispatched`, `task_created`, `task_accepted`, `task_declined`, `task_done`, `task_remembered`, `task_reopened`, `task_edited`, `task_deleted`, `profile_updated`, `push_subscribed`, `push_opened` и клиентские (`app_open`, `pwa_opened`, `push_prompt_shown`, `push_permission_granted` / `denied`, `install_prompt_shown`, `install_accepted`, `tour_step`, `hints_choice`).
+- **DAU** — уникальные участники с любым событием за сутки, без команды.
+- **Реальный пользователь** (Положение, п. 4.2.2) — выполнил целевой сценарий: «Беру», «Сделано» или «Я помню», либо его поручение выполнено ([`services/metrics.py`](../backend/app/services/metrics.py)).
+
+### Где смотреть
+
+Эндпоинты требуют заголовок `X-Admin-Token`, ключ выдаём организаторам по запросу ([`api/analytics.py`](../backend/app/api/analytics.py)).
+
+- `GET /api/v1/analytics/daily?days=14` — по дням: DAU, действия и действия на DAU, обращения и обращения на DAU, ошибки, разбивка по типам.
+- `GET /api/v1/analytics/component-calls.csv?days=28` — все обращения: `created_at, kind, operation, status, error_code, latency_ms, tokens_in, tokens_out, model, cost_rub, user_id, family_id, source, team`.
+- `GET /api/v1/analytics/events.csv?days=28` — события: `created_at, event, user_id, family_id, source, team`.
+- **Ежедневный отчёт** (`python -m app.reports.daily_report`) — бюджеты LLM и SMS, реальные пользователи, DAU за 7 дней, новые аккаунты и семьи по источникам, сценарий «поручила — сделано», обращения на DAU, ошибки, токены и стоимость LLM.
+
+В выгрузках идентификаторы обезличены — стабильный хэш с солью `ANALYTICS_SALT`; телефоны, имена и тексты дел в них не попадают. Колонка `team` = 1 — аккаунт команды, такие строки в метриках не учитываются.
+
 
 ---
 
