@@ -1,14 +1,15 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api import analytics, app_routes, auth_routes, push_routes, support_routes
 from app.config import get_settings
-from app.db import SessionLocal, init_db
+from app.db import API_CONCURRENCY, SessionLocal, init_db
 from app.services.link_preview import personalize
 
 
@@ -32,6 +33,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+_api_slots = asyncio.Semaphore(API_CONCURRENCY)
+
+
+@app.middleware("http")
+async def limit_api(request: Request, call_next) -> Response:
+    """Не больше API_CONCURRENCY запросов к API одновременно, остальные ждут на входе.
+
+    Без этого всплеск запросов занимал все потоки ожиданием соединения с базой, а запросы,
+    уже державшие соединения, стояли в очереди за потоком следующего шага (зависимости
+    и обработчик выполняются в потоках по очереди) — сервис висел, пока не разберёт хвост
+    (14.10.2026, нагрузочный тест на 100 RPS). Ждём слот не дольше 10 с, потом — 503.
+    """
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+    try:
+        await asyncio.wait_for(_api_slots.acquire(), timeout=10)
+    except TimeoutError:
+        return JSONResponse(
+            {"detail": "Сервер перегружен, повторите через минуту"},
+            status_code=503,
+            headers={"Retry-After": "30"},
+        )
+    try:
+        return await call_next(request)
+    finally:
+        _api_slots.release()
 
 
 @app.middleware("http")

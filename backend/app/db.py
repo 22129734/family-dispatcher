@@ -12,6 +12,11 @@ from sqlalchemy.pool import StaticPool
 
 from app.config import get_settings
 
+# Сколько запросов к API одновременно работают с базой (на процесс uvicorn), см. main.py.
+# Пул — с запасом вдвое: запрос может открыть вторую сессию (журнал обращений).
+API_CONCURRENCY = 15
+POOL_SIZE, MAX_OVERFLOW = 10, 25
+
 
 class Base(DeclarativeBase):
     pass
@@ -23,7 +28,9 @@ def make_engine(url: str):
         if url in ("sqlite://", "sqlite:///:memory:"):
             kwargs["poolclass"] = StaticPool
         return create_engine(url, **kwargs)
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(
+        url, pool_pre_ping=True, pool_size=POOL_SIZE, max_overflow=MAX_OVERFLOW, pool_timeout=10
+    )
 
 
 engine = make_engine(get_settings().database_url)
