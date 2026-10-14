@@ -1,3 +1,5 @@
+import { trafficSource } from "./source";
+
 export type Role = "adult" | "teen" | "child";
 
 export interface Member {
@@ -278,6 +280,9 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
   const token = tokenStore.get();
   if (token) headers.set("Authorization", `Bearer ${token}`);
+  // Откуда пришёл человек: сервер запишет при регистрации, дальше не использует
+  const source = token ? null : trafficSource();
+  if (source) headers.set("X-Source", source);
 
   let response: Response;
   try {

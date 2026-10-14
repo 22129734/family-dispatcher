@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from app.auth import DbSession
 from app.config import get_settings
-from app.models import ComponentCallRow, EventRow
+from app.models import AccountRow, ComponentCallRow, EventRow, MemberRow
 from app.schemas.api import AnalyticsOut, DailyStat
 from app.services.metrics import team_member_ids
 from app.services.telemetry import anonymize
@@ -34,6 +34,16 @@ PASSIVE_EVENTS = {
     "install_prompt_shown",
     "push_prompt_shown",
 }
+
+
+def _sources(db: DbSession) -> dict[str, str]:
+    """Источник трафика каждого участника — по его аккаунту (services/traffic.py)."""
+    rows = db.execute(
+        select(MemberRow.id, AccountRow.source).join(
+            AccountRow, MemberRow.account_id == AccountRow.id
+        )
+    )
+    return {member_id: source or "" for member_id, source in rows}
 
 
 def _require_admin(token: str | None) -> None:
@@ -137,6 +147,7 @@ def component_calls_csv(
     _require_admin(x_admin_token)
     since, until = _period(days)
     team = team_member_ids(db)
+    sources = _sources(db)
     rows = [
         [
             c.created_at.isoformat(timespec="seconds"),
@@ -148,8 +159,10 @@ def component_calls_csv(
             c.tokens_in if c.tokens_in is not None else "",
             c.tokens_out if c.tokens_out is not None else "",
             c.model or "",
+            c.cost_rub if c.cost_rub is not None else "",
             anonymize(c.member_id) or "",
             anonymize(c.family_id) or "",
+            sources.get(c.member_id or "", ""),
             int(c.member_id in team),
         ]
         for c in db.scalars(
@@ -160,7 +173,7 @@ def component_calls_csv(
     ]
     header = [
         "created_at", "kind", "operation", "status", "error_code", "latency_ms",
-        "tokens_in", "tokens_out", "model", "user_id", "family_id", "team",
+        "tokens_in", "tokens_out", "model", "cost_rub", "user_id", "family_id", "source", "team",
     ]  # fmt: skip
     return _csv(rows, header, "component_calls.csv")
 
@@ -175,12 +188,14 @@ def events_csv(
     _require_admin(x_admin_token)
     since, until = _period(days)
     team = team_member_ids(db)
+    sources = _sources(db)
     rows = [
         [
             e.created_at.isoformat(timespec="seconds"),
             e.name,
             anonymize(e.member_id) or "",
             anonymize(e.family_id) or "",
+            sources.get(e.member_id, ""),
             int(e.member_id in team),
         ]
         for e in db.scalars(
@@ -189,4 +204,6 @@ def events_csv(
             .order_by(EventRow.id)
         )
     ]
-    return _csv(rows, ["created_at", "event", "user_id", "family_id", "team"], "events.csv")
+    return _csv(
+        rows, ["created_at", "event", "user_id", "family_id", "source", "team"], "events.csv"
+    )

@@ -1,3 +1,4 @@
+import "./source"; // откуда пришёл человек — до того, как приложение уберёт параметры из адреса
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";

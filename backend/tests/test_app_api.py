@@ -307,7 +307,8 @@ def test_component_calls_are_counted_per_dau_and_exported(
     assert len(lines) == 4
 
     events = client.get("/api/v1/analytics/events.csv", headers=admin).text.strip().splitlines()
-    assert events[0] == "created_at,event,user_id,family_id,team"
+    assert events[0] == "created_at,event,user_id,family_id,source,team"
+    assert {line.split(",")[4] for line in events[1:]} == {"direct", "family_invite"}
     assert len(events) == 3  # family_created + family_joined
     # Идентификаторы обезличены: реальные id участников в выгрузку не попадают
     member_id = client.get("/api/v1/me", headers=auth(family["mom"])).json()["member"]["id"]
@@ -690,3 +691,43 @@ def test_api_requests_are_counted_except_auto_refresh(
         ("GET /api/v1/tasks/{task_id}/comments", "error", "http_404"),
     ]
     assert all(r.member_id and r.family_id for r in rows)
+
+
+def test_traffic_source_is_saved_at_registration(client: TestClient) -> None:
+    """Источник — из X-Source при регистрации; рекомендация и приглашение — по факту."""
+    from sqlalchemy import select
+
+    from app.db import SessionLocal
+    from app.models import AccountRow
+
+    def register(phone: str, source: str) -> str:
+        check = client.post(
+            "/api/v1/auth/phone/start", json={"phone": phone, "consent": True}
+        ).json()
+        return client.get(
+            f"/api/v1/auth/phone/status/{check['check_id']}", headers={"X-Source": source}
+        ).json()["token"]
+
+    def source_of(phone: str) -> str | None:
+        with SessionLocal() as db:
+            return db.scalar(select(AccountRow.source).where(AccountRow.phone == phone))
+
+    ad = register("+7 999 100-00-01", "utm:vk_ads")
+    client.post("/api/v1/families", json={"member_name": "Аня"}, headers=auth(ad))
+    assert source_of("79991000001") == "utm:vk_ads"
+
+    register("+7 999 100-00-02", "<script>")
+    assert source_of("79991000002") == "direct"
+
+    ref = client.get("/api/v1/family", headers=auth(ad)).json()["ref_code"]
+    friend = register("+7 999 100-00-03", "site:t.me")
+    client.post("/api/v1/families", json={"member_name": "Оля", "ref": ref}, headers=auth(friend))
+    assert source_of("79991000003") == "referral"
+
+
+def test_llm_cost_is_taken_from_gateway() -> None:
+    from app.services.llm_client import _cost
+
+    assert _cost("0.0067353") == 0.006735
+    assert _cost(None) is None
+    assert _cost("n/a") is None

@@ -84,6 +84,7 @@ def record(
     tokens_in: int | None = None,
     tokens_out: int | None = None,
     model: str | None = None,
+    cost_rub: float | None = None,
     actor: Actor | None = None,
 ) -> None:
     """Записать одно обращение. Ошибка записи не должна ломать пользовательский сценарий."""
@@ -102,6 +103,7 @@ def record(
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 model=model,
+                cost_rub=cost_rub,
                 member_id=who.member_id,
                 family_id=who.family_id,
             )
@@ -123,6 +125,7 @@ class CallResult:
     tokens_in: int | None = None
     tokens_out: int | None = None
     model: str | None = None
+    cost_rub: float | None = None
     extra: dict = field(default_factory=dict)
 
 
@@ -147,6 +150,7 @@ def track_call(kind: str, operation: str) -> Iterator[CallResult]:
             tokens_in=result.tokens_in,
             tokens_out=result.tokens_out,
             model=result.model,
+            cost_rub=result.cost_rub,
         )
 
 

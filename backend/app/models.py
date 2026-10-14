@@ -4,7 +4,19 @@ import secrets
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, false, true
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    false,
+    true,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -35,6 +47,9 @@ class AccountRow(Base):
     consent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # Участник хакатона или его семья — не учитывается в метриках (Положение, п. 5.1.3)
     is_team: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Откуда пришёл человек (services/traffic.py): family_invite, referral, utm:…, qr:…,
+    # site:…, direct; у пришедших до 15.10.2026 без приглашения — unknown_before_15_10
+    source: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
 
 class SessionRow(Base):
@@ -264,6 +279,8 @@ class ComponentCallRow(Base):
     tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    # Стоимость вызова LLM по данным шлюза программы (заголовок x-litellm-response-cost)
+    cost_rub: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Кто инициировал (для DAU и антифрода); фоновые вызовы могут быть без участника
     member_id: Mapped[str | None] = mapped_column(
         ForeignKey("members.id"), nullable=True, index=True

@@ -203,6 +203,14 @@ CONNECT_TIMEOUT_S = 2.0
 LLM_ATTEMPTS = 2
 
 
+def _cost(value: str | None) -> float | None:
+    """Стоимость вызова из заголовка шлюза LiteLLM (в валюте бюджета ключа — рубли)."""
+    try:
+        return round(float(value), 6) if value else None
+    except ValueError:
+        return None
+
+
 class LLMClient:
     def __init__(self, transport: httpx.BaseTransport | None = None) -> None:
         self._settings = get_settings()
@@ -269,6 +277,7 @@ class LLMClient:
             usage = data.get("usage") or {}
             call.tokens_in = usage.get("prompt_tokens")
             call.tokens_out = usage.get("completion_tokens")
+            call.cost_rub = _cost(response.headers.get("x-litellm-response-cost"))
             return data
 
     def extract_task(

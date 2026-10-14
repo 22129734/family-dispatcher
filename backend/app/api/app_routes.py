@@ -60,6 +60,7 @@ from app.services import (
     repeat,
     shopping,
     sms,
+    traffic,
 )
 from app.services.family_service import TaskActionError
 from app.services.llm_client import LLMClient
@@ -187,6 +188,8 @@ def create_family(
         else None
     )
     family.referred_by_id = referrer.id if referrer else None
+    if referrer:
+        account.source = traffic.REFERRAL
     member = MemberRow(
         name=payload.member_name.strip(),
         has_car=payload.has_car,
@@ -241,6 +244,7 @@ def join_family(
         account_id=account.id,
     )
     family.members.append(member)
+    account.source = traffic.FAMILY_INVITE
     db.flush()
     fs.track(db, member, "family_joined")
     _accept_phone_invites(db, account.phone, family.id)

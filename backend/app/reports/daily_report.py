@@ -203,6 +203,19 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
         or 0
     )
     report.add(f"По рекомендации: {referred_total} (+{referred_new} за день)")
+    new_sources = Counter(
+        source or "unknown"
+        for source in db.scalars(
+            select(AccountRow.source).where(
+                not_team, AccountRow.created_at >= start, AccountRow.created_at < end
+            )
+        )
+    )
+    if new_sources:
+        report.add(
+            "Новые по источникам: "
+            + ", ".join(f"{source}: {n}" for source, n in new_sources.most_common())
+        )
     push_devices = sum(
         1
         for member_id in db.scalars(select(PushSubscriptionRow.member_id))
@@ -252,6 +265,11 @@ def collect(db: Session, report: Report, settings: Settings, client: httpx.Clien
     if by_kind:
         report.add(", ".join(f"{kind}: {n}" for kind, n in by_kind.most_common()))
     report.add(f"Токенов LLM: {tokens}")
+    cost = sum(c.cost_rub or 0 for c in calls if c.kind == "llm")
+    if cost:
+        report.add(
+            f"Стоимость LLM: {cost:.2f} ₽" + (f" ({cost / len(dau):.3f} ₽ на DAU)" if dau else "")
+        )
     if errors:
         report.add("Ошибки: " + ", ".join(f"{kind}: {n}" for kind, n in errors.most_common()))
         error_share = sum(errors.values()) / len(calls)

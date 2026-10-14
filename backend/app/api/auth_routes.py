@@ -30,7 +30,7 @@ from app.schemas.api import (
     SetPinRequest,
     TokenOut,
 )
-from app.services import account_deletion, phone_auth, telemetry
+from app.services import account_deletion, phone_auth, telemetry, traffic
 from app.services.phone_auth import PhoneAuthError, ProviderUnavailableError
 from app.services.telemetry import Kind
 
@@ -139,7 +139,7 @@ def phone_check_status(check_id: str, request: Request, db: DbSession) -> PhoneC
     # Подтверждено: найти или создать аккаунт, выдать сессию этому устройству
     account = db.scalar(select(AccountRow).where(AccountRow.phone == check.phone))
     if account is None:
-        account = AccountRow(phone=check.phone)
+        account = AccountRow(phone=check.phone, source=traffic.parse(request.headers))
         db.add(account)
         db.flush()
     check.consumed_at = now
