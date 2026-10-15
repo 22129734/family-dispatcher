@@ -64,6 +64,7 @@ Caddy (TLS) ──► FastAPI ──► PostgreSQL
 - **Метрики первого этапа по неделям** — [docs/metrics.md](docs/metrics.md)
 - **Стоимость LLM:** ~0,08 ₽ на DAU в день, ~0,14 ₽ на целевое действие — [docs/llm-cost.md](docs/llm-cost.md)
 - **Нагрузочный тест:** 10, 20 и 50 RPS на продакшене без ошибок — [docs/load-test.md](docs/load-test.md)
+- **Концепция вывода на рынок (GTM) на этап 2** — [docs/gtm.md](docs/gtm.md)
 
 ---
 
