@@ -31,6 +31,9 @@ function recognitionCtor(): RecognitionCtor | null {
 const START_TIMEOUT_MS = 8000;
 // После «стоп» браузер должен сообщить об окончании; не сообщил — заканчиваем сами
 const STOP_TIMEOUT_MS = 1500;
+// Человек замолчал — останавливаем сами: Safari на iPhone может слушать ещё долго и держать
+// микрофон (на это время, например, пропадает звук в записи экрана)
+const SILENCE_MS = 1500;
 const DENIED = "Микрофон запрещён. Разрешите его в настройках браузера для этого сайта и нажмите ещё раз";
 
 export function useSpeech(onFinal: (text: string) => void) {
@@ -72,6 +75,17 @@ export function useSpeech(onFinal: (text: string) => void) {
     lastText.current = "";
     setInterim("");
 
+    // Остановить запись и дождаться результата; браузер не ответил — заканчиваем сами
+    const halt = () => {
+      if (recognition.current !== rec) return;
+      window.clearTimeout(timer.current);
+      rec.stop();
+      timer.current = window.setTimeout(() => {
+        rec.abort();
+        finish(rec);
+      }, STOP_TIMEOUT_MS);
+    };
+
     rec.onresult = (event) => {
       let text = "";
       for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
@@ -79,8 +93,10 @@ export function useSpeech(onFinal: (text: string) => void) {
       if (last?.isFinal) finalText.current = text;
       lastText.current = text;
       setInterim(text);
-      // Пошла речь — микрофон работает, страховка на старт больше не нужна
+      // Пошла речь — микрофон работает, страховка на старт больше не нужна; дальше ждём паузу
       window.clearTimeout(timer.current);
+      if (last?.isFinal) halt();
+      else timer.current = window.setTimeout(halt, SILENCE_MS);
     };
     rec.onaudiostart = () => window.clearTimeout(timer.current);
     rec.onerror = (event) => {
