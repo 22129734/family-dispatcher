@@ -45,7 +45,7 @@ const TEAM: Contact[] = [
   { name: "Илья", role: "разработчик", tone: "tone-d", links: [["Почта", "mailto:onepeople458@gmail.com"]] },
 ];
 
-type Sub = "name" | "chrome" | "reminders" | "theme" | "confirm" | "participants" | "install" | "account" | "voice" | "team" | null;
+type Sub = "name" | "chrome" | "reminders" | "theme" | "confirm" | "participants" | "install" | "account" | "delete" | "voice" | "team" | null;
 
 const buildDate = new Date(__BUILD_TIME__);
 const VERSION = buildDate.toLocaleString("ru-RU", {
@@ -142,6 +142,7 @@ export function MoreScreen({
       participants: "Несколько участников",
       install: "Установить на экран",
       account: "Вход и PIN-код",
+      delete: "Удаление аккаунта",
       voice: "Надиктовать отзыв",
       team: "Команда и контакты",
     };
@@ -182,6 +183,7 @@ export function MoreScreen({
             <DeleteAccount />
           </section>
         )}
+        {sub === "delete" && <DeleteAccount initiallyAsking />}
         {sub === "voice" && <VoiceFeedback deviceInfo={deviceInfo} />}
         {sub === "team" && (
           <>
@@ -244,6 +246,7 @@ export function MoreScreen({
         />
         {!platform().standalone && <Row label="Установить на экран" onClick={() => setSub("install")} />}
         <Row label="Вход и PIN-код" onClick={() => setSub("account")} />
+        <Row label="Удалить аккаунт" onClick={() => setSub("delete")} />
       </Group>
 
       <Group title="Помощь">
@@ -388,9 +391,13 @@ function NameSetting({ initial, onSaved }: { initial: string; onSaved: () => voi
   );
 }
 
-/** Удаление аккаунта: с подтверждением — отменить нельзя. */
-function DeleteAccount() {
-  const [asking, setAsking] = useState(false);
+/**
+ * Удаление аккаунта: с подтверждением — отменить нельзя.
+ * Отдельная строка в «Ещё» открывает его сразу с вопросом: RuStore требует,
+ * чтобы удаление было видно в приложении (п. 5.4 правил модерации).
+ */
+function DeleteAccount({ initiallyAsking = false }: { initiallyAsking?: boolean }) {
+  const [asking, setAsking] = useState(initiallyAsking);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
