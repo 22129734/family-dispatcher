@@ -43,6 +43,7 @@ from app.schemas.api import (
     ReferralSmsOut,
     ReferralSmsRequest,
     RejectRequest,
+    Scope,
     SessionOut,
     TaskOut,
     TrackRequest,
@@ -58,6 +59,7 @@ from app.services import (
     notifications,
     phone_auth,
     repeat,
+    series,
     shopping,
     sms,
     traffic,
@@ -797,9 +799,12 @@ def update_task(
 ) -> TaskRow:
     task = _family_task(db, member, task_id)
     changes = payload.model_dump(exclude_unset=True)
+    scope = changes.pop("scope", "all")
     fields = ",".join(sorted(changes))
     requested = dict(changes)
     before_assignee = task.assignee_id
+    # Повтор: запомнить, каким дело было в серии, или забыть разовые отличия
+    series.remember(task, changes, only_this=scope == "this")
     if "due_at" in changes or "ends_at" in changes:
         due = changes.get("due_at", task.due_at)
         if "ends_at" in changes:
@@ -1018,6 +1023,10 @@ def set_items(
     """Список покупок: отметить купленное, добавить или убрать пункт. Доступен всей семье."""
     task = _family_task(db, member, task_id)
     before = {item["text"]: item.get("done", False) for item in task.items or []}
+    new_texts = [item.text for item in payload.items]
+    if new_texts != [item["text"] for item in task.items or []]:
+        # Отметки «купил» серию не меняют; состав списка — меняет или только этот раз
+        series.remember(task, {"items": None}, only_this=payload.scope == "this")
     task.items = shopping.with_groups([item.model_dump() for item in payload.items])
     checked = sum(1 for item in payload.items if item.done and not before.get(item.text, False))
     fs.track(db, member, "task_items_updated", count=len(payload.items), checked=checked)
@@ -1099,14 +1108,19 @@ def get_file(file_id: str, db: DbSession, sig: str = "") -> FileResponse:
 
 
 @router.delete("/tasks/{task_id}", status_code=204, tags=["tasks"])
-def delete_task(task_id: str, member: CurrentMember, db: DbSession) -> None:
+def delete_task(task_id: str, member: CurrentMember, db: DbSession, scope: Scope = "all") -> None:
+    """scope=this у повторяющегося дела — удалить только этот раз: серия идёт дальше."""
     task = _family_task(db, member, task_id)
     if task.created_by_id != member.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Удалить может только автор просьбы")
     for row in task.files:
         files.remove(row)
-    db.delete(task)
-    fs.track(db, member, "task_deleted")
+    if scope == "this" and task.recurrence != "none" and task.status != "done":
+        fs.skip(db, task, member)
+        fs.track(db, member, "task_skipped")
+    else:
+        db.delete(task)
+        fs.track(db, member, "task_deleted")
     db.commit()
 
 

@@ -8,6 +8,7 @@ import {
   type Family,
   type Frequent,
   type InviteInfo,
+  type Scope,
   type Session,
   type Task,
 } from "./api";
@@ -15,6 +16,7 @@ import { parseLocal, plainTitle } from "./format";
 import { ConfirmSheet } from "./components/ConfirmSheet";
 import { BatchSheet } from "./components/BatchSheet";
 import { ChatSheet } from "./components/ChatSheet";
+import { ScopeSheet } from "./components/ScopeSheet";
 import { prepareFile } from "./components/TaskFiles";
 import { useBackClose } from "./backButton";
 import { Tour, tourDismissed } from "./components/Tour";
@@ -361,6 +363,27 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     return () => document.removeEventListener("visibilitychange", flush);
   });
 
+  // Повторяющееся дело: спросить, менять только этот раз или всю серию
+  const [scopeAsk, setScopeAsk] = useState<{
+    task: Task;
+    action: "edit" | "remove";
+    resolve: (scope: Scope | null) => void;
+  } | null>(null);
+  const askScope = (id: string, action: "edit" | "remove"): Promise<Scope | null> => {
+    const task = tasks.find((t) => t.id === id);
+    if (!task || task.recurrence === "none" || task.status === "done") return Promise.resolve("all");
+    return new Promise((resolve) => setScopeAsk({ task, action, resolve }));
+  };
+  const pickScope = (scope: Scope | null) => {
+    scopeAsk?.resolve(scope);
+    setScopeAsk(null);
+  };
+  /** Изменить поля дела; у повтора — после выбора «только этот раз / все следующие» */
+  const edit = async (id: string, changes: Parameters<typeof api.updateTask>[1]) => {
+    const scope = await askScope(id, "edit");
+    if (scope) await run(async () => replace(await api.updateTask(id, { ...changes, scope })));
+  };
+
   const actions: TaskActions = {
     accept: (id) => run(async () => replace(await api.accept(id))),
     decline: (id, reason) =>
@@ -385,7 +408,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       }),
     undo: (id) => undoDone(id),
     reopen: (id) => run(async () => replace(await api.reopen(id))),
-    rename: (id, title) => run(async () => replace(await api.updateTask(id, { title }))),
+    rename: (id, title) => edit(id, { title }),
     note: (id, note, repeat) =>
       run(async () => replace(await api.updateTask(id, repeat === undefined ? { note } : { note, note_repeat: repeat }))),
     attach: async (id, file) => {
@@ -403,10 +426,10 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
         replace(task);
         notify(`Вернули: ${memberName(task.assignee_id)}. Ждём, пока сделает`);
       }),
-    assign: (id, memberId) => run(async () => replace(await api.updateTask(id, { assignee_id: memberId }))),
-    due: (id, iso) => run(async () => replace(await api.updateTask(id, { due_at: iso }))),
-    end: (id, iso) => run(async () => replace(await api.updateTask(id, { ends_at: iso }))),
-    participants: (id, ids) => run(async () => replace(await api.updateTask(id, { participants: ids }))),
+    assign: (id, memberId) => edit(id, { assignee_id: memberId }),
+    due: (id, iso) => edit(id, { due_at: iso }),
+    end: (id, iso) => edit(id, { ends_at: iso }),
+    participants: (id, ids) => edit(id, { participants: ids }),
     repeat: (id, value) =>
       run(async () =>
         replace(
@@ -418,18 +441,31 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           }),
         ),
       ),
-    items: (id, items) => {
+    items: async (id, items) => {
+      const before = tasks.find((t) => t.id === id);
       // Отметка в списке — сразу на экране, сервер догонит
       setTasks((list) => list.map((t) => (t.id === id ? { ...t, items } : t)));
-      void run(async () => replace(await api.setItems(id, items)));
+      // Отметки «купил» касаются только этого раза; добавили или убрали пункт — спросим
+      const sameList = (before?.items ?? []).map((i) => i.text).join("\n") === items.map((i) => i.text).join("\n");
+      const scope = sameList ? "all" : await askScope(id, "edit");
+      if (!scope) {
+        if (before) setTasks((list) => list.map((t) => (t.id === id ? before : t)));
+        return;
+      }
+      void run(async () => replace(await api.setItems(id, items, scope)));
     },
     copy: (task) => copyTask(task, plainTitle(task.title)),
     chat: (task) => setChatId(task.id),
-    remove: (id) =>
-      run(async () => {
+    remove: async (id) => {
+      const scope = await askScope(id, "remove");
+      if (!scope) return;
+      await run(async () => {
         setTasks((list) => list.filter((t) => t.id !== id));
-        await api.remove(id);
-      }),
+        await api.remove(id, scope);
+        // «Только это» — серия продолжается: подтянуть следующий повтор
+        if (scope === "this") await refresh();
+      });
+    },
   };
 
   // Переписка по делу; из уведомления приходит ссылка /?chat=<id>
@@ -736,6 +772,8 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
           onClose={() => setTourClosed(true)}
         />
       )}
+
+      {scopeAsk && <ScopeSheet task={scopeAsk.task} action={scopeAsk.action} onPick={pickScope} />}
 
       {chatTask && (
         <ChatSheet

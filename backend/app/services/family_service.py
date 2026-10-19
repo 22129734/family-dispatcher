@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.models import ComponentCallRow, EventRow, FamilyRow, MemberRow, PhoneInviteRow, TaskRow
 from app.schemas.task import TaskDraft
-from app.services import repeat, shopping
+from app.services import repeat, series, shopping
 from app.services.when import plain_title
 
 # Кто может брать поручения: взрослые и подростки
@@ -415,41 +415,54 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
     task.accepted_at = task.accepted_at or now
     task.feedback = None  # замечание «не выполнено» снято — дело сделано заново
 
-    due = next_due(task.due_at, task.recurrence, now, task.repeat_days, task.repeat_until)
-    if due is not None:
-        # Следующая — тому же исполнителю, снова ждёт ответа
-        members = {m.id: m for m in member.family.members}
-        next_task = TaskRow(
-            family_id=task.family_id,
-            created_by_id=task.created_by_id,
-            title=task.title,
-            source=task.source,
-            beneficiary=task.beneficiary,
-            due_at=due,
-            duration_minutes=task.duration_minutes,
-            # Та же продолжительность: «подготовка к школе 9–10» каждый будний день
-            ends_at=due + (task.ends_at - task.due_at) if task.ends_at and task.due_at else None,
-            priority=task.priority,
-            recurrence=task.recurrence,
-            repeat_days=list(task.repeat_days or []),
-            repeat_until=task.repeat_until,
-            requires_car=task.requires_car,
-            location=task.location,
-            # Тот же список покупок — снова не отмеченный
-            items=[
-                {"text": item["text"], "done": False, "group": item.get("group")}
-                for item in task.items or []
-            ],
-            # Заметка «только для этого раза» в следующий повтор не переходит
-            note=task.note if task.note_repeat else None,
-            note_repeat=task.note_repeat,
-            participants=list(task.participants or []),
-        )
-        assign(
-            next_task, members.get(task.assignee_id), members[task.created_by_id], task.rationale
-        )
-        db.add(next_task)
+    spawn_next(db, task, member, now)
     return True
+
+
+def spawn_next(db: Session, task: TaskRow, member: MemberRow, now: datetime) -> TaskRow | None:
+    """Следующий повтор — по значениям серии: правки «только этот раз» в него не переходят."""
+    base = series.base(task)
+    due = next_due(base.due_at, task.recurrence, now, task.repeat_days, task.repeat_until)
+    if due is None:
+        return None
+    # Следующая — тому же исполнителю, снова ждёт ответа
+    members = {m.id: m for m in member.family.members}
+    next_task = TaskRow(
+        family_id=task.family_id,
+        created_by_id=task.created_by_id,
+        title=base.title,
+        source=task.source,
+        beneficiary=task.beneficiary,
+        due_at=due,
+        duration_minutes=base.duration_minutes,
+        # Та же продолжительность: «подготовка к школе 9–10» каждый будний день
+        ends_at=due + (base.ends_at - base.due_at) if base.ends_at and base.due_at else None,
+        priority=task.priority,
+        recurrence=task.recurrence,
+        repeat_days=list(task.repeat_days or []),
+        repeat_until=task.repeat_until,
+        requires_car=task.requires_car,
+        location=task.location,
+        # Тот же список покупок — снова не отмеченный
+        items=[
+            {"text": item["text"], "done": False, "group": item.get("group")}
+            for item in base.items or []
+        ],
+        # Заметка «только для этого раза» в следующий повтор не переходит
+        note=task.note if task.note_repeat else None,
+        note_repeat=task.note_repeat,
+        participants=list(base.participants or []),
+    )
+    assign(next_task, members.get(base.assignee_id), members[task.created_by_id], task.rationale)
+    db.add(next_task)
+    return next_task
+
+
+def skip(db: Session, task: TaskRow, member: MemberRow) -> TaskRow | None:
+    """Удалить только этот раз повторяющегося дела: серия продолжается со следующей даты."""
+    next_task = spawn_next(db, task, member, datetime.now())
+    db.delete(task)
+    return next_task
 
 
 def reject(db: Session, task: TaskRow, member: MemberRow, comment: str | None) -> None:

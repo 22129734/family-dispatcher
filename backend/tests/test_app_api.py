@@ -731,3 +731,92 @@ def test_llm_cost_is_taken_from_gateway() -> None:
     assert _cost("0.0067353") == 0.006735
     assert _cost(None) is None
     assert _cost("n/a") is None
+
+
+def _live(client: TestClient, token: str) -> list[dict]:
+    return [
+        t for t in client.get("/api/v1/tasks", headers=auth(token)).json() if t["status"] != "done"
+    ]
+
+
+def test_repeat_change_only_this_time_keeps_series(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    """Правка «только этот раз» не переходит в следующий повтор, «для всех» — переходит."""
+    mom = auth(family["mom"])
+    task = client.post(
+        "/api/v1/tasks/dispatch", json={"message": "пылесосить завтра в 11"}, headers=mom
+    ).json()
+    task = client.patch(
+        f"/api/v1/tasks/{task['id']}", json={"recurrence": "weekly"}, headers=mom
+    ).json()
+    assert task["assignee_id"] == family["dad_id"]
+    original_due = task["due_at"]
+
+    moved = original_due[:11] + "15:00:00"
+    once = client.patch(
+        f"/api/v1/tasks/{task['id']}",
+        json={
+            "title": "Пылесосить и мыть пол",
+            "due_at": moved,
+            "assignee_id": family["mom_id"],
+            "scope": "this",
+        },
+        headers=mom,
+    ).json()
+    assert (once["title"], once["due_at"][11:16], once["assignee_id"]) == (
+        "Пылесосить и мыть пол",
+        "15:00",
+        family["mom_id"],
+    )
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=mom)
+    [nxt] = _live(client, family["mom"])
+    assert nxt["title"] != "Пылесосить и мыть пол"
+    assert nxt["due_at"][11:16] == original_due[11:16]
+    assert nxt["assignee_id"] == family["dad_id"]
+
+    # «Для всех» — новое название остаётся в серии
+    client.patch(
+        f"/api/v1/tasks/{nxt['id']}", json={"title": "Уборка", "scope": "all"}, headers=mom
+    )
+    client.post(f"/api/v1/tasks/{nxt['id']}/done", headers=mom)
+    [third] = _live(client, family["mom"])
+    assert third["title"] == "Уборка"
+
+
+def test_repeat_delete_only_this_time_or_whole_series(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    mom = auth(family["mom"])
+    task = client.post(
+        "/api/v1/tasks/dispatch", json={"message": "полить цветы завтра в 9"}, headers=mom
+    ).json()
+    client.patch(f"/api/v1/tasks/{task['id']}", json={"recurrence": "weekly"}, headers=mom)
+
+    assert client.delete(f"/api/v1/tasks/{task['id']}?scope=this", headers=mom).status_code == 204
+    [nxt] = _live(client, family["mom"])
+    assert nxt["id"] != task["id"] and nxt["recurrence"] == "weekly"
+    assert nxt["due_at"][:10] > task["due_at"][:10] and nxt["due_at"][11:16] == "09:00"
+
+    assert client.delete(f"/api/v1/tasks/{nxt['id']}?scope=all", headers=mom).status_code == 204
+    assert _live(client, family["mom"]) == []
+
+
+def test_repeat_shopping_list_item_only_this_time(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    mom = auth(family["mom"])
+    task = client.post(
+        "/api/v1/tasks/dispatch", json={"message": "купить молоко и хлеб завтра"}, headers=mom
+    ).json()
+    client.patch(f"/api/v1/tasks/{task['id']}", json={"recurrence": "weekly"}, headers=mom)
+    items = [{"text": "молоко", "done": False}, {"text": "хлеб", "done": False}]
+    client.put(f"/api/v1/tasks/{task['id']}/items", json={"items": items}, headers=mom)
+    client.put(
+        f"/api/v1/tasks/{task['id']}/items",
+        json={"items": [*items, {"text": "торт", "done": False}], "scope": "this"},
+        headers=mom,
+    )
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=mom)
+    [nxt] = _live(client, family["mom"])
+    assert [i["text"] for i in nxt["items"]] == ["молоко", "хлеб"]

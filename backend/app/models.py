@@ -185,6 +185,9 @@ class TaskRow(Base):
     # Кто ещё участвует, кроме исполнителя: id членов семьи. Отвечает и отмечает «Сделано»
     # по-прежнему один исполнитель — остальные видят, что заняты в это время
     participants: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # Повтор изменили «только в этот раз» — какими поля были в серии (services/series.py):
+    # следующий повтор создаётся по ним, а не по изменённому делу
+    series_base: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Напоминание перед сроком отправлено; исполнитель ответил «Я помню»
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     remembered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

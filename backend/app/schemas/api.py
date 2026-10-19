@@ -164,8 +164,13 @@ class TaskItem(BaseModel):
     group: str | None = Field(default=None, max_length=40)
 
 
+# Повторяющееся дело: изменить только этот раз или этот и все следующие
+Scope = Literal["this", "all"]
+
+
 class ItemsRequest(BaseModel):
     items: list[TaskItem] = Field(max_length=60)
+    scope: Scope = "all"
 
 
 class TaskFileOut(BaseModel):
@@ -360,6 +365,8 @@ class UpdateTaskRequest(BaseModel):
     # Заметка для всех повторов или только для этого раза
     note_repeat: bool | None = None
     participants: list[str] | None = Field(default=None, max_length=10)
+    # Только для повторяющегося дела: «this» — изменить только этот раз
+    scope: Scope = "all"
 
 
 class RejectRequest(BaseModel):

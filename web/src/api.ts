@@ -177,6 +177,9 @@ export interface Family {
 
 export type Recurrence = "none" | "daily" | "weekdays" | "weekends" | "weekly" | "days" | "monthly";
 
+/** Повторяющееся дело: изменить только этот раз или этот и все следующие */
+export type Scope = "this" | "all";
+
 export interface Task {
   id: string;
   title: string;
@@ -352,9 +355,10 @@ export const api = {
   notifyTask: (id: string) => post<void>(`/tasks/${id}/notify`),
   dispatch: (message: string, source: "text" | "voice") =>
     post<Task>("/tasks/dispatch", { message, source }),
-  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "repeat_days" | "repeat_until" | "note" | "note_repeat" | "participants">> & { repeat_forever?: boolean }) =>
+  updateTask: (id: string, changes: Partial<Pick<Task, "title" | "due_at" | "ends_at" | "assignee_id" | "recurrence" | "repeat_days" | "repeat_until" | "note" | "note_repeat" | "participants">> & { repeat_forever?: boolean; scope?: Scope }) =>
     patch<Task>(`/tasks/${id}`, changes),
-  setItems: (id: string, items: TaskItem[]) => request<Task>(`/tasks/${id}/items`, { method: "PUT", body: JSON.stringify({ items }) }),
+  setItems: (id: string, items: TaskItem[], scope: Scope = "all") =>
+    request<Task>(`/tasks/${id}/items`, { method: "PUT", body: JSON.stringify({ items, scope }) }),
   accept: (id: string) => post<Task>(`/tasks/${id}/accept`),
   decline: (id: string, reason: string | null) => post<Task>(`/tasks/${id}/decline`, { reason }),
   done: (id: string) => post<Task>(`/tasks/${id}/done`),
@@ -382,7 +386,7 @@ export const api = {
     return request<{ status: string }>("/support/feedback", { method: "POST", body: form });
   },
   detach: (id: string, fileId: string) => request<Task>(`/tasks/${id}/files/${fileId}`, { method: "DELETE" }),
-  remove: (id: string) => request<void>(`/tasks/${id}`, { method: "DELETE" }),
+  remove: (id: string, scope: Scope = "all") => request<void>(`/tasks/${id}?scope=${scope}`, { method: "DELETE" }),
 
   pushStatus: () => request<{ enabled: boolean; public_key: string | null; devices: number }>("/push/status"),
   pushSubscribe: (endpoint: string, p256dh: string, auth: string) =>
