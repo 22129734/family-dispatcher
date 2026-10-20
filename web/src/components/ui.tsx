@@ -1,4 +1,11 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type TextareaHTMLAttributes,
+} from "react";
 import type { Member } from "../api";
 import { avatarTone, initials } from "../format";
 
@@ -83,4 +90,44 @@ export function Avatar({ member, members, size = 28 }: { member?: Member; member
 export function ErrorNote({ children }: { children: ReactNode }) {
   if (!children) return null;
   return <p className="rounded-xl bg-warn-soft px-3 py-2 text-sm text-warn">{children}</p>;
+}
+
+/**
+ * Название дела: растёт по высоте под текст, чтобы длинную формулировку было видно целиком.
+ * Перенос строки не вводится — Enter завершает правку (onEnter), как в однострочном поле.
+ */
+export function TitleField({
+  value,
+  onChange,
+  onEnter,
+  className = "",
+  ...props
+}: Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "onChange" | "value"> & {
+  value: string;
+  onChange: (value: string) => void;
+  onEnter?: (field: HTMLTextAreaElement) => void;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const field = ref.current;
+    if (!field) return;
+    field.style.height = "auto";
+    // + рамка: при box-sizing: border-box scrollHeight её не включает
+    field.style.height = `${field.scrollHeight + field.offsetHeight - field.clientHeight}px`;
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      onChange={(e) => onChange(e.target.value.replace(/\s*\n\s*/g, " "))}
+      onKeyDown={(e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        onEnter?.(e.currentTarget);
+      }}
+      className={`block w-full resize-none overflow-hidden rounded-xl border border-line bg-bg px-3 py-2.5 leading-snug outline-none focus:border-accent ${className}`}
+      {...props}
+    />
+  );
 }

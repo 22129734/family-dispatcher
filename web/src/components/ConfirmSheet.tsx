@@ -5,7 +5,7 @@ import { addToTime, describeRepeat, endIso, formatSpan } from "../format";
 import { RepeatPicker, type RepeatValue } from "./RepeatPicker";
 import { useBackClose } from "../backButton";
 import { AttachButton } from "./TaskFiles";
-import { Avatar } from "./ui";
+import { Avatar, TitleField } from "./ui";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -201,12 +201,13 @@ export function ConfirmSheet({
             {draft.clarifying_question && !draft.due_at && (
               <p className="mt-1 text-sm font-medium text-warn">{draft.clarifying_question}</p>
             )}
-            <input
+            <TitleField
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={setTitle}
+              onEnter={(field) => field.blur()}
               maxLength={300}
               aria-label="Что сделать"
-              className="mt-3 h-12 w-full rounded-xl border border-line bg-bg px-3 text-base font-semibold outline-none focus:border-accent"
+              className="mt-3 min-h-12 text-base font-semibold"
             />
             <div className="mt-2">
               <Row label="Кому" value={whoText} muted={!assignee} onClick={() => setPanel("who")} />

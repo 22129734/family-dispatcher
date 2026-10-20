@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { Member, Task, TaskItem } from "../api";
 import { endIso, formatSpan, fromInputValue, RECURRENCE_LABEL, shortDate, toInputValue, WEEKDAY_SHORT } from "../format";
 import { RepeatPicker, type RepeatValue } from "./RepeatPicker";
-import { Avatar } from "./ui";
+import { Avatar, TitleField } from "./ui";
 import { chatUnread } from "./ChatSheet";
 import { AttachButton, FileStrip, PICKUP_RE } from "./TaskFiles";
 
@@ -387,13 +387,13 @@ export function TaskCard(props: Props) {
             <>
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-ink-3">Что сделать</span>
-                <input
+                <TitleField
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={setTitle}
                   onBlur={() => title.trim() && title.trim() !== task.title && props.onRename(title.trim())}
-                  onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                  onEnter={(field) => field.blur()}
                   maxLength={300}
-                  className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-base outline-none focus:border-accent"
+                  className="min-h-11 text-base"
                 />
               </label>
 
