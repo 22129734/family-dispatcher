@@ -408,6 +408,10 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
     if task.assignee_id not in (None, member.id) and task.created_by_id != member.id:
         raise TaskActionError(403, "Отметить может исполнитель или автор")
     now = datetime.now()
+    # Исполнитель взял дело или сам отметил «Сделано» — повтор подтверждён
+    confirmed = task.assignee_id is not None and (
+        task.status == "accepted" or task.assignee_id == member.id
+    )
     if task.assignee_id is None:
         task.assignee_id = member.id
     task.status = "done"
@@ -415,17 +419,23 @@ def complete(db: Session, task: TaskRow, member: MemberRow) -> bool:
     task.accepted_at = task.accepted_at or now
     task.feedback = None  # замечание «не выполнено» снято — дело сделано заново
 
-    spawn_next(db, task, member, now)
+    spawn_next(db, task, member, now, confirmed=confirmed)
     return True
 
 
-def spawn_next(db: Session, task: TaskRow, member: MemberRow, now: datetime) -> TaskRow | None:
-    """Следующий повтор — по значениям серии: правки «только этот раз» в него не переходят."""
+def spawn_next(
+    db: Session, task: TaskRow, member: MemberRow, now: datetime, *, confirmed: bool = False
+) -> TaskRow | None:
+    """Следующий повтор — по значениям серии: правки «только этот раз» в него не переходят.
+
+    Периодическую просьбу подтверждают один раз: если исполнитель уже взял её (confirmed),
+    следующий повтор приходит ему сразу «взятым», без нового «Беру».
+    """
     base = series.base(task)
     due = next_due(base.due_at, task.recurrence, now, task.repeat_days, task.repeat_until)
     if due is None:
         return None
-    # Следующая — тому же исполнителю, снова ждёт ответа
+    # Следующая — тому же исполнителю
     members = {m.id: m for m in member.family.members}
     next_task = TaskRow(
         family_id=task.family_id,
@@ -454,13 +464,16 @@ def spawn_next(db: Session, task: TaskRow, member: MemberRow, now: datetime) -> 
         participants=list(base.participants or []),
     )
     assign(next_task, members.get(base.assignee_id), members[task.created_by_id], task.rationale)
+    if confirmed and next_task.assignee_id == task.assignee_id and next_task.status == "new":
+        next_task.status = "accepted"
+        next_task.accepted_at = now
     db.add(next_task)
     return next_task
 
 
 def skip(db: Session, task: TaskRow, member: MemberRow) -> TaskRow | None:
     """Удалить только этот раз повторяющегося дела: серия продолжается со следующей даты."""
-    next_task = spawn_next(db, task, member, datetime.now())
+    next_task = spawn_next(db, task, member, datetime.now(), confirmed=task.status == "accepted")
     db.delete(task)
     return next_task
 

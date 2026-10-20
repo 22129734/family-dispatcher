@@ -176,7 +176,26 @@ def test_done_recurring_task_spawns_next_for_same_assignee(
     upcoming = [t for t in tasks if t["status"] != "done"]
     assert len(upcoming) == 1
     assert upcoming[0]["due_at"] > task["due_at"]
-    assert (upcoming[0]["assignee_id"], upcoming[0]["status"]) == (family["dad_id"], "new")
+    # Периодическую просьбу подтверждают один раз: следующий повтор уже взят
+    assert (upcoming[0]["assignee_id"], upcoming[0]["status"]) == (family["dad_id"], "accepted")
+
+
+def test_recurring_task_done_by_author_is_not_confirmed(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    """Автор сам отметил «Уже сделано» — исполнитель не подтверждал, повтор ждёт ответа."""
+    task = client.post(
+        "/api/v1/tasks/dispatch",
+        json={"message": "Каждый день завтра в 8 выгулять собаку"},
+        headers=auth(family["mom"]),
+    ).json()
+    client.post(f"/api/v1/tasks/{task['id']}/done", headers=auth(family["mom"]))
+    [nxt] = [
+        t
+        for t in client.get("/api/v1/tasks", headers=auth(family["mom"])).json()
+        if t["status"] != "done"
+    ]
+    assert (nxt["assignee_id"], nxt["status"]) == (family["dad_id"], "new")
 
 
 def test_explicit_self_or_named_assignee_overrides_default(
