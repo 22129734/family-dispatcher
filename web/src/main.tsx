@@ -24,6 +24,18 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
     window.location.reload();
   });
 
+  // Нажали на уведомление, а приложение уже открыто: service worker вывел окно вперёд
+  // и просит открыть страницу дела (sw.js, openPage)
+  navigator.serviceWorker.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as { type?: string; url?: string } | null;
+    if (data?.type !== "open" || !data.url) return;
+    const target = new URL(data.url, window.location.origin);
+    if (target.origin === window.location.origin && target.href !== window.location.href) {
+      window.location.assign(target.href);
+    }
+  });
+  navigator.serviceWorker.startMessages();
+
   window.addEventListener("load", () => {
     navigator.serviceWorker
       .register("/sw.js", { updateViaCache: "none" })

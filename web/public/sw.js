@@ -56,15 +56,18 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// Открыть страницу из уведомления. Окно приложения уже есть — сначала выводим его вперёд
+// (пока действует нажатие на уведомление), потом просим само приложение перейти на адрес:
+// WindowClient.navigate() на iPhone не поддерживается, и раньше окно оставалось на старом экране.
 async function openPage(url) {
+  const target = new URL(url, self.location.origin).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  for (const client of windows) {
-    if ("focus" in client) {
-      await client.navigate(url).catch(() => undefined);
-      return client.focus();
-    }
-  }
-  return self.clients.openWindow(url);
+  const client = windows.find((c) => "focus" in c);
+  if (!client) return self.clients.openWindow(target);
+  const focused = await client.focus().catch(() => null);
+  if (!focused) return self.clients.openWindow(target);
+  if (focused.url !== target) focused.postMessage({ type: "open", url: target });
+  return focused;
 }
 
 self.addEventListener("notificationclick", (event) => {
@@ -95,7 +98,7 @@ self.addEventListener("notificationclick", (event) => {
   }
   if (event.action === "decline") {
     // Причину отказа удобнее написать на странице задачи
-    event.waitUntil(openPage(`${url}?decline=1`));
+    event.waitUntil(openPage(`${url}${url.includes("?") ? "&" : "?"}decline=1`));
     return;
   }
   event.waitUntil(openPage(url || "/"));
