@@ -7,10 +7,11 @@ from sqlalchemy import func, select
 
 from app.auth import CurrentMember, DbSession
 from app.config import get_settings
-from app.models import MemberRow, PushSubscriptionRow, TaskRow
+from app.models import MemberRow, NativePushTokenRow, PushSubscriptionRow, TaskRow
 from app.schemas.api import (
     ActInfoOut,
     ActRequest,
+    NativePushRequest,
     PushStatusOut,
     PushSubscribeRequest,
     PushUnsubscribeRequest,
@@ -26,10 +27,12 @@ router = APIRouter(prefix="/api/v1", tags=["push"])
 @router.get("/push/status", response_model=PushStatusOut)
 def push_status(member: CurrentMember, db: DbSession) -> PushStatusOut:
     devices = db.scalar(select(func.count()).where(PushSubscriptionRow.member_id == member.id))
+    native = db.scalar(select(func.count()).where(NativePushTokenRow.member_id == member.id))
     return PushStatusOut(
-        enabled=notifications.push_enabled(),
+        enabled=notifications.web_push_enabled(),
         public_key=get_settings().vapid_public_key or None,
         devices=devices or 0,
+        native_devices=native or 0,
     )
 
 
@@ -64,6 +67,35 @@ def unsubscribe(payload: PushUnsubscribeRequest, member: CurrentMember, db: DbSe
     if sub is not None:
         db.delete(sub)
         fs.track(db, member, "push_unsubscribed")
+        db.commit()
+
+
+@router.post("/push/native", status_code=204)
+def native_register(payload: NativePushRequest, member: CurrentMember, db: DbSession) -> None:
+    """Android-приложение из RuStore прислало push-токен (RuStore Push SDK)."""
+    row = db.scalar(select(NativePushTokenRow).where(NativePushTokenRow.token == payload.token))
+    if row is None:
+        row = NativePushTokenRow(token=payload.token, provider="rustore")
+        db.add(row)
+        fs.track(db, member, "push_subscribed", channel="rustore")
+    # Телефон мог перейти к другому человеку — токен принадлежит тому, кто вошёл
+    row.member_id = member.id
+    row.failures = 0
+    db.commit()
+
+
+@router.post("/push/native/unregister", status_code=204)
+def native_unregister(payload: NativePushRequest, member: CurrentMember, db: DbSession) -> None:
+    """Выход из аккаунта в приложении: этому телефону больше не слать уведомления человека."""
+    row = db.scalar(
+        select(NativePushTokenRow).where(
+            NativePushTokenRow.token == payload.token,
+            NativePushTokenRow.member_id == member.id,
+        )
+    )
+    if row is not None:
+        db.delete(row)
+        fs.track(db, member, "push_unsubscribed", channel="rustore")
         db.commit()
 
 

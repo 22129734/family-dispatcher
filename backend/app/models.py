@@ -307,6 +307,24 @@ class PushSubscriptionRow(Base):
     failures: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class NativePushTokenRow(Base):
+    """Push-токен Android-приложения из RuStore (RuStore Push SDK).
+
+    Токен принадлежит тому, кто вошёл в приложение на этом телефоне; при входе другого
+    человека он переписывается на него.
+    """
+
+    __tablename__ = "native_push_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    member_id: Mapped[str] = mapped_column(ForeignKey("members.id"), index=True)
+    token: Mapped[str] = mapped_column(String(512), unique=True)
+    provider: Mapped[str] = mapped_column(String(16), default="rustore")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class EventRow(Base):
     """Продуктовое событие — основа для DAU и «обращений на пользователя»."""
 

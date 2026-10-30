@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import { enableNativePush, nativePushState } from "../native";
 import { browserName, enablePush, platform, pushState, type PushState } from "../push";
 
 /**
@@ -7,6 +8,56 @@ import { browserName, enablePush, platform, pushState, type PushState } from "..
  * приложение и разрешить уведомления. Поэтому здесь же меряем воронку.
  */
 export function NotifyBanner() {
+  // Android-приложение из RuStore: уведомления через RuStore Push, а не через браузер
+  return platform().native ? <NativeNotifyBanner /> : <WebNotifyBanner />;
+}
+
+function NativeNotifyBanner() {
+  const [state, setState] = useState(nativePushState);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (state !== "on") api.track("push_prompt_shown", { state, shell: "android" });
+    // Вернулись из настроек телефона — проверить ещё раз
+    const recheck = () => document.visibilityState === "visible" && setState(nativePushState());
+    document.addEventListener("visibilitychange", recheck);
+    return () => document.removeEventListener("visibilitychange", recheck);
+  }, [state]);
+
+  if (state === "on") return null;
+  if (state === "unavailable") {
+    return (
+      <p className="appear mb-4 rounded-2xl border border-warn/30 bg-warn-soft px-4 py-3 text-sm">
+        <span className="font-semibold">Уведомления придут через RuStore.</span> Установите RuStore и войдите в него —
+        тогда просьбы будут приходить сами.
+      </p>
+    );
+  }
+  async function turnOn() {
+    setBusy(true);
+    const result = await enableNativePush();
+    api.track(result === "ask" ? "push_permission_denied" : "push_permission_granted", { shell: "android" });
+    setState(result);
+    setBusy(false);
+  }
+  return (
+    <div className="appear mb-4 flex items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-2.5">
+      <p className="min-w-0 flex-1 text-sm">
+        <span className="font-semibold">Включите уведомления</span>
+        <span className="block text-xs text-ink-2">просьбы будут приходить сами</span>
+      </p>
+      <button
+        onClick={() => void turnOn()}
+        disabled={busy}
+        className="h-9 shrink-0 rounded-xl bg-accent px-4 text-sm font-semibold text-accent-ink active:opacity-80 disabled:opacity-50"
+      >
+        {busy ? "Подключаем…" : "Включить"}
+      </button>
+    </div>
+  );
+}
+
+function WebNotifyBanner() {
   const [state, setState] = useState<PushState | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

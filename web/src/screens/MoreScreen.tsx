@@ -8,6 +8,7 @@ import { SetPin } from "./SetPin";
 import { InstallCard } from "../components/InstallCard";
 import { VoiceFeedback } from "../components/VoiceFeedback";
 import { platform } from "../push";
+import { nativeApp } from "../native";
 import { useBackClose } from "../backButton";
 
 const SUPPORT_EMAIL = "family-dispatcher@yandex.ru";
@@ -251,7 +252,7 @@ export function MoreScreen({
 
       <Group title="Помощь">
         <Row label="Надиктовать отзыв" value="голосом" onClick={() => setSub("voice")} />
-        {platform().android && (
+        {platform().android && !platform().native && (
           <Row label="Висит уведомление Chrome" value="как убрать" onClick={() => setSub("chrome")} />
         )}
         <Row label="Написать в поддержку" value="письмо" onClick={mail} />
@@ -406,6 +407,7 @@ function DeleteAccount({ initiallyAsking = false }: { initiallyAsking?: boolean 
     setError(null);
     try {
       await api.deleteAccount();
+      nativeApp()?.clearSnapshot();
       tokenStore.set(null);
       try {
         localStorage.removeItem("fd.known");

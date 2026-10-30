@@ -9,7 +9,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db import Base, SessionLocal, engine
 from app.main import app
-from app.models import ComponentCallRow, PushSubscriptionRow
+from app.models import ComponentCallRow, NativePushTokenRow, PushSubscriptionRow
 from app.services import notifications
 
 SUB = {"endpoint": "https://push.example/abc", "keys": {"p256dh": "BKey", "auth": "AuthKey"}}
@@ -223,3 +223,96 @@ def test_deliver_sends_counts_calls_and_drops_dead_subscriptions(
     assert endpoints == [SUB["endpoint"]]  # мёртвая подписка удалена
     assert sorted((c.status, c.error_code) for c in calls) == [("error", "http_410"), ("ok", None)]
     assert {c.member_id for c in calls} == {family["dad_id"]}
+
+
+# ---------- push RuStore (Android-приложение из RuStore) ----------
+
+
+def _native_on(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, dict]]:
+    """Включить RuStore Push и перехватить отправку: (токен, data)."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "rustore_push_project_id", "project")
+    monkeypatch.setattr(settings, "rustore_push_service_token", "service-token")
+    sent: list[tuple[str, dict]] = []
+
+    def fake_send(token: str, message: notifications.PushMessage) -> tuple[int, str]:
+        if token.startswith("dead"):
+            return 404, "NOT_FOUND"
+        sent.append((token, message.native_data()))
+        return 200, ""
+
+    monkeypatch.setattr(notifications, "rustore_send", fake_send)
+    return sent
+
+
+def test_native_token_belongs_to_who_logged_in_and_counts_in_status(
+    client: TestClient, family: dict[str, str]
+) -> None:
+    token = {"token": "rustore-token-1"}
+    assert (
+        client.post("/api/v1/push/native", json=token, headers=auth(family["mom"])).status_code
+        == 204
+    )
+    # Телефон отдали папе: тот же токен теперь его
+    client.post("/api/v1/push/native", json=token, headers=auth(family["dad"]))
+    with SessionLocal() as db:
+        rows = db.scalars(select(NativePushTokenRow)).all()
+    assert [(r.token, r.member_id) for r in rows] == [("rustore-token-1", family["dad_id"])]
+    status = client.get("/api/v1/push/status", headers=auth(family["dad"])).json()
+    assert status["native_devices"] == 1
+
+    # Выход из аккаунта в приложении — токен забыт
+    client.post("/api/v1/push/native/unregister", json=token, headers=auth(family["dad"]))
+    assert (
+        client.get("/api/v1/push/status", headers=auth(family["dad"])).json()["native_devices"] == 0
+    )
+
+
+def test_native_push_alone_enables_links_and_delivery(
+    client: TestClient, family: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sent = _native_on(monkeypatch)
+    assert notifications.push_enabled() and not notifications.web_push_enabled()
+    client.post("/api/v1/push/native", json={"token": "good-token"}, headers=auth(family["dad"]))
+    client.post("/api/v1/push/native", json={"token": "dead-token"}, headers=auth(family["dad"]))
+
+    message = notifications.PushMessage(
+        title="Мама просит",
+        body="Купить хлеб",
+        url="/t/abc",
+        tag="task-1",
+        actions=[{"action": "accept", "title": "Беру"}],
+        act_url="/api/v1/act/abc",
+    )
+    assert notifications.deliver(family["dad_id"], message) == 1
+    token, data = sent[0]
+    assert token == "good-token"
+    # Только строки: приложение само рисует уведомление с кнопками
+    assert data["title"] == "Мама просит" and data["act_url"] == "/api/v1/act/abc"
+    assert json.loads(data["actions"]) == [{"action": "accept", "title": "Беру"}]
+    assert all(isinstance(v, str) for v in data.values())
+
+    with SessionLocal() as db:
+        tokens = db.scalars(select(NativePushTokenRow.token)).all()
+        calls = db.scalars(
+            select(ComponentCallRow).where(ComponentCallRow.operation == "rustore.send")
+        ).all()
+    assert tokens == ["good-token"]  # приложение удалили — токен забыт
+    assert sorted((c.status, c.error_code) for c in calls) == [
+        ("error", "rustore_NOT_FOUND"),
+        ("ok", None),
+    ]
+
+
+def test_native_message_fits_rustore_limit() -> None:
+    message = notifications.PushMessage(
+        title="Т" * 500, body="Б" * 5000, url="/t/x", tag="task-x", act_url="/api/v1/act/x"
+    )
+    assert len(notifications.native_body("t" * 200, message)) < 4096
+
+
+def test_account_deletion_forgets_native_tokens(client: TestClient, family: dict[str, str]) -> None:
+    client.post("/api/v1/push/native", json={"token": "dad-phone"}, headers=auth(family["dad"]))
+    assert client.delete("/api/v1/account", headers=auth(family["dad"])).status_code == 204
+    with SessionLocal() as db:
+        assert db.scalars(select(NativePushTokenRow)).all() == []

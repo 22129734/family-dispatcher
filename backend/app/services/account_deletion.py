@@ -17,6 +17,7 @@ from app.models import (
     FamilyRow,
     LoginAttemptRow,
     MemberRow,
+    NativePushTokenRow,
     PhoneCheckRow,
     PhoneInviteRow,
     PushSubscriptionRow,
@@ -42,6 +43,7 @@ def _drop_members(db: Session, member_ids: list[str]) -> None:
         return
     db.execute(delete(PhoneInviteRow).where(PhoneInviteRow.invited_by_id.in_(member_ids)))
     db.execute(delete(PushSubscriptionRow).where(PushSubscriptionRow.member_id.in_(member_ids)))
+    db.execute(delete(NativePushTokenRow).where(NativePushTokenRow.member_id.in_(member_ids)))
     db.execute(delete(EventRow).where(EventRow.member_id.in_(member_ids)))
     db.execute(delete(TaskCommentRow).where(TaskCommentRow.member_id.in_(member_ids)))
     db.execute(
