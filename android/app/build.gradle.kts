@@ -3,12 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-// ID проекта RuStore Push (RuStore Консоль → Push-уведомления → Проекты). Не секрет:
-// он вшит в приложение. Передаётся при сборке: -PrustorePushProjectId=... или переменной окружения.
+// ID проекта RuStore Push «Prod» (RuStore Консоль → Инструменты → Push-уведомления). Не секрет:
+// он вшит в приложение. Можно переопределить: -PrustorePushProjectId=... или переменной окружения.
 val rustorePushProjectId: String =
-    (findProperty("rustorePushProjectId") as String?)
-        ?: System.getenv("RUSTORE_PUSH_PROJECT_ID")
-        ?: ""
+    listOf(findProperty("rustorePushProjectId") as String?, System.getenv("RUSTORE_PUSH_PROJECT_ID"))
+        .firstOrNull { !it.isNullOrBlank() }
+        ?: "pjcddfMOCsqTfeARO0lbY7fCVFj4dJww"
 
 android {
     namespace = "ru.semeinidispetcher.app"
