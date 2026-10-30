@@ -1,4 +1,4 @@
-"""Уведомления: push PWA (Web Push) и подписанные ссылки действий.
+"""Уведомления: push PWA (Web Push), push RuStore и подписанные ссылки действий.
 
 Содержимое push шифруется между сервером и браузером (RFC 8291): серверы Apple и
 Google видят только шифротекст, поэтому в уведомлении можно показать название задачи.
@@ -6,9 +6,13 @@ Google видят только шифротекст, поэтому в увед�
 Кнопки уведомления и страница задачи работают без входа — по подписанной ссылке,
 привязанной к одной задаче и одному человеку (HMAC, срок 7 дней).
 
+Android-приложение из RuStore получает те же сообщения через RuStore Push
+(vkpns.rustore.ru, API как у Firebase). Сообщение уходит только в `data`: приложение
+само рисует уведомление с кнопками «Беру» / «Не могу» и шлёт их по той же ссылке действия.
+
 Отправка идёт в фоне после ответа (BackgroundTasks), со своей сессией БД. Каждая
-отправка — обращение к компоненту (Kind.PUSH). Подписки, на которые push-сервис
-ответил 404/410, удаляются.
+отправка — обращение к компоненту (Kind.PUSH). Подписки и токены, на которые
+push-сервис ответил «устройства больше нет», удаляются.
 """
 
 import base64
@@ -17,6 +21,7 @@ import hmac
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
@@ -24,7 +29,7 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db import SessionLocal
-from app.models import MemberRow, PushSubscriptionRow, TaskRow
+from app.models import MemberRow, NativePushTokenRow, PushSubscriptionRow, TaskRow
 from app.services import telemetry
 from app.services.telemetry import Kind
 
@@ -82,6 +87,17 @@ class PushMessage:
 
     def payload(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
+
+    def native_data(self) -> dict[str, str]:
+        """Поля для RuStore Push: только строки, всё сообщение — не больше 4 КБ."""
+        return {
+            "title": self.title[:120],
+            "body": self.body[:600],
+            "url": self.url,
+            "tag": self.tag,
+            "act_url": self.act_url or "",
+            "actions": json.dumps(self.actions, ensure_ascii=False),
+        }
 
 
 def _act(task: TaskRow, member_id: str) -> tuple[str, str]:
@@ -246,64 +262,164 @@ def answer_message(task: TaskRow, who: MemberRow, kind: str) -> PushMessage:
 # ---------- Отправка ----------
 
 
-def push_enabled() -> bool:
+def _strong_secret() -> bool:
     settings = get_settings()
     # На проде ссылки с ключом по умолчанию можно подделать — без своего SECRET_KEY push не включаем
-    weak_secret = settings.is_production and settings.secret_key == "local-secret-key"
-    return bool(settings.vapid_public_key and settings.vapid_private_key) and not weak_secret
+    return not (settings.is_production and settings.secret_key == "local-secret-key")
+
+
+def web_push_enabled() -> bool:
+    settings = get_settings()
+    return bool(settings.vapid_public_key and settings.vapid_private_key) and _strong_secret()
+
+
+def native_push_enabled() -> bool:
+    settings = get_settings()
+    return (
+        bool(settings.rustore_push_project_id and settings.rustore_push_service_token)
+        and _strong_secret()
+    )
+
+
+def push_enabled() -> bool:
+    """Работает хоть один канал push — значит, работают и ссылки действий из уведомлений."""
+    return web_push_enabled() or native_push_enabled()
 
 
 def deliver(member_id: str, message: PushMessage) -> int:
     """Отправить push на все устройства участника. Возвращает число доставленных."""
     if not push_enabled():
         return 0
-    from pywebpush import WebPushException, webpush
-
-    settings = get_settings()
     sent = 0
     with SessionLocal() as db:
         member = db.get(MemberRow, member_id)
         if member is None:
             return 0
         actor = telemetry.Actor(member.id, member.family_id)
-        subscriptions = db.scalars(
-            select(PushSubscriptionRow).where(PushSubscriptionRow.member_id == member_id)
-        ).all()
-        for sub in subscriptions:
-            started = time.perf_counter()
-            status, error = "ok", None
-            try:
-                webpush(
-                    subscription_info={
-                        "endpoint": sub.endpoint,
-                        "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
-                    },
-                    data=message.payload(),
-                    vapid_private_key=settings.vapid_private_key,
-                    vapid_claims={"sub": settings.vapid_subject},
-                    ttl=24 * 3600,
-                    timeout=10,
-                )
-                sub.last_success_at = datetime.now()
-                sub.failures = 0
-                sent += 1
-            except WebPushException as exc:
-                code = exc.response.status_code if exc.response is not None else None
-                status, error = "error", f"http_{code}" if code else "webpush"
-                if code in (404, 410):
-                    db.delete(sub)  # устройство отписалось или подписка устарела
-                else:
-                    sub.failures += 1
-            except Exception as exc:  # сеть, таймаут — не роняем фоновую задачу
-                status, error = "error", type(exc).__name__
-                sub.failures += 1
-            telemetry.record(
-                Kind.PUSH,
-                "send",
-                status=status,
-                error_code=error,
-                latency_ms=int((time.perf_counter() - started) * 1000),
-                actor=actor,
-            )
+        if web_push_enabled():
+            sent += _deliver_web(db, member_id, message, actor)
+        if native_push_enabled():
+            sent += _deliver_native(db, member_id, message, actor)
         db.commit()
+    return sent
+
+
+def _deliver_web(db, member_id: str, message: PushMessage, actor: telemetry.Actor) -> int:
+    from pywebpush import WebPushException, webpush
+
+    settings = get_settings()
+    sent = 0
+    subscriptions = db.scalars(
+        select(PushSubscriptionRow).where(PushSubscriptionRow.member_id == member_id)
+    ).all()
+    for sub in subscriptions:
+        started = time.perf_counter()
+        status, error = "ok", None
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub.endpoint,
+                    "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+                },
+                data=message.payload(),
+                vapid_private_key=settings.vapid_private_key,
+                vapid_claims={"sub": settings.vapid_subject},
+                ttl=24 * 3600,
+                timeout=10,
+            )
+            sub.last_success_at = datetime.now()
+            sub.failures = 0
+            sent += 1
+        except WebPushException as exc:
+            code = exc.response.status_code if exc.response is not None else None
+            status, error = "error", f"http_{code}" if code else "webpush"
+            if code in (404, 410):
+                db.delete(sub)  # устройство отписалось или подписка устарела
+            else:
+                sub.failures += 1
+        except Exception as exc:  # сеть, таймаут — не роняем фоновую задачу
+            status, error = "error", type(exc).__name__
+            sub.failures += 1
+        telemetry.record(
+            Kind.PUSH,
+            "send",
+            status=status,
+            error_code=error,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            actor=actor,
+        )
+    return sent
+
+
+# Ответы RuStore Push, после которых токен больше не годится: приложение удалили или
+# переустановили — новый токен оно пришлёт само при следующем входе
+_DEAD_TOKEN = {"NOT_FOUND", "UNREGISTERED", "INVALID_ARGUMENT"}
+
+
+def native_body(token: str, message: PushMessage) -> bytes:
+    """Тело запроса к RuStore Push в UTF-8: лимит сообщения — 4096 байт."""
+    body = {
+        "message": {"token": token, "data": message.native_data(), "android": {"ttl": "86400s"}}
+    }
+    return json.dumps(body, ensure_ascii=False).encode()
+
+
+def _rustore_send(token: str, message: PushMessage) -> tuple[int, str]:
+    """Один запрос к RuStore Push. Возвращает (HTTP-код, статус ошибки из ответа или "")."""
+    import httpx
+
+    settings = get_settings()
+    response = httpx.post(
+        f"{settings.rustore_push_url}/v1/projects/{settings.rustore_push_project_id}/messages:send",
+        headers={
+            "Authorization": f"Bearer {settings.rustore_push_service_token}",
+            "Content-Type": "application/json",
+        },
+        content=native_body(token, message),
+        timeout=10,
+    )
+    if response.status_code == 200:
+        return 200, ""
+    try:
+        status = response.json().get("error", {}).get("status", "")
+    except ValueError:
+        status = ""
+    return response.status_code, status
+
+
+# Подменяется в тестах: сеть в тестах запрещена
+rustore_send: Callable[[str, PushMessage], tuple[int, str]] = _rustore_send
+
+
+def _deliver_native(db, member_id: str, message: PushMessage, actor: telemetry.Actor) -> int:
+    sent = 0
+    tokens = db.scalars(
+        select(NativePushTokenRow).where(NativePushTokenRow.member_id == member_id)
+    ).all()
+    for row in tokens:
+        started = time.perf_counter()
+        status, error = "ok", None
+        try:
+            code, reason = rustore_send(row.token, message)
+            if code == 200:
+                row.last_success_at = datetime.now()
+                row.failures = 0
+                sent += 1
+            else:
+                status, error = "error", f"rustore_{reason or code}"
+                if reason in _DEAD_TOKEN or code == 404:
+                    db.delete(row)
+                else:
+                    row.failures += 1
+        except Exception as exc:  # сеть, таймаут — не роняем фоновую задачу
+            status, error = "error", type(exc).__name__
+            row.failures += 1
+        telemetry.record(
+            Kind.PUSH,
+            "rustore.send",
+            status=status,
+            error_code=error,
+            latency_ms=int((time.perf_counter() - started) * 1000),
+            actor=actor,
+        )
     return sent

@@ -34,6 +34,7 @@ import { PhoneLogin } from "./screens/PhoneLogin";
 import { SetPin } from "./screens/SetPin";
 import { ActPage } from "./screens/ActPage";
 import { platform, syncPush } from "./push";
+import { forgetNativeDevice, isNativeApp, saveNativeSnapshot, syncNativePush } from "./native";
 import { referralCode } from "./referral";
 import { isAlone } from "./share";
 import { Today, type TaskActions } from "./screens/Today";
@@ -180,7 +181,9 @@ function Main() {
     setStage("home");
   };
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    // Телефон с приложением: токен push отвязать, пока сессия ещё действует
+    await forgetNativeDevice();
     void api.logout();
     tokenStore.set(null);
     setSession(null);
@@ -282,6 +285,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
       seen.current = new Map(t.map((task) => [task.id, task.status]));
       setFamily(f);
       setTasks(t);
+      saveNativeSnapshot(t, Object.fromEntries(f.members.map((m) => [m.id, m.name])));
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) onLogout();
     } finally {
@@ -290,8 +294,10 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
   }, [onLogout, me.id]);
 
   useEffect(() => {
-    api.track(platform().standalone ? "pwa_opened" : "app_open");
+    if (isNativeApp()) api.track("pwa_opened", { shell: "android" });
+    else api.track(platform().standalone ? "pwa_opened" : "app_open");
     void syncPush();
+    syncNativePush();
     void refresh();
     const timer = window.setInterval(() => document.visibilityState === "visible" && void refresh(true), REFRESH_MS);
     const onVisible = () => document.visibilityState === "visible" && void refresh();
@@ -473,6 +479,13 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
     const id = new URLSearchParams(window.location.search).get("chat");
     if (id) window.history.replaceState(null, "", window.location.pathname);
     return id;
+  });
+  // «Поделиться» → Диспетчер из другого приложения: текст приходит ссылкой /?share=<текст>
+  // и ложится в поле — человек сам проверит и отправит
+  const [shared] = useState(() => {
+    const text = new URLSearchParams(window.location.search).get("share")?.trim().slice(0, 2000) ?? "";
+    if (text) window.history.replaceState(null, "", window.location.pathname);
+    return text;
   });
   const chatTask = chatId ? tasks.find((t) => t.id === chatId) : undefined;
 
@@ -839,6 +852,7 @@ function Home({ session, onLogout }: { session: Session; onLogout: () => void })
               onFrequent={(item) => copyTask(item.task, item.title)}
               onImage={(file) => void sendImage(file)}
               highlight={tourOn && !tourTaskId}
+              initialText={shared}
             />
           </div>
         )}

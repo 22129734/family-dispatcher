@@ -397,6 +397,13 @@ class PushStatusOut(BaseModel):
     enabled: bool
     public_key: str | None
     devices: int
+    native_devices: int = 0
+
+
+class NativePushRequest(BaseModel):
+    """Push-токен из Android-приложения (RuStore Push SDK)."""
+
+    token: str = Field(min_length=8, max_length=512)
 
 
 class ActRequest(BaseModel):

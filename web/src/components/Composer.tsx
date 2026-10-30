@@ -43,6 +43,7 @@ export function Composer({
   onFrequent,
   onImage,
   highlight = false,
+  initialText = "",
 }: {
   onSend: (text: string, source: "text" | "voice") => Promise<void>;
   busy: boolean;
@@ -58,9 +59,11 @@ export function Composer({
   onImage?: (file: File) => void;
   /** Обучение при первом входе: поле — над затемнением, сплошное и обведённое */
   highlight?: boolean;
+  /** Текст, которым поделились из другого приложения («Поделиться» → Диспетчер) */
+  initialText?: string;
 }) {
   const picker = useRef<HTMLInputElement>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialText);
   const [focused, setFocused] = useState(false);
   const field = useRef<HTMLTextAreaElement>(null);
   // Поле растёт вместе с текстом (до 6 строк), потом прокручивается

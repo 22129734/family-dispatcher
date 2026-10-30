@@ -388,7 +388,11 @@ export const api = {
   detach: (id: string, fileId: string) => request<Task>(`/tasks/${id}/files/${fileId}`, { method: "DELETE" }),
   remove: (id: string, scope: Scope = "all") => request<void>(`/tasks/${id}?scope=${scope}`, { method: "DELETE" }),
 
-  pushStatus: () => request<{ enabled: boolean; public_key: string | null; devices: number }>("/push/status"),
+  pushStatus: () =>
+    request<{ enabled: boolean; public_key: string | null; devices: number; native_devices: number }>("/push/status"),
+  /** Android-приложение из RuStore: push-токен RuStore этого телефона */
+  nativePushRegister: (token: string) => post<void>("/push/native", { token }),
+  nativePushUnregister: (token: string) => post<void>("/push/native/unregister", { token }),
   pushSubscribe: (endpoint: string, p256dh: string, auth: string) =>
     post<void>("/push/subscribe", { endpoint, keys: { p256dh, auth } }),
   actInfo: (token: string) => request<ActInfo>(`/act/${token}`),

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Название как в карточке RuStore (п. 6.4: одинаковое на витрине и на устройстве) -->
+    <string name="app_name">Семейный диспетчер</string>
+    <string name="channel_requests">requests</string>
+    <string name="channel_requests_name">Просьбы и ответы</string>
+    <string name="channel_requests_description">Новые просьбы, ответы «Беру» и «Сделано», напоминания</string>
+    <string name="offline_title">Нет интернета</string>
+    <string name="offline_text">Просьбы отправятся и обновятся, как только появится связь.</string>
+    <string name="offline_cached">Ваши дела на момент последнего обновления</string>
+    <string name="offline_empty">Сохранённых дел пока нет — откройте приложение с интернетом хотя бы раз.</string>
+    <string name="offline_retry">Повторить</string>
+    <string name="voice_prompt">Скажите, что нужно сделать</string>
+    <string name="voice_unavailable">На телефоне нет распознавания речи. Напишите просьбу текстом.</string>
+    <string name="action_done_accept">Записали: вы берёте</string>
+    <string name="action_done_remember">Хорошо, вы помните</string>
+    <string name="action_done_done">Отмечено: сделано</string>
+    <string name="action_failed">Не получилось отправить ответ — откройте приложение</string>
+</resources>

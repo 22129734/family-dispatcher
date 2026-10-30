@@ -3,12 +3,15 @@ import { api } from "./api";
 /** Где запущено приложение — от этого зависит, как включить уведомления. */
 export function platform() {
   const ua = navigator.userAgent;
+  // Android-приложение из RuStore: веб-версия внутри него, своя установка и свои уведомления
+  const native = Boolean(window.DispatcherApp);
   const ios = /iPhone|iPad|iPod/.test(ua) || (ua.includes("Mac") && navigator.maxTouchPoints > 1);
   const standalone =
+    native ||
     window.matchMedia("(display-mode: standalone)").matches ||
     (navigator as Navigator & { standalone?: boolean }).standalone === true;
   const supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
-  return { ios, android: /Android/.test(ua), standalone, supported };
+  return { ios, android: /Android/.test(ua), standalone, supported, native };
 }
 
 /** Браузер — у Яндекс Браузера на Android уведомления от сайтов часто не работают. */

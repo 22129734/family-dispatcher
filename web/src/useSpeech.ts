@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isNativeApp, startNativeVoice } from "./native";
 
 /*
  * Голосовой ввод через Web Speech API браузера — временное решение для MVP.
@@ -47,7 +48,10 @@ export function useSpeech(onFinal: (text: string) => void) {
   const onFinalRef = useRef(onFinal);
   onFinalRef.current = onFinal;
 
-  const supported = recognitionCtor() !== null;
+  // В Android-приложении из RuStore Web Speech нет — там системный голосовой ввод
+  const native = isNativeApp();
+  const supported = native || recognitionCtor() !== null;
+  const nativeOff = useRef<(() => void) | null>(null);
 
   /** Закончить запись: отдать распознанное и вернуть кнопку. Повторный вызов — без эффекта. */
   const finish = useCallback((rec: Recognition | null) => {
@@ -64,6 +68,17 @@ export function useSpeech(onFinal: (text: string) => void) {
 
   // Запись стартует сразу по нажатию: iPhone разрешает микрофон только в ответ на касание
   const start = useCallback(() => {
+    if (native) {
+      setError(null);
+      setListening(true);
+      nativeOff.current?.();
+      nativeOff.current = startNativeVoice((text) => {
+        nativeOff.current = null;
+        setListening(false);
+        if (text?.trim()) onFinalRef.current(text.trim());
+      });
+      return;
+    }
     const Ctor = recognitionCtor();
     if (!Ctor) return;
     setError(null);
@@ -134,9 +149,16 @@ export function useSpeech(onFinal: (text: string) => void) {
       finish(rec);
       setError("Микрофон не включился. Если браузер спрашивал разрешение — нажмите «Разрешить» и попробуйте ещё раз");
     }, START_TIMEOUT_MS);
-  }, [finish]);
+  }, [finish, native]);
 
   const stop = useCallback(() => {
+    if (nativeOff.current) {
+      // Системное окно голоса закрыли без ответа — просто выключаем «слушаю»
+      nativeOff.current();
+      nativeOff.current = null;
+      setListening(false);
+      return;
+    }
     const rec = recognition.current;
     if (!rec) return;
     rec.stop();
@@ -150,6 +172,13 @@ export function useSpeech(onFinal: (text: string) => void) {
 
   /** Нажали случайно — выключить микрофон и ничего не отправлять. */
   const cancel = useCallback(() => {
+    if (nativeOff.current) {
+      // Системное окно голоса закрыли без ответа — просто выключаем «слушаю»
+      nativeOff.current();
+      nativeOff.current = null;
+      setListening(false);
+      return;
+    }
     const rec = recognition.current;
     if (!rec) return;
     finalText.current = "";

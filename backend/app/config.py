@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:push@semeinidispetcher.ru"
+    # Push RuStore для Android-приложения из RuStore: ID проекта и сервисный токен —
+    # в RuStore Консоли, «Push-уведомления → Проекты». Без них нативные push не отправляются.
+    rustore_push_project_id: str = ""
+    rustore_push_service_token: str = ""
+    rustore_push_url: str = "https://vkpns.rustore.ru"
     # Подпись ссылок действий из уведомлений (HMAC). В продакшне — случайная строка.
     secret_key: str = "local-secret-key"
 
